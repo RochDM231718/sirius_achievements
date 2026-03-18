@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Request, Depends, Form, UploadFile, Query
+from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, case
 from urllib.parse import quote
 import math
 import os
+import traceback
 
 from app.security.csrf import validate_csrf
 from app.routers.admin.admin import guard_router, templates, get_db
@@ -119,7 +120,7 @@ async def store(
         description: str = Form(None),
         category: str = Form(...),
         level: str = Form(...),
-        file: UploadFile = Form(...),
+        file: UploadFile = File(...),
         service: AchievementService = Depends(get_service)
 ):
     user_id = request.session.get('auth_id')
@@ -150,7 +151,8 @@ async def store(
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote(str(e))}&toast_type=error",
                                 status_code=302)
     except Exception as e:
-        logger.error("Achievement upload failed", error=str(e), error_type=type(e).__name__, user_id=user_id, exc_info=True)
+        traceback.print_exc()
+        print(f"UPLOAD ERROR: {type(e).__name__}: {e}", flush=True)
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote('Произошла ошибка при загрузке')}&toast_type=error",
                                 status_code=302)
 
@@ -159,7 +161,7 @@ async def store(
 async def revise(
         id: int,
         request: Request,
-        file: UploadFile = Form(...),
+        file: UploadFile = File(...),
         service: AchievementService = Depends(get_service)
 ):
     user_id = request.session.get('auth_id')
@@ -200,7 +202,8 @@ async def revise(
             status_code=302
         )
     except Exception as e:
-        logger.error("Achievement revise failed", error=str(e), error_type=type(e).__name__, exc_info=True)
+        traceback.print_exc()
+        print(f"REVISE ERROR: {type(e).__name__}: {e}", flush=True)
         return RedirectResponse(
             url="/sirius.achievements/achievements?toast_msg=Произошла ошибка при загрузке&toast_type=error",
             status_code=302
