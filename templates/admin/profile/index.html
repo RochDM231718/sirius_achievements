@@ -248,7 +248,7 @@
 
     document.getElementById('cropButton').addEventListener('click', function() {
         if (cropper) {
-            cropper.getCroppedCanvas({ width: 300, height: 300 }).toBlob(function (blob) {
+            cropper.getCroppedCanvas({ maxWidth: 800, maxHeight: 800 }).toBlob(function (blob) {
                 const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
                 const dataTransfer = new DataTransfer();
                 dataTransfer.items.add(file);

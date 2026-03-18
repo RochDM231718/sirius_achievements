@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, case
 from urllib.parse import quote
 import math
+import os
 
 from app.security.csrf import validate_csrf
 from app.routers.admin.admin import guard_router, templates, get_db

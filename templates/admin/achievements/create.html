@@ -118,7 +118,7 @@ function imageCropper() {
         },
         confirmCrop() {
             if (!this.cropper) return;
-            const canvas = this.cropper.getCroppedCanvas();
+            const canvas = this.cropper.getCroppedCanvas({ maxWidth: 2048, maxHeight: 2048 });
             if (!canvas) {
                 alert("Не удалось обработать изображение.");
                 return;
@@ -126,7 +126,7 @@ function imageCropper() {
             canvas.toBlob((blob) => {
                 this.croppedBlob = blob;
                 this.showModal = false;
-            });
+            }, 'image/jpeg', 0.92);
         },
         submitForm(e) {
             const form = e.target;
