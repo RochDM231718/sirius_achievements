@@ -1,0 +1,37 @@
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+from app.infrastructure.database import Base
+from app.models.enums import UserRole, UserStatus, EducationLevel
+
+class Users(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    phone_number = Column(String, nullable=True)
+    avatar_path = Column(String, nullable=True)
+
+    role = Column(Enum(UserRole, name="user_role"), default=UserRole.GUEST)
+    status = Column(Enum(UserStatus, name="userstatus"), default=UserStatus.PENDING)
+    education_level = Column(Enum(EducationLevel, name="educationlevel"), nullable=True)
+
+    course = Column(Integer, nullable=True)
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    failed_attempts = Column(Integer, default=0)
+    blocked_until = Column(DateTime, nullable=True)
+
+    achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    tokens = relationship("UserToken", back_populates="user", cascade="all, delete-orphan")
+    support_tickets = relationship("SupportTicket", back_populates="user", cascade="all, delete-orphan")
+
+    resume_text = Column(Text, nullable=True)
+    resume_generated_at = Column(DateTime(timezone=True), nullable=True)

@@ -1,0 +1,35 @@
+.env
+.env.*
+!.env.example
+
+*.sqlite3
+*.db
+db.sqlite3
+test.db
+
+*.log
+*.log.*
+app.log
+
+.venv/
+venv/
+env/
+
+__pycache__/
+*.pyc
+
+.idea/
+
+# Database backups
+*.sql
+backup.sql
+
+# Setup/seeder credentials
+.seed_credentials
+.setup_credentials
+
+# Uploaded files
+static/uploads/
+
+# EasyOCR models
+models/

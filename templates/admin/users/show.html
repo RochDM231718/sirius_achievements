@@ -1,0 +1,327 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+    <div class="flex justify-between items-center">
+        <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Карточка пользователя</h2>
+
+        {% set back_url = '/sirius.achievements/users' %}
+        {% if request.query_params.get('from') == 'documents' %}
+            {% set back_url = '/sirius.achievements/documents' %}
+        {% elif request.query_params.get('from') == 'moderation' %}
+            {% set back_url = '/sirius.achievements/moderation/users' %}
+        {% elif request.query_params.get('from') == 'leaderboard' %}
+            {% set back_url = '/sirius.achievements/leaderboard' %}
+        {% endif %}
+
+        <a href="{{ back_url }}"
+           class="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            Назад
+        </a>
+    </div>
+
+    {% set is_guest_or_pending = target_user.role.value in ['GUEST', 'guest'] or target_user.status.value in ['PENDING', 'pending'] %}
+
+    <div class="grid grid-cols-1 {% if not is_guest_or_pending %}lg:grid-cols-3{% endif %} gap-6">
+
+        <div class="space-y-6 {% if is_guest_or_pending %}max-w-xl mx-auto w-full{% endif %}">
+            <div class="bg-white rounded-xl border border-slate-200 p-6 text-center flex flex-col items-center shadow-sm">
+                 <div class="h-28 w-28 mb-4 relative">
+                    {% if target_user.avatar_path %}
+                        <img class="h-28 w-28 rounded-full object-cover border border-slate-200" src="/static/{{ target_user.avatar_path }}?t={{ timestamp }}" alt="Avatar">
+                    {% else %}
+                        <div class="h-28 w-28 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 text-3xl font-bold">
+                            {{ target_user.first_name[:1] }}{{ target_user.last_name[:1] }}
+                        </div>
+                    {% endif %}
+                </div>
+                <h1 class="text-lg font-bold text-slate-900 leading-tight">{{ target_user.first_name }} {{ target_user.last_name }}</h1>
+                <p class="text-[10px] text-slate-400 mb-1">ID: {{ target_user.id }}</p>
+                <p class="text-xs text-slate-500 mb-4">{{ target_user.email }}</p>
+
+                <div class="flex flex-wrap justify-center gap-2 mb-6">
+                    <span class="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-slate-100 text-slate-600 border border-slate-200">
+                        {{ target_user.role.value }}
+                    </span>
+                    <span class="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded border
+                        {{ 'bg-green-50 text-green-700 border-green-200' if target_user.status.value == 'active' else 'bg-yellow-50 text-yellow-700 border-yellow-200' }}">
+                        {{ target_user.status.value }}
+                    </span>
+                </div>
+
+                {% if user.role.value in ['super_admin', 'SUPER_ADMIN'] and user.id != target_user.id %}
+                <form action="/sirius.achievements/users/{{ target_user.id }}/role" method="POST" class="w-full pt-4 border-t border-slate-100" x-data="{ selectedRole: '{{ target_user.role.value }}' }">
+                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 text-left">Изменить роль</label>
+                    <div class="flex gap-2">
+                        <select name="role" x-model="selectedRole" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                            {% for r in roles %}
+                                <option value="{{ r.value }}" {{ 'selected' if target_user.role.value == r.value else '' }}>{{ r.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">OK</button>
+                    </div>
+
+                    <div x-show="selectedRole === 'MODERATOR' || selectedRole === 'moderator'" class="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100" x-cloak>
+                        <label class="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Зона проверки модератора</label>
+                        <select name="education_level" class="w-full px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all">
+                            <option value="all">Глобальный (Все направления)</option>
+                            {% for el in education_levels %}
+                                {% set el_val = target_user.education_level | attr('value') | default(target_user.education_level, true) %}
+                                <option value="{{ el.value }}" {{ 'selected' if el_val == el.value else '' }}>Только {{ el.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                 <div class="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                     <h3 class="text-sm font-bold text-slate-700">Информация</h3>
+                 </div>
+                 <div class="p-5 space-y-3 text-sm">
+                     {% if target_user.education_level %}
+                     <div class="flex justify-between items-center pb-2 border-b border-slate-50">
+                         <span class="text-slate-500 text-xs">Обучение / Зона</span>
+                         <span class="font-medium text-slate-800">{{ target_user.education_level | attr('value') | default(target_user.education_level, true) }}</span>
+                     </div>
+                     <div class="flex justify-between items-center pb-2 border-b border-slate-50">
+                         <span class="text-slate-500 text-xs">Курс</span>
+                         <span class="font-medium text-slate-800">{{ target_user.course ~ ' курс' if target_user.course else 'Не указан' }}</span>
+                     </div>
+                     {% endif %}
+                     <div class="flex justify-between items-center pb-2 border-b border-slate-50">
+                         <span class="text-slate-500 text-xs">Телефон</span>
+                         <span class="font-medium text-slate-800">{{ target_user.phone_number or 'Не указан' }}</span>
+                     </div>
+                     <div class="flex justify-between items-center pb-2 border-b border-slate-50">
+                         <span class="text-slate-500 text-xs">Регистрация</span>
+                         <span class="font-medium text-slate-800">{{ target_user.created_at.strftime('%d.%m.%Y') if target_user.created_at else 'Дата не указана' }}</span>
+                     </div>
+                 </div>
+            </div>
+        </div>
+
+        {% if not is_guest_or_pending %}
+        <div class="lg:col-span-2 space-y-6">
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Документов в текущем сезоне</div>
+                    <div class="text-2xl font-semibold text-slate-800 mt-1">{{ total_docs }}</div>
+                </div>
+
+                {% if rank %}
+                <div class="bg-white p-5 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm">
+                    <div>
+                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Текущее место</div>
+                        <div class="text-2xl font-bold text-indigo-600 mt-1">#{{ rank }}</div>
+                    </div>
+                    <div class="w-px h-8 bg-slate-200"></div>
+                    <div class="text-right">
+                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Баллы</div>
+                        <div class="text-2xl font-bold text-indigo-600 mt-1">{{ total_points | int }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="bg-indigo-50/60 p-5 sm:p-6 rounded-xl border border-indigo-100 shadow-sm"
+                 x-data="{
+                    loading: false,
+                    resumeText: `{{ target_user.resume_text or '' }}`,
+                    async generateResume() {
+                        this.loading = true;
+                        try {
+                            const res = await fetch('/sirius.achievements/users/{{ target_user.id }}/generate-resume', {
+                                method: 'POST',
+                                headers: { 'X-CSRF-Token': '{{ request.session.csrf_token }}' }
+                            });
+                            const data = await res.json();
+                            if(data.resume) {
+                                this.resumeText = data.resume;
+                                showToast('Сводка успешно сгенерирована', 'success');
+                            } else {
+                                showToast('Не удалось сгенерировать сводку', 'error');
+                            }
+                        } catch(e) {
+                            showToast('Ошибка сети при генерации', 'error');
+                        }
+                        this.loading = false;
+                    }
+                 }">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <div>
+                        <h3 class="text-base font-bold text-indigo-900 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            AI-Сводка профиля
+                        </h3>
+                        <p class="text-xs text-indigo-700/70 mt-1">Быстрый анализ всех подтвержденных достижений для удобства проверяющего.</p>
+                    </div>
+                    <button @click="generateResume()" :disabled="loading" class="shrink-0 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
+                        <svg x-show="loading" class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" x-cloak>
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span x-text="resumeText ? 'Обновить сводку' : 'Сгенерировать сводку'"></span>
+                    </button>
+                </div>
+
+                <div x-show="resumeText" x-transition class="bg-white border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm" x-text="resumeText" x-cloak>
+                </div>
+
+                <div x-show="!resumeText && !loading" class="text-center py-6 bg-white/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">
+                    Сводка еще не сгенерирована. Нажмите кнопку, чтобы ИИ проанализировал грамоты этого студента.
+                </div>
+            </div>
+
+            {% if season_history %}
+            <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden text-white shadow-md relative">
+                <div class="absolute inset-0 opacity-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiNmZmYiLz48L3N2Zz4=')]"></div>
+                <div class="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center relative z-10">
+                    <h3 class="text-sm font-bold text-white flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                        Зал славы (Архив сезонов)
+                    </h3>
+                </div>
+                <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+                    {% for hist in season_history %}
+                    <div class="bg-white/10 rounded-lg p-4 flex justify-between items-center border border-white/5 hover:bg-white/20 transition-colors">
+                        <div>
+                            <div class="text-xs font-bold text-slate-200">{{ hist.season_name }}</div>
+                            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Место: <span class="text-white text-sm">#{{ hist.rank }}</span></div>
+                        </div>
+                        <div class="text-xl font-black text-yellow-400">{{ hist.points }} <span class="text-[10px] font-normal text-slate-400">б.</span></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-slate-700">Документы текущего сезона</h3>
+                </div>
+
+                {% if achievements %}
+                <ul class="divide-y divide-slate-100">
+                    {% for item in achievements %}
+                    <li class="p-4 hover:bg-slate-50 flex items-center justify-between transition-colors">
+                        <div class="flex items-center flex-1 min-w-0 pr-4">
+                            <div class="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mr-4 shrink-0 border border-indigo-100">
+                                {% if item.file_path and item.file_path.endswith('.pdf') %}
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                {% else %}
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                {% endif %}
+                            </div>
+
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium text-slate-800 truncate">{{ item.title }}</p>
+                                <p class="text-xs text-slate-500 mt-0.5 flex items-center">
+                                    <span class="mr-2">{{ item.created_at.strftime('%d.%m.%Y') if item.created_at else 'Дата не указана' }}</span>
+                                    {% if item.status.value == 'rejected' and item.rejection_reason %}
+                                        <span class="text-red-500 truncate max-w-[200px]" title="{{ item.rejection_reason }}">• {{ item.rejection_reason }}</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-3 shrink-0">
+                            {% set s_val = item.status | attr('value') | default(item.status, true) %}
+                            <span class="hidden sm:inline-flex px-2 py-0.5 text-[10px] rounded font-medium border
+                                {{ 'bg-green-50 text-green-700 border-green-200' if s_val == 'approved' else '' }}
+                                {{ 'bg-yellow-50 text-yellow-700 border-yellow-200' if s_val == 'pending' else '' }}
+                                {{ 'bg-red-50 text-red-700 border-red-200' if s_val == 'rejected' else '' }}
+                                {{ 'bg-yellow-100 text-yellow-800 border-yellow-300' if s_val == 'revision' else '' }}">
+                                {% if s_val == 'approved' %}Одобрено
+                                {% elif s_val == 'pending' %}На проверке
+                                {% elif s_val == 'rejected' %}Отклонено
+                                {% elif s_val == 'revision' %}На доработке
+                                {% endif %}
+                            </span>
+
+                            <button type="button" @click="$dispatch('open-preview', {src: '/static/{{ item.file_path }}', type: '{{ 'pdf' if item.file_path.endswith('.pdf') else 'image' }}'})" class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors" title="Открыть файл">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                            </button>
+
+                            <button type="button" @click.prevent="$dispatch('confirm-delete', {url: '/sirius.achievements/documents/{{ item.id }}/delete', title: 'Удалить документ?', desc: 'Файл «{{ item.title }}» будет удален навсегда.'})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Удалить">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-10 text-center flex flex-col items-center">
+                    <div class="h-10 w-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 mb-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    </div>
+                    <p class="text-sm text-slate-500">Достижений пока нет.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div x-data="{ show: false, url: '', title: '', desc: '' }"
+         @confirm-delete.window="show = true; url = $event.detail.url; title = $event.detail.title; desc = $event.detail.desc"
+         x-show="show" style="display: none;" x-cloak
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+
+        <div x-show="show" x-transition.opacity.duration.300ms class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" @click="show = false"></div>
+
+        <div x-show="show"
+             x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95 translate-y-4" x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 scale-100 translate-y-0" x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+             class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100">
+
+            <div class="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-red-100 mb-4">
+                <svg class="h-7 w-7 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </div>
+
+            <h3 class="text-lg font-bold text-slate-900 mb-2" x-text="title"></h3>
+            <p class="text-sm text-slate-500 mb-6" x-text="desc"></p>
+
+            <form :action="url" method="POST" class="flex gap-3">
+                <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                <button @click="show = false" type="button" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors">
+                    Отмена
+                </button>
+                <button type="submit" class="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors shadow-sm shadow-red-600/30">
+                    Удалить
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-20 right-4 z-[100] max-w-xs w-full bg-white border border-slate-200 rounded-xl shadow-lg flex items-center p-4 transform transition-all duration-500 translate-x-full opacity-0`;
+
+            const iconBg = type === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600';
+            const iconSvg = type === 'success'
+                ? `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`
+                : `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+
+            toast.innerHTML = `
+                <div class="flex-shrink-0 mr-3">
+                    <div class="h-8 w-8 rounded-full flex items-center justify-center ${iconBg}">
+                        ${iconSvg}
+                    </div>
+                </div>
+                <p class="text-sm font-semibold text-slate-700 flex-1">${message}</p>
+            `;
+
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('translate-x-full', 'opacity-0'); }, 10);
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-x-full'); setTimeout(() => toast.remove(), 500); }, 3500);
+        }
+    </script>
+</div>
+{% endblock %}

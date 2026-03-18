@@ -1,0 +1,138 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Очередь модерации</h2>
+            <p class="text-xs md:text-sm text-slate-500 mt-0.5">Документы, ожидающие проверки</p>
+        </div>
+        {% if total_pending > 0 %}
+        <span class="bg-indigo-50 border border-indigo-100 text-indigo-700 py-1 px-2.5 rounded-md text-[10px] md:text-xs font-bold uppercase tracking-wider">
+            Осталось: {{ total_pending }}
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="space-y-3">
+        {% if achievements %}
+            {% for item in achievements %}
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden p-3 transition-colors hover:border-slate-300" x-data="{ rejectModalOpen: false }">
+                <div class="flex flex-col sm:flex-row gap-3">
+
+                    <div class="flex gap-3 flex-1">
+                        <div class="w-20 h-24 sm:w-28 sm:h-28 shrink-0 bg-slate-50 rounded-lg overflow-hidden relative cursor-pointer border border-slate-100 flex flex-col items-center justify-center group"
+                             @click="$dispatch('open-preview', {src: '/static/{{ item.file_path }}', type: '{{ 'pdf' if item.file_path.endswith('.pdf') else 'image' }}'})"
+                             title="Нажмите для просмотра">
+                            {% if item.file_path and (item.file_path.endswith('.jpg') or item.file_path.endswith('.png') or item.file_path.endswith('.jpeg') or item.file_path.endswith('.webp')) %}
+                                <img src="/static/{{ item.file_path }}" class="w-full h-full object-cover">
+                                <div class="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/10 transition-colors flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                                </div>
+                            {% elif item.file_path and item.file_path.endswith('.pdf') %}
+                                <svg class="w-6 h-6 text-slate-400 mb-1 group-hover:text-indigo-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                <span class="text-[9px] font-bold text-slate-500 uppercase">PDF</span>
+                            {% else %}
+                                <span class="text-[9px] font-bold text-slate-400 uppercase">Нет файла</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="flex-1 min-w-0 flex flex-col py-0.5">
+                            <h3 class="text-sm font-bold text-slate-800 leading-tight line-clamp-2 mb-1.5" title="{{ item.title }}">{{ item.title }}</h3>
+
+                            <div class="flex flex-wrap gap-1.5 mb-2">
+                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100/50">
+                                    {{ item.category | attr('value') | default(item.category, true) if item.category else 'Без категории' }}
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200/50">
+                                    {{ item.level | attr('value') | default(item.level, true) if item.level else 'Без уровня' }}
+                                </span>
+                            </div>
+
+                            <div class="flex items-center gap-1.5 mb-1.5">
+                                <div class="h-4 w-4 rounded bg-slate-100 flex items-center justify-center text-[8px] font-bold text-slate-600 shrink-0">
+                                    {{ item.user.first_name[:1] }}
+                                </div>
+                                <span class="text-xs font-medium text-slate-700 truncate">{{ item.user.first_name }} {{ item.user.last_name }}</span>
+                            </div>
+
+                            <div class="mt-auto flex justify-between items-end">
+                                <span class="text-[9px] font-medium text-slate-400 uppercase tracking-wider">
+                                    {{ item.created_at.strftime('%d.%m.%Y') if item.created_at else 'Дата не указана' }}
+                                </span>
+                                {% if item.description %}
+                                    <span class="text-[10px] text-slate-400 truncate max-w-[120px] italic" title="{{ item.description }}">{{ item.description }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex sm:flex-col gap-2 shrink-0 sm:w-36 justify-center border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-3">
+                        <form action="/sirius.achievements/moderation/achievements/{{ item.id }}" method="POST" class="flex-1 sm:flex-none">
+                            <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                            <input type="hidden" name="status" value="approved">
+                            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex flex-col items-center justify-center leading-tight shadow-sm">
+                                <span>Одобрить</span>
+                                <span class="text-[9px] opacity-90 mt-0.5 font-normal">+{{ item.projected_points }} баллов</span>
+                            </button>
+                        </form>
+
+                        <button @click="rejectModalOpen = true" type="button" class="flex-1 sm:flex-none w-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex flex-col items-center justify-center leading-tight shadow-sm">
+                            <span>Отклонить /</span>
+                            <span>Вернуть</span>
+                        </button>
+
+                        <a href="/sirius.achievements/documents/{{ item.id }}/download" class="flex-1 sm:flex-none w-full bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            <span>Скачать</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div x-show="rejectModalOpen" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" x-cloak>
+                    <div class="bg-white rounded-xl shadow-lg w-full max-w-lg flex flex-col overflow-hidden" @click.outside="rejectModalOpen = false">
+                        <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                            <h3 class="text-sm font-bold text-slate-800">Решение по документу</h3>
+                            <button type="button" @click="rejectModalOpen = false" class="text-slate-400 hover:text-slate-600"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                        </div>
+                        <form action="/sirius.achievements/moderation/achievements/{{ item.id }}" method="POST" class="flex flex-col flex-1">
+                            <div class="p-4 bg-slate-50">
+                                <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Причина или комментарий для студента <span class="text-red-500">*</span></label>
+                                <textarea name="rejection_reason" rows="3" required
+                                          class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
+                                          placeholder="Например: 'Размытое фото, загрузите еще раз' или 'Документ не является дипломом'"></textarea>
+                            </div>
+                            <div class="p-4 border-t border-slate-100 bg-white grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button type="submit" name="status" value="revision" class="w-full px-4 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-200 text-sm font-medium rounded-lg hover:bg-yellow-100 transition-colors flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                    На доработку
+                                </button>
+                                <button type="submit" name="status" value="rejected" class="w-full px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                    Полный отказ
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-slate-200 text-center">
+                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-50 text-green-600 mb-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h3 class="text-base font-bold text-slate-800">Всё проверено!</h3>
+                <p class="text-sm text-slate-500 mt-1">Нет новых документов для модерации.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="flex justify-center mt-6">
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
