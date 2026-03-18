@@ -84,24 +84,24 @@ async def lifespan(app):
                 created_at TIMESTAMPTZ DEFAULT now()
             );
         """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS audit_logs (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                action VARCHAR(100) NOT NULL,
-                target_type VARCHAR(50),
-                target_id INTEGER,
-                details TEXT,
-                ip_address VARCHAR(45),
-                created_at TIMESTAMPTZ DEFAULT now()
-            );
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action);
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at);
-        """))
+        audit_exists = await conn.execute(text(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'audit_logs')"
+        ))
+        if not audit_exists.scalar():
+            await conn.execute(text("""
+                CREATE TABLE audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    action VARCHAR(100) NOT NULL,
+                    target_type VARCHAR(50),
+                    target_id INTEGER,
+                    details TEXT,
+                    ip_address VARCHAR(45),
+                    created_at TIMESTAMPTZ DEFAULT now()
+                );
+            """))
+            await conn.execute(text("CREATE INDEX ix_audit_logs_action ON audit_logs (action);"))
+            await conn.execute(text("CREATE INDEX ix_audit_logs_created_at ON audit_logs (created_at);"))
     yield
     await engine.dispose()
     logger.info("Database engine disposed. Graceful shutdown complete.")
