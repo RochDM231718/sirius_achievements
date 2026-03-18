@@ -48,11 +48,10 @@
 
         <div>
             <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Документ (Фото или PDF)</label>
-            <input type="file" id="fileInput" name="file" accept="image/*,application/pdf" @change="fileChosen" :required="!croppedBlob && !pdfFile"
+            <input type="file" id="fileInput" name="file" accept="image/*,application/pdf" @change="fileChosen" :required="!hasFile"
                    class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 transition-colors cursor-pointer border border-slate-200 rounded-lg bg-slate-50 p-1">
-            <p class="text-[10px] text-slate-400 mt-1">JPG, PNG до 10 МБ. PDF до 10 МБ.</p>
+            <p class="text-[10px] text-slate-400 mt-1">JPG, PNG, PDF до 10 МБ</p>
 
-            <!-- File status indicator -->
             <div x-show="fileName" class="mt-2 flex items-center gap-2 text-xs text-green-600 bg-green-50 border border-green-100 rounded-lg px-3 py-2" x-cloak>
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                 <span x-text="fileName"></span>
@@ -74,15 +73,18 @@
         </div>
     </form>
 
-    <!-- Crop modal -->
-    <div x-show="showModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" x-cloak>
-        <div class="bg-white rounded-xl shadow-sm w-full max-w-xl flex flex-col overflow-hidden">
-            <div class="p-4 border-b border-slate-100">
+    <!-- Crop modal — NOT using x-show, using class toggle for Cropper.js compatibility -->
+    <div id="cropModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-xl shadow-sm w-full max-w-2xl flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
                 <h3 class="text-sm font-bold text-slate-800">Кадрирование документа</h3>
+                <button type="button" @click="cancelCrop" class="text-slate-400 hover:text-slate-600">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             </div>
             <div class="p-4 bg-slate-50">
-                <div class="h-80 w-full bg-slate-200 rounded-lg overflow-hidden border border-slate-300">
-                    <img id="imageToCrop" class="max-w-full block">
+                <div style="max-height:70vh" class="w-full bg-slate-200 rounded-lg overflow-hidden border border-slate-300">
+                    <img id="imageToCrop" class="block w-full" style="max-width:100%">
                 </div>
             </div>
             <div class="p-4 border-t border-slate-100 flex gap-3">
@@ -95,11 +97,10 @@
 </div>
 
 <script>
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function imageCropper() {
     return {
-        showModal: false,
         cropper: null,
         croppedBlob: null,
         pdfFile: null,
@@ -114,6 +115,10 @@ function imageCropper() {
         formLevel: '{{ levels[0].value if levels else "" }}',
         formDesc: '',
 
+        get hasFile() {
+            return !!(this.croppedBlob || this.pdfFile || this.originalImageFile);
+        },
+
         showError(msg) {
             this.toastMsg = msg;
             this.toastType = 'error';
@@ -126,77 +131,85 @@ function imageCropper() {
             return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
         },
 
+        openCropModal() {
+            document.getElementById('cropModal').classList.remove('hidden');
+        },
+        closeCropModal() {
+            document.getElementById('cropModal').classList.add('hidden');
+            if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+        },
+
         fileChosen(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            // Validate size first
             if (file.size > MAX_FILE_SIZE) {
                 this.showError(`Файл слишком большой (${this.formatSize(file.size)}). Максимум: 10 МБ.`);
                 e.target.value = '';
                 return;
             }
 
-            // PDF — no crop needed
+            // PDF — no crop
             if (file.type === 'application/pdf') {
                 this.croppedBlob = null;
+                this.originalImageFile = null;
                 this.pdfFile = file;
                 this.fileName = file.name;
                 this.fileSize = this.formatSize(file.size);
                 return;
             }
 
-            // Image — validate type
-            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-            if (!allowedTypes.includes(file.type)) {
+            // Image — validate
+            if (!file.type.startsWith('image/')) {
                 this.showError('Допустимые форматы: JPG, PNG, WEBP, PDF.');
                 e.target.value = '';
                 return;
             }
 
-            // Image — show crop modal
+            // Image — show crop
             this.originalImageFile = file;
             this.pdfFile = null;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = document.getElementById('imageToCrop');
-                img.onload = () => {
-                    this.showModal = true;
-                    this.$nextTick(() => {
-                        if (this.cropper) this.cropper.destroy();
-                        this.cropper = new Cropper(img, {
-                            viewMode: 1,
-                            autoCropArea: 1,
-                            background: false
-                        });
+            this.croppedBlob = null;
+
+            const img = document.getElementById('imageToCrop');
+            const url = URL.createObjectURL(file);
+
+            img.onload = () => {
+                this.openCropModal();
+                // Delay Cropper init to let the modal fully render
+                setTimeout(() => {
+                    if (this.cropper) this.cropper.destroy();
+                    this.cropper = new Cropper(img, {
+                        viewMode: 1,
+                        autoCropArea: 1,
+                        background: false,
+                        responsive: true,
+                        restore: false
                     });
-                };
-                img.onerror = () => {
-                    this.showError('Файл повреждён или не является изображением.');
-                    e.target.value = '';
-                };
-                img.src = event.target.result;
+                }, 200);
             };
-            reader.readAsDataURL(file);
+            img.onerror = () => {
+                this.showError('Файл повреждён или не является изображением.');
+                URL.revokeObjectURL(url);
+                e.target.value = '';
+            };
+            img.src = url;
         },
 
         cancelCrop() {
-            this.showModal = false;
+            this.closeCropModal();
             this.originalImageFile = null;
+            this.croppedBlob = null;
             this.fileName = '';
             this.fileSize = '';
             document.getElementById('fileInput').value = '';
-            if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
         },
 
         skipCrop() {
-            // Use original file without cropping
+            this.closeCropModal();
             this.croppedBlob = null;
-            this.pdfFile = null;
             this.fileName = this.originalImageFile.name;
             this.fileSize = this.formatSize(this.originalImageFile.size);
-            this.showModal = false;
-            if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
         },
 
         confirmCrop() {
@@ -210,8 +223,7 @@ function imageCropper() {
                 this.croppedBlob = blob;
                 this.fileName = (this.originalImageFile ? this.originalImageFile.name : 'image.jpg');
                 this.fileSize = this.formatSize(blob.size);
-                this.showModal = false;
-                if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+                this.closeCropModal();
             }, 'image/jpeg', 0.92);
         },
 
@@ -219,14 +231,12 @@ function imageCropper() {
             const form = e.target;
             const formData = new FormData(form);
 
-            // Determine which file to send
             if (this.croppedBlob) {
                 const name = this.originalImageFile ? this.originalImageFile.name : 'image.jpg';
                 formData.set('file', this.croppedBlob, name);
             } else if (this.pdfFile) {
                 formData.set('file', this.pdfFile, this.pdfFile.name);
             } else if (this.originalImageFile) {
-                // skipCrop was used — send original
                 formData.set('file', this.originalImageFile, this.originalImageFile.name);
             } else {
                 const fileInput = document.getElementById('fileInput');
@@ -238,28 +248,21 @@ function imageCropper() {
 
             this.submitting = true;
 
-            fetch(form.action, {
-                method: 'POST',
-                body: formData,
-                redirect: 'follow'
-            })
-            .then(response => {
-                if (response.redirected) {
-                    window.location.href = response.url;
-                } else {
-                    return response.text().then(html => {
-                        // Try to extract error from redirect URL in response
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        document.open(); document.write(html); document.close();
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Upload error:', error);
-                this.showError('Ошибка сети при загрузке. Попробуйте ещё раз.');
-                this.submitting = false;
-            });
+            fetch(form.action, { method: 'POST', body: formData, redirect: 'follow' })
+                .then(response => {
+                    if (response.redirected) {
+                        window.location.href = response.url;
+                    } else {
+                        return response.text().then(html => {
+                            document.open(); document.write(html); document.close();
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Upload error:', error);
+                    this.showError('Ошибка сети при загрузке. Попробуйте ещё раз.');
+                    this.submitting = false;
+                });
         }
     }
 }
