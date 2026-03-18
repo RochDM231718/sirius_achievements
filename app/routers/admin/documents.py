@@ -30,7 +30,7 @@ async def api_documents_search(
     if not user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    if user.role not in [UserRole.MODERATOR, UserRole.SUPER_ADMIN]:
+    if not user.is_staff:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     stmt = select(Achievement).filter(
@@ -59,7 +59,7 @@ async def index(
     if not user:
         return RedirectResponse(url="/")
 
-    if user.role not in [UserRole.MODERATOR, UserRole.SUPER_ADMIN]:
+    if not user.is_staff:
         return RedirectResponse(url="/sirius.achievements/dashboard")
 
     repo = AchievementRepository(db)
@@ -98,13 +98,11 @@ async def delete(
     if not user:
         return RedirectResponse(url="/", status_code=303)
 
-    user_role_str = str(user.role.value) if hasattr(user.role, 'value') else str(user.role)
-
     repo = AchievementRepository(db)
     service = AchievementService(repo)
 
     try:
-        await service.delete(id, user.id, user_role_str)
+        await service.delete(id, user.id, user.role.value if hasattr(user.role, 'value') else str(user.role))
         return RedirectResponse(
             url="/sirius.achievements/documents?toast_msg=Документ удален&toast_type=success",
             status_code=303
@@ -126,13 +124,7 @@ async def download_document(
     if not user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    user_role_str = str(user.role.value) if hasattr(user.role, 'value') else str(user.role)
-
-    allowed_roles = [
-        'admin', 'moderator', 'super_admin',
-        'ADMIN', 'MODERATOR', 'SUPER_ADMIN'
-    ]
-    if user_role_str not in allowed_roles:
+    if not user.is_staff:
         raise HTTPException(status_code=403, detail="Недостаточно прав для скачивания")
 
     repo = AchievementRepository(db)

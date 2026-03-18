@@ -1,21 +1,14 @@
 import os
-import uuid
 import structlog
 from datetime import datetime
 from app.models.support_ticket import SupportTicket
 from app.models.support_message import SupportMessage
 from app.models.enums import SupportTicketStatus
 from app.repositories.admin.support_repository import SupportTicketRepository, SupportMessageRepository
+from app.config import settings
+from app.utils.file_validator import FileValidator, IMAGE_SIGNATURES
 
 logger = structlog.get_logger()
-
-UPLOAD_DIR = os.path.join("static", "uploads", "support")
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
-ALLOWED_SIGNATURES = {
-    b'\xff\xd8\xff': 'jpg',
-    b'\x89PNG': 'png',
-    b'RIFF': 'webp',
-}
 
 
 class SupportService:
@@ -23,6 +16,11 @@ class SupportService:
         self.ticket_repo = ticket_repo
         self.message_repo = message_repo
         self.db = ticket_repo.db
+        self._file_validator = FileValidator(
+            allowed=IMAGE_SIGNATURES,
+            max_size=settings.MAX_SUPPORT_FILE_SIZE,
+            upload_dir=settings.UPLOAD_DIR_SUPPORT,
+        )
 
     async def create_ticket(self, user_id: int, subject: str) -> SupportTicket:
         ticket = SupportTicket(
@@ -39,7 +37,7 @@ class SupportService:
                            file=None, is_from_moderator: bool = False) -> SupportMessage:
         file_path = None
         if file and file.filename:
-            file_path = await self._save_file(file, ticket_id)
+            file_path = await self._file_validator.validate_and_save(file, subdirectory=str(ticket_id))
 
         if not text and not file_path:
             raise ValueError("Сообщение должно содержать текст или файл")
@@ -53,7 +51,6 @@ class SupportService:
         )
         self.db.add(message)
 
-        # Update ticket timestamp
         ticket = await self.ticket_repo.find(ticket_id)
         if ticket:
             ticket.updated_at = datetime.utcnow()
@@ -77,33 +74,3 @@ class SupportService:
             ticket.status = SupportTicketStatus.OPEN
             await self.db.commit()
         return ticket
-
-    async def _save_file(self, file, ticket_id: int) -> str:
-        content = await file.read()
-        await file.seek(0)
-
-        if len(content) > MAX_FILE_SIZE:
-            raise ValueError("Файл слишком большой (макс. 5 МБ)")
-
-        header = content[:8]
-        valid = False
-        ext = 'bin'
-        for sig, extension in ALLOWED_SIGNATURES.items():
-            if header.startswith(sig):
-                valid = True
-                ext = extension
-                break
-
-        if not valid:
-            raise ValueError("Допустимы только изображения (JPG, PNG, WEBP)")
-
-        ticket_dir = os.path.join(UPLOAD_DIR, str(ticket_id))
-        os.makedirs(ticket_dir, exist_ok=True)
-
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        filepath = os.path.join(ticket_dir, filename)
-
-        with open(filepath, "wb") as f:
-            f.write(content)
-
-        return filepath

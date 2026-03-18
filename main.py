@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 from app.security.csrf import get_csrf_token
@@ -10,9 +10,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import os
 import logging
 import secrets
+import structlog
 from dotenv import load_dotenv
+from app.config import settings
 
 from app.infrastructure.database import engine, async_session_maker, Base
+from app.infrastructure.logger import setup_logging
 from app.middlewares.security_headers import SecurityHeadersMiddleware
 from app.middlewares.upload_protection import UploadProtectionMiddleware
 
@@ -31,6 +34,7 @@ from app.routers.admin.admin import templates
 # Import models so Base.metadata.create_all picks them up
 from app.models.support_ticket import SupportTicket  # noqa: F401
 from app.models.support_message import SupportMessage  # noqa: F401
+from app.models.audit_log import AuditLog  # noqa: F401
 
 # Import to register routes on guard_router
 import app.routers.admin.support  # noqa: F401
@@ -38,7 +42,11 @@ import app.routers.admin.moderation_support  # noqa: F401
 
 load_dotenv()
 
-logger = logging.getLogger("uvicorn.error")
+setup_logging(
+    json_logs=settings.ENV == "production",
+    log_level="DEBUG" if settings.DEBUG else "INFO",
+)
+logger = structlog.get_logger()
 
 
 @asynccontextmanager
@@ -76,6 +84,24 @@ async def lifespan(app):
                 created_at TIMESTAMPTZ DEFAULT now()
             );
         """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                action VARCHAR(100) NOT NULL,
+                target_type VARCHAR(50),
+                target_id INTEGER,
+                details TEXT,
+                ip_address VARCHAR(45),
+                created_at TIMESTAMPTZ DEFAULT now()
+            );
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action);
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at);
+        """))
     yield
     await engine.dispose()
     logger.info("Database engine disposed. Graceful shutdown complete.")
@@ -112,7 +138,7 @@ app.add_middleware(UploadProtectionMiddleware)
 
 app.add_middleware(CSRFContextMiddleware)
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, https_only=ENV == "production", same_site="lax", max_age=86400)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, https_only=ENV == "production", same_site="lax", max_age=settings.SESSION_MAX_AGE)
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
@@ -164,6 +190,36 @@ async def health_check():
         return JSONResponse({"status": "ok", "database": "connected"})
     except Exception:
         return JSONResponse({"status": "error", "database": "unavailable"}, status_code=503)
+
+
+@app.websocket("/ws/notifications")
+async def ws_notifications(websocket: WebSocket):
+    from app.services.ws_manager import ws_manager
+    # Parse session cookie to get user_id
+    session_data = websocket.cookies.get("session")
+    if not session_data:
+        await websocket.close(code=4001)
+        return
+
+    # Import session middleware internals to decode
+    from itsdangerous import URLSafeTimedSerializer
+    try:
+        serializer = URLSafeTimedSerializer(SECRET_KEY)
+        data = serializer.loads(session_data, max_age=settings.SESSION_MAX_AGE)
+        user_id = data.get("auth_id")
+        if not user_id:
+            await websocket.close(code=4001)
+            return
+    except Exception:
+        await websocket.close(code=4001)
+        return
+
+    await ws_manager.connect(user_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(user_id, websocket)
 
 
 @app.get("/")

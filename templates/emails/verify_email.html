@@ -1,0 +1,16 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<p style="font-size: 15px; margin-bottom: 20px;">
+    Здравствуйте, <strong>{{ first_name }}</strong>!
+</p>
+<p style="font-size: 15px; margin-bottom: 20px;">
+    Спасибо за регистрацию в Sirius.Achievements. Для подтверждения вашего email введите код ниже.
+</p>
+<p style="font-size: 15px; margin-bottom: 5px;">
+    Ваш код подтверждения: <span style="font-weight: 600; font-size: 20px; letter-spacing: 4px;">{{ code }}</span>
+</p>
+<p style="font-size: 15px; margin-top: 20px; margin-bottom: 25px;">
+    Код действителен в течение 1 часа. Не делитесь им ни с кем.
+</p>
+{% endblock %}

@@ -14,11 +14,29 @@
         {% endif %}
     </div>
 
-    <div class="space-y-3">
+    <div class="space-y-3" x-data="{ selected: [], selectAll: false, toggleAll() { if (this.selectAll) { this.selected = [{% for item in achievements %}'{{ item.id }}'{% if not loop.last %},{% endif %}{% endfor %}]; } else { this.selected = []; } } }">
         {% if achievements %}
+
+            <div class="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3" x-show="selected.length > 0" x-cloak>
+                <span class="text-xs font-medium text-slate-600">Выбрано: <span class="font-bold text-indigo-600" x-text="selected.length"></span></span>
+                <form action="/sirius.achievements/moderation/achievements/batch" method="POST" class="flex gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                    <input type="hidden" name="ids" :value="selected.join(',')">
+                    <button type="submit" name="action" value="approved" class="bg-green-600 hover:bg-green-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition-colors">Одобрить все</button>
+                    <button type="submit" name="action" value="rejected" class="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition-colors">Отклонить все</button>
+                </form>
+                <label class="flex items-center gap-1.5 ml-auto cursor-pointer">
+                    <input type="checkbox" x-model="selectAll" @change="toggleAll()" class="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-xs text-slate-500">Выбрать все</span>
+                </label>
+            </div>
+
             {% for item in achievements %}
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden p-3 transition-colors hover:border-slate-300" x-data="{ rejectModalOpen: false }">
                 <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="flex items-start pt-1 pl-1">
+                        <input type="checkbox" value="{{ item.id }}" x-model="selected" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+                    </div>
 
                     <div class="flex gap-3 flex-1">
                         <div class="w-20 h-24 sm:w-28 sm:h-28 shrink-0 bg-slate-50 rounded-lg overflow-hidden relative cursor-pointer border border-slate-100 flex flex-col items-center justify-center group"

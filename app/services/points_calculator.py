@@ -1,14 +1,14 @@
-from app.models.enums import AchievementLevel, AchievementCategory
+from app.models.enums import AchievementLevel
+from app.config import settings
 
 
 def calculate_points(level: str, category: str) -> int:
     level_points = {
-        AchievementLevel.SCHOOL.value: 10,  # Школьный
-        AchievementLevel.MUNICIPAL.value: 20,  # Муниципальный
-        AchievementLevel.REGIONAL.value: 40,  # Региональный
-        AchievementLevel.FEDERAL.value: 75,  # Всероссийский
-        AchievementLevel.INTERNATIONAL.value: 100  # Международный
+        AchievementLevel.SCHOOL.value: settings.POINTS_SCHOOL,
+        AchievementLevel.MUNICIPAL.value: settings.POINTS_MUNICIPAL,
+        AchievementLevel.REGIONAL.value: settings.POINTS_REGIONAL,
+        AchievementLevel.FEDERAL.value: settings.POINTS_FEDERAL,
+        AchievementLevel.INTERNATIONAL.value: settings.POINTS_INTERNATIONAL,
     }
 
-    points = level_points.get(level, 10)
-    return points
+    return level_points.get(level, settings.POINTS_SCHOOL)

@@ -281,5 +281,31 @@
         </div>
 
     </div>
+
+    <script>
+    (function() {
+        if (!document.cookie.includes('session')) return;
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        let ws;
+        function connect() {
+            ws = new WebSocket(proto + '://' + location.host + '/ws/notifications');
+            ws.onmessage = function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'notification') {
+                        const badge = document.getElementById('notif-badge');
+                        if (badge) {
+                            const cur = parseInt(badge.textContent) || 0;
+                            badge.textContent = cur + 1;
+                            badge.classList.remove('hidden');
+                        }
+                    }
+                } catch(err) {}
+            };
+            ws.onclose = function() { setTimeout(connect, 5000); };
+        }
+        connect();
+    })();
+    </script>
 </body>
 </html>

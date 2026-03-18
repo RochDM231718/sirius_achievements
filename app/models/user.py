@@ -35,3 +35,13 @@ class Users(Base):
 
     resume_text = Column(Text, nullable=True)
     resume_generated_at = Column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def education_level_value(self) -> str:
+        if self.education_level is None:
+            return ""
+        return self.education_level.value if hasattr(self.education_level, 'value') else str(self.education_level)
+
+    @property
+    def is_staff(self) -> bool:
+        return self.role in (UserRole.MODERATOR, UserRole.SUPER_ADMIN)

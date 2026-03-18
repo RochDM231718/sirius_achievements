@@ -23,11 +23,7 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
     if not user:
         return RedirectResponse(url='/sirius.achievements/login', status_code=302)
 
-    current_role = str(user.role.value) if hasattr(user.role, 'value') else str(user.role)
-
-    admin_roles = ["MODERATOR", "SUPER_ADMIN", "ADMIN", "moderator", "super_admin", "admin"]
-
-    if user.status == UserStatus.PENDING and current_role not in admin_roles:
+    if user.status == UserStatus.PENDING and not user.is_staff:
         return templates.TemplateResponse('dashboard/index.html', {
             'request': request,
             'user': user,
@@ -58,7 +54,7 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
 
     stats = {}
 
-    if current_role in admin_roles:
+    if user.is_staff:
         new_users = (await db.execute(
             select(func.count()).filter(Users.role == UserRole.STUDENT, Users.created_at >= start_date))).scalar()
 
@@ -124,7 +120,7 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
 
         processed_cohorts = []
         for c in cohorts_data:
-            ed_level_val = c.education_level.value if hasattr(c.education_level, 'value') else c.education_level
+            ed_level_val = c.education_level.value if hasattr(c.education_level, 'value') else str(c.education_level)
             processed_cohorts.append({
                 "name": ed_level_val,
                 "total": c.total_docs,

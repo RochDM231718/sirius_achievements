@@ -11,11 +11,10 @@ from app.routers.admin.deps import get_current_user
 from app.repositories.admin.support_repository import SupportTicketRepository, SupportMessageRepository
 from app.services.admin.support_service import SupportService
 from app.models.enums import UserRole, SupportTicketStatus
+from app.config import settings
 
 logger = structlog.get_logger()
 router = guard_router
-
-ITEMS_PER_PAGE = 20
 
 
 def get_support_service(db: AsyncSession = Depends(get_db)):
@@ -41,7 +40,7 @@ async def moderation_support_index(
     ticket_repo = SupportTicketRepository(db)
     tickets = await ticket_repo.get_new_tickets(page)
     total = await ticket_repo.count_new_tickets()
-    total_pages = math.ceil(total / ITEMS_PER_PAGE) if total > 0 else 1
+    total_pages = math.ceil(total / settings.SUPPORT_ITEMS_PER_PAGE) if total > 0 else 1
 
     return templates.TemplateResponse('moderation/support.html', {
         'request': request,
@@ -74,7 +73,7 @@ async def moderation_support_all(
 
     tickets = await ticket_repo.get_all_tickets(filters, sort_by, sort_order)
     total = await ticket_repo.count_all_tickets(filters)
-    total_pages = math.ceil(total / ITEMS_PER_PAGE) if total > 0 else 1
+    total_pages = math.ceil(total / settings.SUPPORT_ITEMS_PER_PAGE) if total > 0 else 1
 
     return templates.TemplateResponse('moderation/support_all.html', {
         'request': request,

@@ -2,8 +2,6 @@ from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import time
-import os
-import redis.asyncio as aioredis
 import structlog
 
 from app.routers.admin.deps import get_current_user
@@ -15,9 +13,10 @@ from app.repositories.admin.user_token_repository import UserTokenRepository
 from app.services.admin.user_token_service import UserTokenService
 from app.schemas.admin.auth import UserRegister, ResetPasswordSchema
 from app.models.enums import EducationLevel, UserTokenType
+from app.config import settings
+from app.utils.rate_limiter import rate_limiter
 
 logger = structlog.get_logger()
-redis_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
 
 router = APIRouter(prefix="/sirius.achievements", tags=["Auth"])
 
@@ -167,15 +166,12 @@ async def forgot_password(
 ):
     client_ip = request.client.host if request.client else "unknown"
     rl_key = f"forgot_pwd:{client_ip}"
-    attempts = await redis_client.get(rl_key)
-    if attempts and int(attempts) >= 5:
+    if await rate_limiter.is_limited(rl_key, settings.FORGOT_PWD_MAX_ATTEMPTS, settings.FORGOT_PWD_LOCKOUT_TTL):
         return templates.TemplateResponse('auth/forgot-password.html', {
             'request': request,
             'error_msg': "Слишком много запросов. Попробуйте через 15 минут."
         })
-    await redis_client.incr(rl_key)
-    if await redis_client.ttl(rl_key) == -1:
-        await redis_client.expire(rl_key, 900)
+    await rate_limiter.increment(rl_key, settings.FORGOT_PWD_LOCKOUT_TTL)
 
     success, msg, retry_after = await service.forgot_password(email, background_tasks)
 
@@ -239,10 +235,9 @@ async def verify_code(
     if not email:
         return RedirectResponse(url=request.url_for('admin.auth.forgot_password_page'), status_code=302)
 
-    # Rate-limit: max 5 OTP attempts per email per 15 minutes
+    # Rate-limit: max OTP attempts per email per 15 minutes
     rl_key = f"otp_attempts:{email}"
-    attempts = await redis_client.get(rl_key)
-    if attempts and int(attempts) >= 5:
+    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
         return templates.TemplateResponse('auth/verify-code.html', {
             'request': request,
             'email': email,
@@ -252,16 +247,14 @@ async def verify_code(
 
     try:
         await service.verify_code_only(email, code)
-        await redis_client.delete(rl_key)
+        await rate_limiter.reset(rl_key)
         request.session['code_verified'] = True
         return RedirectResponse(url=request.url_for('admin.auth.reset_password_page'), status_code=302)
 
     except Exception as e:
-        await redis_client.incr(rl_key)
-        if await redis_client.ttl(rl_key) == -1:
-            await redis_client.expire(rl_key, 900)
+        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
 
-        remaining = 5 - (int(await redis_client.get(rl_key) or 0))
+        remaining = await rate_limiter.remaining(rl_key, settings.OTP_MAX_ATTEMPTS)
         error_msg = "Неверный код. Попробуйте еще раз."
         if remaining <= 2:
             error_msg = f"Неверный код. Осталось попыток: {remaining}."
@@ -376,8 +369,7 @@ async def verify_email(
         return RedirectResponse(url=request.url_for('admin.auth.register_page'), status_code=302)
 
     rl_key = f"verify_email_attempts:{email}"
-    attempts = await redis_client.get(rl_key)
-    if attempts and int(attempts) >= 5:
+    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
         return templates.TemplateResponse('auth/verify-email-registration.html', {
             'request': request,
             'email': email,
@@ -387,7 +379,7 @@ async def verify_email(
 
     try:
         await service.verify_email_code(user_id, code)
-        await redis_client.delete(rl_key)
+        await rate_limiter.reset(rl_key)
 
         # Get user to log them in
         user_repo = UserRepository(service.db)
@@ -402,11 +394,9 @@ async def verify_email(
         return RedirectResponse(url=request.url_for('admin.dashboard.index'), status_code=302)
 
     except Exception:
-        await redis_client.incr(rl_key)
-        if await redis_client.ttl(rl_key) == -1:
-            await redis_client.expire(rl_key, 900)
+        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
 
-        remaining = 5 - (int(await redis_client.get(rl_key) or 0))
+        remaining = await rate_limiter.remaining(rl_key, settings.OTP_MAX_ATTEMPTS)
         error_msg = "Неверный код. Попробуйте еще раз."
         if remaining <= 2:
             error_msg = f"Неверный код. Осталось попыток: {remaining}."

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, HTTPException, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -16,6 +16,9 @@ from app.models.user import Users
 from app.models.achievement import Achievement
 from app.models.notification import Notification
 from app.models.enums import UserStatus, AchievementStatus, UserRole
+from app.config import settings
+from app.services.audit_service import log_action
+from app.services.ws_manager import ws_manager
 
 router = guard_router
 
@@ -50,9 +53,8 @@ def is_in_zone(moderator: Users, target_education_level) -> bool:
     if not moderator.education_level:
         return True
 
-    mod_ed = moderator.education_level.value if hasattr(moderator.education_level,
-                                                        'value') else moderator.education_level
-    targ_ed = target_education_level.value if hasattr(target_education_level, 'value') else target_education_level
+    mod_ed = moderator.education_level_value
+    targ_ed = target_education_level.value if hasattr(target_education_level, 'value') else str(target_education_level)
 
     return mod_ed == targ_ed
 
@@ -64,7 +66,7 @@ async def pending_users(request: Request, db: AsyncSession = Depends(get_db)):
     stmt = select(Users).filter(Users.status == UserStatus.PENDING)
 
     if user.role == UserRole.MODERATOR and user.education_level:
-        mod_ed = user.education_level.value if hasattr(user.education_level, 'value') else user.education_level
+        mod_ed = user.education_level_value
         stmt = stmt.filter(Users.education_level == mod_ed)
 
     stmt = stmt.order_by(Users.id.desc())
@@ -97,6 +99,8 @@ async def approve_user(
         "status": UserStatus.ACTIVE,
         "role": UserRole.STUDENT
     })
+    await log_action(db, current_user.id, "user.approve", "user", id,
+                     ip_address=request.client.host if request.client else None)
     return RedirectResponse(
         url=request.url_for('admin.moderation.users').include_query_params(toast_msg="Пользователь одобрен",
                                                                            toast_type="success"),
@@ -120,6 +124,8 @@ async def reject_user(
             toast_msg="У вас нет доступа к этому потоку", toast_type="error"), status_code=302)
 
     await service.repository.update(id, {"status": UserStatus.REJECTED})
+    await log_action(db, current_user.id, "user.reject", "user", id,
+                     ip_address=request.client.host if request.client else None)
     return RedirectResponse(
         url=request.url_for('admin.moderation.users').include_query_params(toast_msg="Пользователь отклонен",
                                                                            toast_type="success"),
@@ -131,14 +137,14 @@ async def reject_user(
 async def achievements_list(request: Request, page: int = Query(1, ge=1, le=1000), db: AsyncSession = Depends(get_db)):
     user = await check_moderator(request, db)
 
-    limit = 10
+    limit = settings.ITEMS_PER_PAGE
     offset = (page - 1) * limit
 
     stmt = select(Achievement).join(Users, Achievement.user_id == Users.id).options(selectinload(Achievement.user)) \
         .filter(Achievement.status == AchievementStatus.PENDING)
 
     if user.role == UserRole.MODERATOR and user.education_level:
-        mod_ed = user.education_level.value if hasattr(user.education_level, 'value') else user.education_level
+        mod_ed = user.education_level_value
         stmt = stmt.filter(Users.education_level == mod_ed)
 
     stmt = stmt.order_by(Achievement.created_at.asc())
@@ -221,10 +227,88 @@ async def update_achievement_status(
         is_read=False
     )
     db.add(notification)
+
+    await log_action(db, current_user.id, f"achievement.{status}", "achievement", id,
+                     details=rejection_reason,
+                     ip_address=request.client.host if request.client else None)
     await db.commit()
+
+    await ws_manager.send_to_user(achievement.user_id, {
+        "type": "notification",
+        "title": "Статус заявки обновлен",
+        "message": notif_message
+    })
 
     return RedirectResponse(
         url=request.url_for('admin.moderation.achievements').include_query_params(toast_msg="Решение сохранено",
                                                                                   toast_type="success"),
         status_code=302
     )
+
+
+@router.post('/moderation/achievements/batch', name='admin.moderation.achievements.batch',
+             dependencies=[Depends(validate_csrf)])
+async def batch_update_achievements(
+        request: Request,
+        db: AsyncSession = Depends(get_db)
+):
+    current_user = await check_moderator(request, db)
+    form = await request.form()
+
+    ids_raw = form.get("ids", "")
+    action = form.get("action", "")
+
+    if not ids_raw or not action:
+        return RedirectResponse(url=request.url_for('admin.moderation.achievements').include_query_params(
+            toast_msg="Не выбраны документы или действие", toast_type="error"), status_code=302)
+
+    allowed_actions = {
+        'approved': AchievementStatus.APPROVED,
+        'rejected': AchievementStatus.REJECTED,
+    }
+    new_status = allowed_actions.get(action)
+    if not new_status:
+        return RedirectResponse(url=request.url_for('admin.moderation.achievements').include_query_params(
+            toast_msg="Недопустимое действие", toast_type="error"), status_code=302)
+
+    try:
+        ids = [int(x.strip()) for x in ids_raw.split(",") if x.strip().isdigit()]
+    except ValueError:
+        ids = []
+
+    if not ids:
+        return RedirectResponse(url=request.url_for('admin.moderation.achievements').include_query_params(
+            toast_msg="Не выбраны документы", toast_type="error"), status_code=302)
+
+    processed = 0
+    for ach_id in ids:
+        stmt = select(Achievement).options(selectinload(Achievement.user)).where(
+            Achievement.id == ach_id).with_for_update()
+        ach = (await db.execute(stmt)).scalars().first()
+
+        if not ach or ach.status != AchievementStatus.PENDING:
+            continue
+        if not is_in_zone(current_user, ach.user.education_level):
+            continue
+
+        ach.status = new_status
+        if new_status == AchievementStatus.APPROVED:
+            points = calculate_points(ach.level.value, ach.category.value)
+            ach.points = points
+            ach.rejection_reason = None
+            msg = f"Документ '{ach.title}' одобрен! Начислено {points} баллов."
+        else:
+            ach.points = 0
+            msg = f"Окончательный отказ по документу '{ach.title}'."
+
+        db.add(Notification(user_id=ach.user_id, title="Статус заявки обновлен", message=msg, is_read=False))
+        await log_action(db, current_user.id, f"achievement.batch_{action}", "achievement", ach_id,
+                         ip_address=request.client.host if request.client else None)
+
+        await ws_manager.send_to_user(ach.user_id, {"type": "notification", "title": "Статус заявки обновлен", "message": msg})
+        processed += 1
+
+    await db.commit()
+
+    return RedirectResponse(url=request.url_for('admin.moderation.achievements').include_query_params(
+        toast_msg=f"Обработано документов: {processed}", toast_type="success"), status_code=302)

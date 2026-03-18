@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Depends, Query, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, update
+from sqlalchemy.orm import selectinload
 import csv
 import io
 
@@ -25,9 +26,8 @@ async def index(
     user_id = request.session.get('auth_id')
     user = await db.get(Users, user_id)
 
-    if user.role not in [UserRole.SUPER_ADMIN, UserRole.MODERATOR]:
-        edu_val = user.education_level.value if hasattr(user.education_level, 'value') else user.education_level
-        education_level = edu_val if edu_val else 'all'
+    if not user.is_staff:
+        education_level = user.education_level_value or 'all'
         course = user.course if user.course else 0
     else:
         if not education_level:
@@ -78,7 +78,7 @@ async def index(
 @router.get('/leaderboard/export', name='admin.leaderboard.export')
 async def export_leaderboard(request: Request, db: AsyncSession = Depends(get_db)):
     user = await db.get(Users, request.session.get('auth_id'))
-    if user.role not in [UserRole.SUPER_ADMIN, UserRole.MODERATOR]:
+    if not user.is_staff:
         return RedirectResponse(url='/sirius.achievements/leaderboard')
 
     stmt = (
@@ -92,8 +92,7 @@ async def export_leaderboard(request: Request, db: AsyncSession = Depends(get_db
     )
 
     if user.role == UserRole.MODERATOR and user.education_level:
-        mod_ed = user.education_level.value if hasattr(user.education_level, 'value') else user.education_level
-        stmt = stmt.filter(Users.education_level == mod_ed)
+        stmt = stmt.filter(Users.education_level == user.education_level_value)
 
     stmt = stmt.group_by(Users.id).order_by(desc("total_points"))
 
@@ -105,7 +104,7 @@ async def export_leaderboard(request: Request, db: AsyncSession = Depends(get_db
     writer.writerow(['Место', 'Имя', 'Фамилия', 'Email', 'Уровень обучения', 'Курс', 'Сумма баллов', 'Документов'])
 
     for idx, (u, pts, cnt) in enumerate(leaderboard, 1):
-        ed_val = u.education_level.value if hasattr(u.education_level, 'value') else (u.education_level or '')
+        ed_val = u.education_level_value
         course_str = f"{u.course} курс" if u.course else ''
         writer.writerow([idx, u.first_name, u.last_name, u.email, ed_val, course_str, int(pts), cnt])
 
@@ -151,3 +150,105 @@ async def end_season(
     await db.commit()
 
     return RedirectResponse(url="/sirius.achievements/leaderboard?toast_msg=Сезон успешно завершен! Рейтинг обнулен.&toast_type=success", status_code=302)
+
+
+@router.get('/reports/moderation', name='admin.reports.moderation')
+async def export_moderation_report(request: Request, db: AsyncSession = Depends(get_db)):
+    user = await db.get(Users, request.session.get('auth_id'))
+    if not user.is_staff:
+        return RedirectResponse(url='/sirius.achievements/dashboard')
+
+    from app.models.achievement import Achievement
+
+    stmt = (
+        select(Achievement)
+        .options(selectinload(Achievement.user))
+        .filter(Achievement.status == AchievementStatus.PENDING)
+        .order_by(Achievement.created_at.asc())
+    )
+    result = await db.execute(stmt)
+    docs = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['ID', 'Студент', 'Email', 'Название', 'Категория', 'Уровень', 'Дата загрузки'])
+
+    for d in docs:
+        cat = d.category.value if hasattr(d.category, 'value') else str(d.category)
+        lvl = d.level.value if hasattr(d.level, 'value') else str(d.level)
+        date = d.created_at.strftime('%d.%m.%Y %H:%M') if d.created_at else ''
+        writer.writerow([d.id, f"{d.user.first_name} {d.user.last_name}", d.user.email, d.title, cat, lvl, date])
+
+    output.seek(0)
+    return Response(
+        content='\ufeff' + output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=moderation_queue.csv"}
+    )
+
+
+@router.get('/reports/categories', name='admin.reports.categories')
+async def export_categories_report(request: Request, db: AsyncSession = Depends(get_db)):
+    user = await db.get(Users, request.session.get('auth_id'))
+    if not user.is_staff:
+        return RedirectResponse(url='/sirius.achievements/dashboard')
+
+    from app.models.achievement import Achievement
+    from app.models.enums import AchievementCategory
+
+    stmt = (
+        select(
+            Achievement.category,
+            Achievement.level,
+            func.count().label('total'),
+            func.count().filter(Achievement.status == AchievementStatus.APPROVED).label('approved'),
+            func.coalesce(func.sum(Achievement.points), 0).label('total_points')
+        )
+        .group_by(Achievement.category, Achievement.level)
+        .order_by(Achievement.category, Achievement.level)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['Категория', 'Уровень', 'Всего документов', 'Одобрено', 'Сумма баллов'])
+
+    for r in rows:
+        cat = r.category.value if hasattr(r.category, 'value') else str(r.category)
+        lvl = r.level.value if hasattr(r.level, 'value') else str(r.level)
+        writer.writerow([cat, lvl, r.total, r.approved, int(r.total_points)])
+
+    output.seek(0)
+    return Response(
+        content='\ufeff' + output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=categories_report.csv"}
+    )
+
+
+@router.get('/reports/users', name='admin.reports.users')
+async def export_users_report(request: Request, db: AsyncSession = Depends(get_db)):
+    user = await db.get(Users, request.session.get('auth_id'))
+    if user.role != UserRole.SUPER_ADMIN:
+        return RedirectResponse(url='/sirius.achievements/dashboard')
+
+    stmt = select(Users).filter(Users.role == UserRole.STUDENT).order_by(Users.created_at.desc())
+    result = await db.execute(stmt)
+    users = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['ID', 'Имя', 'Фамилия', 'Email', 'Уровень обучения', 'Курс', 'Статус', 'Дата регистрации'])
+
+    for u in users:
+        status_val = u.status.value if hasattr(u.status, 'value') else str(u.status)
+        date = u.created_at.strftime('%d.%m.%Y') if u.created_at else ''
+        writer.writerow([u.id, u.first_name, u.last_name, u.email, u.education_level_value, u.course or '', status_val, date])
+
+    output.seek(0)
+    return Response(
+        content='\ufeff' + output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=users_report.csv"}
+    )

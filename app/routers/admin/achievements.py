@@ -4,8 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, case
 from urllib.parse import quote
 import math
-import os
-import redis.asyncio as aioredis
 
 from app.security.csrf import validate_csrf
 from app.routers.admin.admin import guard_router, templates, get_db
@@ -15,8 +13,9 @@ from app.models.enums import AchievementStatus, AchievementCategory, Achievement
 from app.services.admin.achievement_service import AchievementService
 from app.repositories.admin.achievement_repository import AchievementRepository
 from app.utils.search import escape_like
+from app.config import settings
+from app.utils.rate_limiter import rate_limiter
 
-redis_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
 router = guard_router
 
 
@@ -122,14 +121,11 @@ async def store(
     user_id = request.session.get('auth_id')
 
     rl_key = f"upload_rl:{user_id}"
-    uploads = await redis_client.get(rl_key)
-    if uploads and int(uploads) >= 20:
+    if await rate_limiter.is_limited(rl_key, settings.UPLOAD_MAX_PER_HOUR, settings.UPLOAD_RATE_TTL):
         return RedirectResponse(
             url=f"/sirius.achievements/achievements/create?toast_msg={quote('Слишком много загрузок. Попробуйте позже.')}&toast_type=error",
             status_code=302)
-    await redis_client.incr(rl_key)
-    if await redis_client.ttl(rl_key) == -1:
-        await redis_client.expire(rl_key, 3600)
+    await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL)
 
     try:
         file_path = await service.save_file(file)

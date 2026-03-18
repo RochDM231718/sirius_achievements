@@ -1,11 +1,12 @@
 import os
-import uuid
-import shutil
+import structlog
 from fastapi import UploadFile
 from app.services.admin.base_crud_service import BaseCrudService
 from app.repositories.admin.achievement_repository import AchievementRepository
+from app.config import settings
+from app.utils.file_validator import FileValidator, DOC_SIGNATURES
 
-MAX_DOC_SIZE = 10 * 1024 * 1024
+logger = structlog.get_logger()
 
 
 class AchievementService(BaseCrudService):
@@ -14,51 +15,14 @@ class AchievementService(BaseCrudService):
     def __init__(self, repo: AchievementRepository):
         super().__init__(repo)
         self.repo = repo
+        self._file_validator = FileValidator(
+            allowed=DOC_SIGNATURES,
+            max_size=settings.MAX_DOC_SIZE,
+            upload_dir=settings.UPLOAD_DIR_ACHIEVEMENTS,
+        )
 
     async def save_file(self, file: UploadFile) -> str:
-        ALLOWED_SIGNATURES = {
-            "application/pdf": b'\x25\x50\x44\x46',
-            "image/jpeg": b'\xFF\xD8\xFF',
-            "image/png": b'\x89\x50\x4E\x47\x0D\x0A\x1A\x0A'
-        }
-
-        header = await file.read(8)
-        await file.seek(0)
-
-        is_valid = False
-        detected_ext = ""
-
-        for mime, signature in ALLOWED_SIGNATURES.items():
-            if header.startswith(signature):
-                is_valid = True
-                if mime == "application/pdf":
-                    detected_ext = "pdf"
-                elif mime == "image/png":
-                    detected_ext = "png"
-                else:
-                    detected_ext = "jpg"
-                break
-
-        if not is_valid:
-            raise ValueError("Недопустимый формат файла. Файл не соответствует заявленному типу (проверка подписи).")
-
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
-
-        if file_size > MAX_DOC_SIZE:
-            raise ValueError(f"Файл слишком большой. Лимит: {MAX_DOC_SIZE // (1024 * 1024)} МБ.")
-
-        upload_dir = "static/uploads/achievements"
-        os.makedirs(upload_dir, exist_ok=True)
-
-        unique_name = f"{uuid.uuid4()}.{detected_ext}"
-        file_path = os.path.join(upload_dir, unique_name)
-
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        return f"uploads/achievements/{unique_name}"
+        return await self._file_validator.validate_and_save(file)
 
     async def delete(self, id: int, user_id: int, user_role: str):
         item = await self.repo.find(id)
@@ -77,6 +41,6 @@ class AchievementService(BaseCrudService):
                 try:
                     os.remove(full_path)
                 except OSError:
-                    pass
+                    logger.warning("Failed to delete file", path=full_path)
 
         await self.repo.delete(id)

@@ -1,26 +1,23 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from sqlalchemy.ext.asyncio import AsyncSession
+from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import select, func
-from fastapi import Request, BackgroundTasks
+from fastapi import BackgroundTasks
 from passlib.context import CryptContext
 from app.models.enums import UserTokenType, UserRole, UserStatus
 from app.models.user import Users
-from app.repositories.admin.user_token_repository import UserTokenRepository
 from app.schemas.admin.user_tokens import UserTokenCreate
 from app.schemas.admin.auth import UserRegister
 from app.services.admin.user_token_service import UserTokenService
 from app.infrastructure.jwt_handler import create_access_token, create_refresh_token, verify_token
-import os
+from app.config import settings
+from app.utils.rate_limiter import rate_limiter
 import structlog
-from datetime import datetime, timedelta
-import redis.asyncio as aioredis
 
 logger = structlog.get_logger()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-redis_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
+_email_env = Environment(loader=FileSystemLoader("templates"), autoescape=True)
 
 
 class UserBlockedException(Exception):
@@ -38,12 +35,9 @@ class AuthService:
     async def authenticate(self, email: str, password: str, role: str = None, ip: str = "unknown"):
         email = email.strip().lower()
         rl_key = f"login_attempts:{ip}:{email}"
-        attempts = await redis_client.get(rl_key)
 
-        if attempts and int(attempts) >= 5:
-            ttl = await redis_client.ttl(rl_key)
-            minutes = int(ttl / 60) + 1
-            raise UserBlockedException(f"Слишком много попыток. Повторите через {minutes} мин.")
+        if await rate_limiter.is_limited(rl_key, settings.LOGIN_MAX_ATTEMPTS, settings.LOGIN_LOCKOUT_TTL):
+            raise UserBlockedException("Слишком много попыток. Повторите через 15 мин.")
 
         user = await self.repository.get_by_email(email)
         if not user:
@@ -61,15 +55,13 @@ class AuthService:
             await self._record_failed_attempt(rl_key)
             return None
 
-        await redis_client.delete(rl_key)
+        await rate_limiter.reset(rl_key)
 
         logger.info("User logged in", user_id=user.id, email=user.email)
         return user
 
     async def _record_failed_attempt(self, key: str):
-        await redis_client.incr(key)
-        if await redis_client.ttl(key) == -1:
-            await redis_client.expire(key, 900)
+        await rate_limiter.increment(key, settings.LOGIN_LOCKOUT_TTL)
 
     async def register_user(self, data: UserRegister) -> Users:
         data.email = data.email.strip().lower()
@@ -154,11 +146,11 @@ class AuthService:
 
     def _send_mail_task(self, to_email: str, subject: str, body_text: str, body_html: str):
         to_email = self._sanitize_email(to_email)
-        smtp_host = os.getenv('MAIL_HOST', 'smtp.yandex.ru')
-        smtp_port = int(os.getenv('MAIL_PORT', 465))
-        smtp_user = os.getenv('MAIL_USERNAME')
-        smtp_pass = os.getenv('MAIL_PASSWORD')
-        mail_from = os.getenv('MAIL_FROM', smtp_user)
+        smtp_host = settings.MAIL_HOST
+        smtp_port = settings.MAIL_PORT
+        smtp_user = settings.MAIL_USERNAME
+        smtp_pass = settings.MAIL_PASSWORD
+        mail_from = settings.MAIL_FROM or smtp_user
 
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
@@ -204,38 +196,9 @@ class AuthService:
         code = user_token.token
 
         subject = "Разовый код"
-
-        text_content = f"""Здравствуйте, {user.email}!
-Мы получили запрос на отправку разового кода для вашей учетной записи Sirius.Achievements.
-Ваш разовый код: {code}
-Вводите этот код только на официальном сайте."""
-
-        html_content = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #000000; background-color: #ffffff; padding: 20px; max-width: 600px;">
-            <p style="font-size: 15px; margin-bottom: 20px;">
-                Здравствуйте, <a href="mailto:{user.email}" style="color: #0067b8; text-decoration: none;">{user.email}</a>!
-            </p>
-            <p style="font-size: 15px; margin-bottom: 20px;">
-                Мы получили запрос на отправку разового кода для вашей учетной записи Sirius.Achievements.
-            </p>
-            <p style="font-size: 15px; margin-bottom: 5px;">
-                Ваш разовый код: <span style="font-weight: 600; font-size: 16px;">{code}</span>
-            </p>
-            <p style="font-size: 15px; margin-top: 20px; margin-bottom: 25px;">
-                Вводите этот код только на официальном сайте или в приложении. Не делитесь им ни с кем.
-            </p>
-            <p style="font-size: 15px; margin-bottom: 5px;">
-                С уважением,<br>
-                Служба технической поддержки Sirius.Achievements
-            </p>
-            <br>
-            <div style="font-size: 12px; color: #666666; margin-top: 20px;">
-                <p style="margin-bottom: 5px;">Заявление о конфиденциальности:</p>
-                <a href="#" style="color: #0067b8; text-decoration: underline;">https://sirius.achievements/privacy</a>
-                <p style="margin-top: 5px;">Sirius Corporation, Russia</p>
-            </div>
-        </div>
-        """
+        ctx = {"email": user.email, "code": code}
+        text_content = _email_env.get_template("emails/reset_password.txt").render(ctx)
+        html_content = _email_env.get_template("emails/reset_password.html").render(ctx)
 
         if background_tasks:
             background_tasks.add_task(self._send_mail_task, to_email=user.email, subject=subject,
@@ -260,32 +223,9 @@ class AuthService:
         code = user_token.token
 
         subject = "Подтверждение email"
-
-        text_content = f"""Здравствуйте, {user.first_name}!
-Спасибо за регистрацию в Sirius.Achievements.
-Ваш код подтверждения: {code}
-Введите его на странице верификации."""
-
-        html_content = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #000000; background-color: #ffffff; padding: 20px; max-width: 600px;">
-            <p style="font-size: 15px; margin-bottom: 20px;">
-                Здравствуйте, <strong>{user.first_name}</strong>!
-            </p>
-            <p style="font-size: 15px; margin-bottom: 20px;">
-                Спасибо за регистрацию в Sirius.Achievements. Для подтверждения вашего email введите код ниже.
-            </p>
-            <p style="font-size: 15px; margin-bottom: 5px;">
-                Ваш код подтверждения: <span style="font-weight: 600; font-size: 20px; letter-spacing: 4px;">{code}</span>
-            </p>
-            <p style="font-size: 15px; margin-top: 20px; margin-bottom: 25px;">
-                Код действителен в течение 1 часа. Не делитесь им ни с кем.
-            </p>
-            <p style="font-size: 15px; margin-bottom: 5px;">
-                С уважением,<br>
-                Служба технической поддержки Sirius.Achievements
-            </p>
-        </div>
-        """
+        ctx = {"first_name": user.first_name, "code": code}
+        text_content = _email_env.get_template("emails/verify_email.txt").render(ctx)
+        html_content = _email_env.get_template("emails/verify_email.html").render(ctx)
 
         if background_tasks:
             background_tasks.add_task(self._send_mail_task, to_email=user.email, subject=subject,
