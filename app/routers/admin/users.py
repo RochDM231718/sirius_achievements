@@ -60,7 +60,7 @@ async def api_users_search(request: Request, q: str = Query(..., min_length=1), 
 @router.get('/users', response_class=HTMLResponse, name='admin.users.index')
 async def index(
         request: Request,
-        page: int = Query(1, ge=1),
+        page: int = Query(1, ge=1, le=1000),
         query: str = None,
         role: str = None,
         status: str = None,

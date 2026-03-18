@@ -20,4 +20,10 @@ RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 
 COPY . .
 
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+    && chown -R appuser:appgroup /app \
+    && mkdir -p /app/static/uploads /app/easyocr_models \
+    && chown -R appuser:appgroup /app/static/uploads /app/easyocr_models
+USER appuser
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

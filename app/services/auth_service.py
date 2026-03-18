@@ -145,7 +145,15 @@ class AuthService:
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return pwd_context.verify(plain_password, hashed_password)
 
+    @staticmethod
+    def _sanitize_email(email: str) -> str:
+        sanitized = email.strip().replace('\r', '').replace('\n', '').replace('\0', '')
+        if sanitized != email.strip():
+            raise ValueError("Invalid email address")
+        return sanitized
+
     def _send_mail_task(self, to_email: str, subject: str, body_text: str, body_html: str):
+        to_email = self._sanitize_email(to_email)
         smtp_host = os.getenv('MAIL_HOST', 'smtp.yandex.ru')
         smtp_port = int(os.getenv('MAIL_PORT', 465))
         smtp_user = os.getenv('MAIL_USERNAME')

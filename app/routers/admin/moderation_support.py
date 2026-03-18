@@ -34,7 +34,7 @@ async def require_moderator(request: Request, db: AsyncSession = Depends(get_db)
 @router.get('/moderation/support', response_class=HTMLResponse, name='admin.moderation.support.index')
 async def moderation_support_index(
         request: Request,
-        page: int = Query(1, ge=1),
+        page: int = Query(1, ge=1, le=1000),
         db: AsyncSession = Depends(get_db),
         user=Depends(require_moderator)
 ):
@@ -56,7 +56,7 @@ async def moderation_support_index(
 @router.get('/moderation/support/all', response_class=HTMLResponse, name='admin.moderation.support.all')
 async def moderation_support_all(
         request: Request,
-        page: int = Query(1, ge=1),
+        page: int = Query(1, ge=1, le=1000),
         status: str = '',
         query: str = '',
         sort_by: str = 'created_at',

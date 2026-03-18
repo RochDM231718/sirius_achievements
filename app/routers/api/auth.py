@@ -41,9 +41,20 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     return result
 
 @router.post("/refresh",  name='api.auth.refresh')
-async def refresh(refresh_token: str = Form(...), auth_service: AuthService = Depends(get_auth_service)):
+async def refresh(request: Request, refresh_token: str = Form(...), auth_service: AuthService = Depends(get_auth_service)):
+    client_ip = request.client.host if request.client else "unknown"
+    rl_key = f"api_refresh:{client_ip}"
+    attempts = await redis_client.get(rl_key)
+    if attempts and int(attempts) >= 20:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many refresh attempts. Try again later."
+        )
     result = await auth_service.api_refresh_token(refresh_token)
     if not result:
+        await redis_client.incr(rl_key)
+        if await redis_client.ttl(rl_key) == -1:
+            await redis_client.expire(rl_key, 900)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=translation_manager.gettext('api.auth.invalid_refresh_token')

@@ -40,7 +40,7 @@ async def api_my_achievements_search(request: Request, q: str = Query(..., min_l
 @router.get('/achievements', response_class=HTMLResponse, name='admin.achievements.index')
 async def index(
         request: Request,
-        page: int = Query(1, ge=1),
+        page: int = Query(1, ge=1, le=1000),
         query: str = None,
         status: str = None,
         category: str = None,

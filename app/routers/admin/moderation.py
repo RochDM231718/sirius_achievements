@@ -128,7 +128,7 @@ async def reject_user(
 
 
 @router.get('/moderation/achievements', response_class=HTMLResponse, name='admin.moderation.achievements')
-async def achievements_list(request: Request, page: int = Query(1, ge=1), db: AsyncSession = Depends(get_db)):
+async def achievements_list(request: Request, page: int = Query(1, ge=1, le=1000), db: AsyncSession = Depends(get_db)):
     user = await check_moderator(request, db)
 
     limit = 10
@@ -185,20 +185,30 @@ async def update_achievement_status(
         return RedirectResponse(url=request.url_for('admin.moderation.achievements').include_query_params(
             toast_msg="Документ уже был обработан другим модератором", toast_type="error"), status_code=302)
 
-    achievement.status = status
+    allowed_statuses = {
+        'approved': AchievementStatus.APPROVED,
+        'rejected': AchievementStatus.REJECTED,
+        'revision': AchievementStatus.REVISION,
+    }
+    new_status = allowed_statuses.get(status)
+    if not new_status:
+        return RedirectResponse(url=request.url_for('admin.moderation.achievements').include_query_params(
+            toast_msg="Недопустимый статус", toast_type="error"), status_code=302)
+
+    achievement.status = new_status
     notif_message = f"Статус документа '{achievement.title}' обновлен."
 
-    if status == 'rejected' or status == AchievementStatus.REJECTED:
+    if new_status == AchievementStatus.REJECTED:
         achievement.rejection_reason = rejection_reason
         achievement.points = 0
         notif_message = f"Окончательный отказ по документу '{achievement.title}'. Причина: {rejection_reason}"
 
-    elif status == 'revision' or status == AchievementStatus.REVISION:
+    elif new_status == AchievementStatus.REVISION:
         achievement.rejection_reason = rejection_reason
         achievement.points = 0
         notif_message = f"Документ '{achievement.title}' отправлен на доработку. Примечание: {rejection_reason}"
 
-    elif status == 'approved' or status == AchievementStatus.APPROVED:
+    elif new_status == AchievementStatus.APPROVED:
         points = calculate_points(achievement.level.value, achievement.category.value)
         achievement.points = points
         achievement.rejection_reason = None
