@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     tzdata \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Europe/Moscow
@@ -25,7 +26,8 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
                 /app/static/uploads/avatars \
                 /app/static/uploads/support \
                 /app/easyocr_models \
-    && chown -R appuser:appgroup /app
-USER appuser
+    && chown -R appuser:appgroup /app \
+    && chmod +x /app/entrypoint.sh
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
