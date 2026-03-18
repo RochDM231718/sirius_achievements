@@ -58,7 +58,11 @@ class FileValidator:
 
     @staticmethod
     async def _get_file_size(file: UploadFile) -> int:
-        content = await file.read()
-        size = len(content)
-        await file.seek(0)
+        # Starlette 0.24+ provides .size from multipart parser
+        if file.size is not None:
+            return file.size
+        # Fallback: sync seek on underlying SpooledTemporaryFile
+        file.file.seek(0, 2)
+        size = file.file.tell()
+        file.file.seek(0)
         return size

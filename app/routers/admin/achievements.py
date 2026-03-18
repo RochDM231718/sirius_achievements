@@ -16,6 +16,9 @@ from app.repositories.admin.achievement_repository import AchievementRepository
 from app.utils.search import escape_like
 from app.config import settings
 from app.utils.rate_limiter import rate_limiter
+import structlog
+
+logger = structlog.get_logger()
 
 router = guard_router
 
@@ -146,7 +149,8 @@ async def store(
     except ValueError as e:
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote(str(e))}&toast_type=error",
                                 status_code=302)
-    except Exception:
+    except Exception as e:
+        logger.error("Achievement upload failed", error=str(e), error_type=type(e).__name__, user_id=user_id, exc_info=True)
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote('Произошла ошибка при загрузке')}&toast_type=error",
                                 status_code=302)
 
@@ -195,7 +199,8 @@ async def revise(
             url=f"/sirius.achievements/achievements?toast_msg={quote(str(e))}&toast_type=error",
             status_code=302
         )
-    except Exception:
+    except Exception as e:
+        logger.error("Achievement revise failed", error=str(e), error_type=type(e).__name__, exc_info=True)
         return RedirectResponse(
             url="/sirius.achievements/achievements?toast_msg=Произошла ошибка при загрузке&toast_type=error",
             status_code=302
