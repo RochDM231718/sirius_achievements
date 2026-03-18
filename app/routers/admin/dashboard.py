@@ -10,7 +10,7 @@ from app.security.csrf import validate_csrf
 from app.routers.admin.admin import guard_router, templates, get_db
 from app.models.user import Users
 from app.models.achievement import Achievement
-from app.models.enums import AchievementStatus, UserRole, UserStatus
+from app.models.enums import AchievementStatus, UserRole, UserStatus, EducationLevel
 from app.routers.admin.deps import get_current_user
 
 router = guard_router
@@ -215,5 +215,6 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
         'request': request,
         'user': user,
         'stats': stats,
-        'period': period
+        'period': period,
+        'education_levels': list(EducationLevel)
     })

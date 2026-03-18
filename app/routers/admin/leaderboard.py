@@ -152,8 +152,26 @@ async def end_season(
     return RedirectResponse(url="/sirius.achievements/leaderboard?toast_msg=Сезон успешно завершен! Рейтинг обнулен.&toast_type=success", status_code=302)
 
 
+def _period_filter(period: str | None):
+    """Return a datetime cutoff based on period string."""
+    from datetime import datetime, timedelta, timezone
+    if period == 'day':
+        return datetime.now(timezone.utc) - timedelta(days=1)
+    elif period == 'week':
+        return datetime.now(timezone.utc) - timedelta(weeks=1)
+    elif period == 'month':
+        return datetime.now(timezone.utc) - timedelta(days=30)
+    return None
+
+
 @router.get('/reports/moderation', name='admin.reports.moderation')
-async def export_moderation_report(request: Request, db: AsyncSession = Depends(get_db)):
+async def export_moderation_report(
+    request: Request,
+    period: str = Query(None),
+    education_level: str = Query(None),
+    course: int = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
     user = await db.get(Users, request.session.get('auth_id'))
     if not user.is_staff:
         return RedirectResponse(url='/sirius.achievements/dashboard')
@@ -166,18 +184,33 @@ async def export_moderation_report(request: Request, db: AsyncSession = Depends(
         .filter(Achievement.status == AchievementStatus.PENDING)
         .order_by(Achievement.created_at.asc())
     )
+
+    cutoff = _period_filter(period)
+    if cutoff:
+        stmt = stmt.filter(Achievement.created_at >= cutoff)
+
+    if education_level and education_level != 'all':
+        stmt = stmt.join(Users, Achievement.user_id == Users.id).filter(Users.education_level == education_level)
+    if course and course != 0:
+        if education_level and education_level != 'all':
+            stmt = stmt.filter(Users.course == course)
+        else:
+            stmt = stmt.join(Users, Achievement.user_id == Users.id).filter(Users.course == course)
+
     result = await db.execute(stmt)
-    docs = result.scalars().all()
+    docs = result.scalars().unique().all()
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(['ID', 'Студент', 'Email', 'Название', 'Категория', 'Уровень', 'Дата загрузки'])
+    writer.writerow(['ID', 'Студент', 'Email', 'Уровень обучения', 'Курс', 'Название', 'Категория', 'Уровень', 'Дата загрузки'])
 
     for d in docs:
         cat = d.category.value if hasattr(d.category, 'value') else str(d.category)
         lvl = d.level.value if hasattr(d.level, 'value') else str(d.level)
         date = d.created_at.strftime('%d.%m.%Y %H:%M') if d.created_at else ''
-        writer.writerow([d.id, f"{d.user.first_name} {d.user.last_name}", d.user.email, d.title, cat, lvl, date])
+        ed_lvl = d.user.education_level_value if d.user else ''
+        course_str = f"{d.user.course} курс" if d.user and d.user.course else ''
+        writer.writerow([d.id, f"{d.user.first_name} {d.user.last_name}", d.user.email, ed_lvl, course_str, d.title, cat, lvl, date])
 
     output.seek(0)
     return Response(
@@ -188,25 +221,40 @@ async def export_moderation_report(request: Request, db: AsyncSession = Depends(
 
 
 @router.get('/reports/categories', name='admin.reports.categories')
-async def export_categories_report(request: Request, db: AsyncSession = Depends(get_db)):
+async def export_categories_report(
+    request: Request,
+    period: str = Query(None),
+    education_level: str = Query(None),
+    course: int = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
     user = await db.get(Users, request.session.get('auth_id'))
     if not user.is_staff:
         return RedirectResponse(url='/sirius.achievements/dashboard')
 
     from app.models.achievement import Achievement
-    from app.models.enums import AchievementCategory
 
-    stmt = (
-        select(
-            Achievement.category,
-            Achievement.level,
-            func.count().label('total'),
-            func.count().filter(Achievement.status == AchievementStatus.APPROVED).label('approved'),
-            func.coalesce(func.sum(Achievement.points), 0).label('total_points')
-        )
-        .group_by(Achievement.category, Achievement.level)
-        .order_by(Achievement.category, Achievement.level)
+    stmt = select(
+        Achievement.category,
+        Achievement.level,
+        func.count().label('total'),
+        func.count().filter(Achievement.status == AchievementStatus.APPROVED).label('approved'),
+        func.coalesce(func.sum(Achievement.points), 0).label('total_points')
     )
+
+    cutoff = _period_filter(period)
+    if cutoff:
+        stmt = stmt.filter(Achievement.created_at >= cutoff)
+
+    if education_level and education_level != 'all':
+        stmt = stmt.join(Users, Achievement.user_id == Users.id).filter(Users.education_level == education_level)
+    if course and course != 0:
+        if not (education_level and education_level != 'all'):
+            stmt = stmt.join(Users, Achievement.user_id == Users.id)
+        stmt = stmt.filter(Users.course == course)
+
+    stmt = stmt.group_by(Achievement.category, Achievement.level).order_by(Achievement.category, Achievement.level)
+
     result = await db.execute(stmt)
     rows = result.all()
 
@@ -227,13 +275,78 @@ async def export_categories_report(request: Request, db: AsyncSession = Depends(
     )
 
 
+@router.get('/reports/leaderboard', name='admin.reports.leaderboard')
+async def export_leaderboard_report(
+    request: Request,
+    period: str = Query(None),
+    education_level: str = Query(None),
+    course: int = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
+    user = await db.get(Users, request.session.get('auth_id'))
+    if not user.is_staff:
+        return RedirectResponse(url='/sirius.achievements/dashboard')
+
+    achievement_filter = (Achievement.status == AchievementStatus.APPROVED)
+    cutoff = _period_filter(period)
+    if cutoff:
+        achievement_filter = achievement_filter & (Achievement.created_at >= cutoff)
+
+    stmt = (
+        select(
+            Users,
+            func.coalesce(func.sum(Achievement.points), 0).label("total_points"),
+            func.count(Achievement.id).label("achievements_count")
+        )
+        .outerjoin(Achievement, (Users.id == Achievement.user_id) & achievement_filter)
+        .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
+    )
+
+    if education_level and education_level != 'all':
+        stmt = stmt.filter(Users.education_level == education_level)
+    if course and course != 0:
+        stmt = stmt.filter(Users.course == course)
+
+    stmt = stmt.group_by(Users.id).order_by(desc("total_points"))
+
+    result = await db.execute(stmt)
+    leaderboard = result.all()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['Место', 'Имя', 'Фамилия', 'Email', 'Уровень обучения', 'Курс', 'Сумма баллов', 'Документов'])
+
+    for idx, (u, pts, cnt) in enumerate(leaderboard, 1):
+        ed_val = u.education_level_value
+        course_str = f"{u.course} курс" if u.course else ''
+        writer.writerow([idx, u.first_name, u.last_name, u.email, ed_val, course_str, int(pts), cnt])
+
+    output.seek(0)
+    return Response(
+        content='\ufeff' + output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leaderboard_export.csv"}
+    )
+
+
 @router.get('/reports/users', name='admin.reports.users')
-async def export_users_report(request: Request, db: AsyncSession = Depends(get_db)):
+async def export_users_report(
+    request: Request,
+    education_level: str = Query(None),
+    course: int = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
     user = await db.get(Users, request.session.get('auth_id'))
     if user.role != UserRole.SUPER_ADMIN:
         return RedirectResponse(url='/sirius.achievements/dashboard')
 
     stmt = select(Users).filter(Users.role == UserRole.STUDENT).order_by(Users.created_at.desc())
+
+    if education_level and education_level != 'all':
+        stmt = stmt.filter(Users.education_level == education_level)
+    if course and course != 0:
+        stmt = stmt.filter(Users.course == course)
+
     result = await db.execute(stmt)
     users = result.scalars().all()
 

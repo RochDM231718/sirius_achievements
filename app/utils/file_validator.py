@@ -58,7 +58,7 @@ class FileValidator:
 
     @staticmethod
     async def _get_file_size(file: UploadFile) -> int:
-        file.file.seek(0, 2)
-        size = file.file.tell()
-        file.file.seek(0)
+        content = await file.read()
+        size = len(content)
+        await file.seek(0)
         return size

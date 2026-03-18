@@ -10,12 +10,17 @@
         <p class="text-sm text-slate-500 mt-1">Заполните данные и загрузите подтверждающий документ.</p>
     </div>
 
+    <!-- Toast -->
+    <div x-show="toastMsg" x-transition class="mb-4 px-4 py-3 rounded-lg text-sm border"
+         :class="toastType === 'error' ? 'bg-red-50 border-red-100 text-red-600' : 'bg-green-50 border-green-100 text-green-700'"
+         x-text="toastMsg" x-cloak></div>
+
     <form action="{{ url_for('admin.achievements.store') }}" method="POST" enctype="multipart/form-data" class="space-y-5" @submit.prevent="submitForm">
         <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
 
         <div>
             <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Название</label>
-            <input type="text" name="title" required
+            <input type="text" name="title" x-model="formTitle" required
                    class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all placeholder:text-slate-400"
                    placeholder="Например: Победитель олимпиады...">
         </div>
@@ -23,13 +28,13 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Категория</label>
-                <select name="category" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                <select name="category" x-model="formCategory" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                     {% for cat in categories %}<option value="{{cat.value}}">{{cat.value}}</option>{% endfor %}
                 </select>
             </div>
             <div>
                 <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Уровень</label>
-                <select name="level" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                <select name="level" x-model="formLevel" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                     {% for lvl in levels %}<option value="{{lvl.value}}">{{lvl.value}}</option>{% endfor %}
                 </select>
             </div>
@@ -37,22 +42,39 @@
 
         <div>
             <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Описание (необязательно)</label>
-            <textarea name="description" rows="3"
+            <textarea name="description" x-model="formDesc" rows="3"
                       class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"></textarea>
         </div>
 
         <div>
             <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Документ (Фото или PDF)</label>
-            <input type="file" id="fileInput" name="file" accept="image/*,application/pdf" @change="fileChosen" required
+            <input type="file" id="fileInput" name="file" accept="image/*,application/pdf" @change="fileChosen" :required="!croppedBlob && !pdfFile"
                    class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 transition-colors cursor-pointer border border-slate-200 rounded-lg bg-slate-50 p-1">
+            <p class="text-[10px] text-slate-400 mt-1">JPG, PNG до 10 МБ. PDF до 10 МБ.</p>
+
+            <!-- File status indicator -->
+            <div x-show="fileName" class="mt-2 flex items-center gap-2 text-xs text-green-600 bg-green-50 border border-green-100 rounded-lg px-3 py-2" x-cloak>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <span x-text="fileName"></span>
+                <span class="text-slate-400 ml-1" x-text="fileSize"></span>
+            </div>
         </div>
 
         <div class="pt-4 flex flex-col-reverse sm:flex-row justify-end gap-3 border-t border-slate-100">
             <a href="/sirius.achievements/achievements" class="w-full sm:w-auto px-6 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 text-center transition-colors">Отмена</a>
-            <button type="submit" class="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Сохранить</button>
+            <button type="submit" :disabled="submitting"
+                    :class="submitting ? 'opacity-70 cursor-not-allowed' : ''"
+                    class="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                <span x-show="!submitting">Сохранить</span>
+                <span x-show="submitting" x-cloak class="flex items-center justify-center gap-2">
+                    <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                    Загрузка...
+                </span>
+            </button>
         </div>
     </form>
 
+    <!-- Crop modal -->
     <div x-show="showModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" x-cloak>
         <div class="bg-white rounded-xl shadow-sm w-full max-w-xl flex flex-col overflow-hidden">
             <div class="p-4 border-b border-slate-100">
@@ -65,102 +87,179 @@
             </div>
             <div class="p-4 border-t border-slate-100 flex gap-3">
                 <button type="button" @click="cancelCrop" class="flex-1 px-4 py-2 border border-slate-200 bg-white rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Отмена</button>
-                <button type="button" @click="confirmCrop" class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Обрезать и Применить</button>
+                <button type="button" @click="skipCrop" class="flex-1 px-4 py-2 border border-slate-200 bg-white rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Без обрезки</button>
+                <button type="button" @click="confirmCrop" class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Обрезать</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 function imageCropper() {
     return {
         showModal: false,
         cropper: null,
         croppedBlob: null,
+        pdfFile: null,
+        originalImageFile: null,
+        submitting: false,
+        toastMsg: '',
+        toastType: 'error',
+        fileName: '',
+        fileSize: '',
+        formTitle: '',
+        formCategory: '{{ categories[0].value if categories else "" }}',
+        formLevel: '{{ levels[0].value if levels else "" }}',
+        formDesc: '',
+
+        showError(msg) {
+            this.toastMsg = msg;
+            this.toastType = 'error';
+            setTimeout(() => { this.toastMsg = ''; }, 5000);
+        },
+
+        formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' Б';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
+        },
 
         fileChosen(e) {
             const file = e.target.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
+            if (!file) return;
 
-                reader.onload = (event) => {
-                    const imageElement = document.getElementById('imageToCrop');
-                    imageElement.src = '';
-                    imageElement.onload = () => {
-                        this.showModal = true;
-                        this.$nextTick(() => {
-                            if (this.cropper) this.cropper.destroy();
-                            this.cropper = new Cropper(imageElement, {
-                                viewMode: 1,
-                                autoCropArea: 1,
-                                background: false
-                            });
-                        });
-                    };
-                    imageElement.onerror = () => {
-                        alert("Ошибка: Файл поврежден или не является изображением.");
-                        e.target.value = '';
-                    };
-                    imageElement.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            } else {
-                this.croppedBlob = null;
+            // Validate size first
+            if (file.size > MAX_FILE_SIZE) {
+                this.showError(`Файл слишком большой (${this.formatSize(file.size)}). Максимум: 10 МБ.`);
+                e.target.value = '';
+                return;
             }
+
+            // PDF — no crop needed
+            if (file.type === 'application/pdf') {
+                this.croppedBlob = null;
+                this.pdfFile = file;
+                this.fileName = file.name;
+                this.fileSize = this.formatSize(file.size);
+                return;
+            }
+
+            // Image — validate type
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                this.showError('Допустимые форматы: JPG, PNG, WEBP, PDF.');
+                e.target.value = '';
+                return;
+            }
+
+            // Image — show crop modal
+            this.originalImageFile = file;
+            this.pdfFile = null;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = document.getElementById('imageToCrop');
+                img.onload = () => {
+                    this.showModal = true;
+                    this.$nextTick(() => {
+                        if (this.cropper) this.cropper.destroy();
+                        this.cropper = new Cropper(img, {
+                            viewMode: 1,
+                            autoCropArea: 1,
+                            background: false
+                        });
+                    });
+                };
+                img.onerror = () => {
+                    this.showError('Файл повреждён или не является изображением.');
+                    e.target.value = '';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
         },
+
         cancelCrop() {
             this.showModal = false;
+            this.originalImageFile = null;
+            this.fileName = '';
+            this.fileSize = '';
             document.getElementById('fileInput').value = '';
-            if (this.cropper) {
-                this.cropper.destroy();
-                this.cropper = null;
-            }
+            if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
         },
+
+        skipCrop() {
+            // Use original file without cropping
+            this.croppedBlob = null;
+            this.pdfFile = null;
+            this.fileName = this.originalImageFile.name;
+            this.fileSize = this.formatSize(this.originalImageFile.size);
+            this.showModal = false;
+            if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+        },
+
         confirmCrop() {
             if (!this.cropper) return;
             const canvas = this.cropper.getCroppedCanvas({ maxWidth: 2048, maxHeight: 2048 });
             if (!canvas) {
-                alert("Не удалось обработать изображение.");
+                this.showError('Не удалось обработать изображение.');
                 return;
             }
             canvas.toBlob((blob) => {
                 this.croppedBlob = blob;
+                this.fileName = (this.originalImageFile ? this.originalImageFile.name : 'image.jpg');
+                this.fileSize = this.formatSize(blob.size);
                 this.showModal = false;
+                if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
             }, 'image/jpeg', 0.92);
         },
+
         submitForm(e) {
             const form = e.target;
             const formData = new FormData(form);
 
+            // Determine which file to send
             if (this.croppedBlob) {
-                const originalFile = document.getElementById('fileInput').files[0];
-                formData.set('file', this.croppedBlob, originalFile.name);
+                const name = this.originalImageFile ? this.originalImageFile.name : 'image.jpg';
+                formData.set('file', this.croppedBlob, name);
+            } else if (this.pdfFile) {
+                formData.set('file', this.pdfFile, this.pdfFile.name);
+            } else if (this.originalImageFile) {
+                // skipCrop was used — send original
+                formData.set('file', this.originalImageFile, this.originalImageFile.name);
+            } else {
+                const fileInput = document.getElementById('fileInput');
+                if (!fileInput.files.length) {
+                    this.showError('Выберите файл для загрузки.');
+                    return;
+                }
             }
 
-            // Визуально блокируем кнопку при отправке
-            const btn = form.querySelector('button[type="submit"]');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = 'Сохранение...';
-            btn.disabled = true;
-            btn.classList.add('opacity-70', 'cursor-not-allowed');
+            this.submitting = true;
 
-            fetch(form.action, { method: 'POST', body: formData })
-                .then(response => {
-                    if (response.redirected) {
-                        window.location.href = response.url;
-                    } else {
-                        return response.text().then(html => {
-                            document.open(); document.write(html); document.close();
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert("Произошла ошибка при отправке формы.");
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-70', 'cursor-not-allowed');
-                });
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                redirect: 'follow'
+            })
+            .then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else {
+                    return response.text().then(html => {
+                        // Try to extract error from redirect URL in response
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        document.open(); document.write(html); document.close();
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Upload error:', error);
+                this.showError('Ошибка сети при загрузке. Попробуйте ещё раз.');
+                this.submitting = false;
+            });
         }
     }
 }
