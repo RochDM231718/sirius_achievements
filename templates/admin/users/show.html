@@ -13,6 +13,13 @@
             {% set back_url = '/sirius.achievements/moderation/users' %}
         {% elif request.query_params.get('from') == 'leaderboard' %}
             {% set back_url = '/sirius.achievements/leaderboard' %}
+        {% elif request.query_params.get('from') == 'support' %}
+            {% set ticket_id = request.query_params.get('ticket_id', '') %}
+            {% if ticket_id %}
+                {% set back_url = '/sirius.achievements/moderation/support/' + ticket_id %}
+            {% else %}
+                {% set back_url = '/sirius.achievements/moderation/support' %}
+            {% endif %}
         {% endif %}
 
         <a href="{{ back_url }}"
