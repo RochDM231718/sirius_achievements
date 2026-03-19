@@ -51,57 +51,8 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app):
-    from sqlalchemy import text
     async with engine.begin() as conn:
-        # Create support enum and tables if they don't exist
-        # Drop and recreate enum if table doesn't exist yet (safe: no data loss)
-        table_exists = await conn.execute(text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'support_tickets')"
-        ))
-        if not table_exists.scalar():
-            await conn.execute(text("DROP TYPE IF EXISTS supportticketstatus CASCADE;"))
-            await conn.execute(text(
-                "CREATE TYPE supportticketstatus AS ENUM ('open', 'in_progress', 'closed')"
-            ))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS support_tickets (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                subject VARCHAR(255) NOT NULL,
-                status supportticketstatus DEFAULT 'open',
-                created_at TIMESTAMPTZ DEFAULT now(),
-                updated_at TIMESTAMPTZ DEFAULT now()
-            );
-        """))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS support_messages (
-                id SERIAL PRIMARY KEY,
-                ticket_id INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
-                sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                text TEXT,
-                file_path VARCHAR,
-                is_from_moderator BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMPTZ DEFAULT now()
-            );
-        """))
-        audit_exists = await conn.execute(text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'audit_logs')"
-        ))
-        if not audit_exists.scalar():
-            await conn.execute(text("""
-                CREATE TABLE audit_logs (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                    action VARCHAR(100) NOT NULL,
-                    target_type VARCHAR(50),
-                    target_id INTEGER,
-                    details TEXT,
-                    ip_address VARCHAR(45),
-                    created_at TIMESTAMPTZ DEFAULT now()
-                );
-            """))
-            await conn.execute(text("CREATE INDEX ix_audit_logs_action ON audit_logs (action);"))
-            await conn.execute(text("CREATE INDEX ix_audit_logs_created_at ON audit_logs (created_at);"))
+        await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
     logger.info("Database engine disposed. Graceful shutdown complete.")

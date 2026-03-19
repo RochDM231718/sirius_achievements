@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_audit_logs'
-down_revision: Union[str, Sequence[str], None] = 'add_support_tables'
+down_revision: Union[str, Sequence[str], None] = 'add_resume_generated_at'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
