@@ -11,6 +11,8 @@ from app.routers.admin.deps import get_current_user
 from app.repositories.admin.support_repository import SupportTicketRepository, SupportMessageRepository
 from app.services.admin.support_service import SupportService
 from app.models.enums import UserRole, SupportTicketStatus
+from app.models.notification import Notification
+from app.models.support_ticket import SupportTicket
 from app.config import settings
 
 logger = structlog.get_logger()
@@ -150,7 +152,17 @@ async def moderation_close_ticket(
         user=Depends(require_moderator),
         service: SupportService = Depends(get_support_service)
 ):
+    ticket = await db.get(SupportTicket, ticket_id)
     await service.close_ticket(ticket_id)
+    if ticket:
+        db.add(Notification(
+            user_id=ticket.user_id,
+            title="Обращение закрыто",
+            message=f"Модератор закрыл обращение \"{ticket.subject}\".",
+            link=f"/sirius.achievements/support/{ticket_id}",
+            is_read=False
+        ))
+        await db.commit()
     return RedirectResponse(
         url=f'/sirius.achievements/moderation/support/{ticket_id}?toast_msg={quote("Обращение закрыто")}&toast_type=success',
         status_code=302
@@ -166,7 +178,17 @@ async def moderation_reopen_ticket(
         user=Depends(require_moderator),
         service: SupportService = Depends(get_support_service)
 ):
+    ticket = await db.get(SupportTicket, ticket_id)
     await service.reopen_ticket(ticket_id)
+    if ticket:
+        db.add(Notification(
+            user_id=ticket.user_id,
+            title="Обращение открыто снова",
+            message=f"Модератор переоткрыл обращение \"{ticket.subject}\".",
+            link=f"/sirius.achievements/support/{ticket_id}",
+            is_read=False
+        ))
+        await db.commit()
     return RedirectResponse(
         url=f'/sirius.achievements/moderation/support/{ticket_id}?toast_msg={quote("Обращение открыто")}&toast_type=success',
         status_code=302

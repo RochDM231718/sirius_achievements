@@ -224,6 +224,7 @@ async def update_achievement_status(
         user_id=achievement.user_id,
         title="Статус заявки обновлен",
         message=notif_message,
+        link=f"/sirius.achievements/achievements",
         is_read=False
     )
     db.add(notification)
@@ -301,7 +302,7 @@ async def batch_update_achievements(
             ach.points = 0
             msg = f"Окончательный отказ по документу '{ach.title}'."
 
-        db.add(Notification(user_id=ach.user_id, title="Статус заявки обновлен", message=msg, is_read=False))
+        db.add(Notification(user_id=ach.user_id, title="Статус заявки обновлен", message=msg, link="/sirius.achievements/achievements", is_read=False))
         await log_action(db, current_user.id, f"achievement.batch_{action}", "achievement", ach_id,
                          ip_address=request.client.host if request.client else None)
 

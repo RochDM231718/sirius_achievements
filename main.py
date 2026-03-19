@@ -49,11 +49,53 @@ setup_logging(
 logger = structlog.get_logger()
 
 
+async def _auto_close_expired_tickets():
+    """Close support tickets older than 15 days that are still open/in_progress."""
+    import asyncio
+    from sqlalchemy import update, and_
+    from datetime import datetime, timedelta, timezone
+    from app.models.support_ticket import SupportTicket, SupportTicketStatus
+    from app.models.notification import Notification
+
+    while True:
+        try:
+            async with async_session_maker() as db:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=15)
+                stmt = (
+                    update(SupportTicket)
+                    .where(and_(
+                        SupportTicket.status.in_([SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS]),
+                        SupportTicket.created_at < cutoff
+                    ))
+                    .values(status=SupportTicketStatus.CLOSED)
+                    .returning(SupportTicket.id, SupportTicket.user_id, SupportTicket.subject)
+                )
+                result = await db.execute(stmt)
+                closed = result.all()
+                for ticket_id, user_id, subject in closed:
+                    db.add(Notification(
+                        user_id=user_id,
+                        title="Обращение закрыто автоматически",
+                        message=f"Обращение \"{subject}\" закрыто по истечении 15 дней.",
+                        link=f"/sirius.achievements/support/{ticket_id}",
+                        is_read=False
+                    ))
+                if closed:
+                    await db.commit()
+                    logger.info("Auto-closed expired tickets", count=len(closed))
+        except Exception as e:
+            logger.error("Auto-close tickets error", error=str(e))
+        await asyncio.sleep(3600)  # Check every hour
+
+
 @asynccontextmanager
 async def lifespan(app):
+    import asyncio
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    task = asyncio.create_task(_auto_close_expired_tickets())
     yield
+    task.cancel()
     await engine.dispose()
     logger.info("Database engine disposed. Graceful shutdown complete.")
 

@@ -34,7 +34,8 @@ async def get_unread_count(request: Request, db: AsyncSession = Depends(get_db))
         "title": n.title,
         "message": n.message,
         "is_read": n.is_read,
-        "created_at": n.created_at.strftime("%H:%M %d.%m")  # Форматируем дату
+        "link": n.link,
+        "created_at": n.created_at.strftime("%H:%M %d.%m")
     } for n in items]
 
     return JSONResponse({"count": count, "notifications": data})

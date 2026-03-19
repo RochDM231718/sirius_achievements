@@ -118,12 +118,14 @@
                             <div class="px-4 py-2 bg-slate-50 border-b border-slate-100"><h3 class="text-xs font-semibold text-slate-500 uppercase">Уведомления</h3></div>
                             <div class="max-h-60 overflow-y-auto scrollbar-hide">
                                 <template x-for="item in items" :key="item.id">
-                                    <div class="px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                                    <a :href="item.link || '#'" class="block px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                                       :class="item.link ? 'cursor-pointer' : 'cursor-default'">
                                         <div class="flex justify-between items-start">
                                             <p class="text-sm font-medium text-slate-800" x-text="item.title"></p>
+                                            <span class="text-[10px] text-slate-400 shrink-0 ml-2" x-text="item.created_at"></span>
                                         </div>
                                         <p class="text-xs text-slate-500 mt-1" x-text="item.message"></p>
-                                    </div>
+                                    </a>
                                 </template>
                                 <div x-show="items.length === 0" class="px-4 py-6 text-center text-sm text-slate-400">Нет новых</div>
                             </div>
