@@ -1,10 +1,12 @@
 import os
+
 import structlog
 from fastapi import UploadFile
-from app.services.admin.base_crud_service import BaseCrudService
-from app.repositories.admin.achievement_repository import AchievementRepository
+
 from app.config import settings
-from app.utils.file_validator import FileValidator, DOC_SIGNATURES
+from app.repositories.admin.achievement_repository import AchievementRepository
+from app.services.admin.base_crud_service import BaseCrudService
+from app.utils.file_validator import DOC_SIGNATURES, FileValidator
 
 logger = structlog.get_logger()
 
@@ -24,15 +26,30 @@ class AchievementService(BaseCrudService):
     async def save_file(self, file: UploadFile) -> str:
         return await self._file_validator.validate_and_save(file)
 
-    async def delete(self, id: int, user_id: int, user_role: str):
+    async def delete(
+        self,
+        id: int,
+        user_id: int,
+        user_role: str,
+        actor_education_level: str | None = None,
+        target_education_level: str | None = None,
+    ):
         item = await self.repo.find(id)
         if not item:
             return
 
         is_owner = item.user_id == user_id
-        is_staff = str(user_role) in ['moderator', 'super_admin', 'MODERATOR', 'SUPER_ADMIN']
+        role_value = getattr(user_role, "value", user_role)
+        role_value = str(role_value)
+        is_super_admin = role_value in ["super_admin", "SUPER_ADMIN"]
+        is_moderator = role_value in ["moderator", "MODERATOR"]
+        is_same_zone = (
+            actor_education_level is not None
+            and target_education_level is not None
+            and str(actor_education_level) == str(target_education_level)
+        )
 
-        if not is_owner and not is_staff:
+        if not is_owner and not is_super_admin and not (is_moderator and is_same_zone):
             raise ValueError("У вас нет прав на удаление этого файла")
 
         if item.file_path:

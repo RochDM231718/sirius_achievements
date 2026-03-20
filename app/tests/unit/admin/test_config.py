@@ -1,3 +1,8 @@
+import sys
+import types
+
+sys.modules.setdefault("dotenv", types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: None))
+
 from app.config import Settings
 
 
@@ -12,6 +17,8 @@ def test_default_settings():
     assert s.SUPPORT_ITEMS_PER_PAGE == 20
     assert s.POINTS_SCHOOL == 10
     assert s.POINTS_INTERNATIONAL == 100
+    assert s.RESUME_EXTERNAL_AI_ENABLED is False
+    assert s.RESUME_OCR_MODEL_DOWNLOAD_ENABLED is False
 
 
 def test_upload_dirs():

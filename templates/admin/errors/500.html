@@ -19,7 +19,7 @@
         {% endif %}
 
         <div class="flex flex-col sm:flex-row gap-3 w-full">
-            <button onclick="window.location.reload();" class="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+            <button type="button" data-reload-page class="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
                 Обновить
             </button>
             <a href="/sirius.achievements/dashboard" class="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors">
@@ -28,4 +28,9 @@
         </div>
     </div>
 </div>
+<script nonce="{{ request.state.csp_nonce }}">
+    document.querySelectorAll('[data-reload-page]').forEach((button) => {
+        button.addEventListener('click', () => window.location.reload());
+    });
+</script>
 {% endblock %}

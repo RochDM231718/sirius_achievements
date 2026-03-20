@@ -9,9 +9,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='icon.png') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='icon.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='icon.png') }}">
-    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+    <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script nonce="{{ request.state.csp_nonce }}" defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" crossorigin="anonymous"></script>
+    <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 
     <style>
         [x-cloak] { display: none !important; }
@@ -81,10 +81,19 @@
                         </div>
                         <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
-                    <div x-show="open" class="pl-10 pr-2 space-y-1 mt-1" x-collapse x-cloak>
+                    <div x-show="open"
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0 -translate-y-1"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-1"
+                         class="pl-10 pr-2 space-y-1 mt-1"
+                         x-cloak>
                         <a href="/sirius.achievements/moderation/users" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/users' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые пользователи</a>
                         <a href="/sirius.achievements/moderation/achievements" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/achievements' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые документы</a>
-                        <a href="/sirius.achievements/moderation/support" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/support' in request.url.path and '/all' not in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые обращения</a>
+                        <a href="/sirius.achievements/moderation/support" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/support' in request.url.path and '/all' not in request.url.path and '/chats' not in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые обращения</a>
+                        <a href="/sirius.achievements/moderation/support/chats" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/support/chats' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Мои чаты</a>
                     </div>
                 </div>
                 {% endif %}
@@ -98,16 +107,8 @@
                 <div class="hidden md:block flex-1"></div>
 
                 <div class="flex items-center space-x-3">
-                    <div class="relative" x-data="{ open: false, count: 0, items: [] }"
-                         x-init="fetch('/sirius.achievements/api/notifications/unread-count').then(r=>r.json()).then(d=>{count=d.count; items=d.notifications})">
-                        <button @click="open = !open; if(open && count>0){
-                                    fetch('/sirius.achievements/api/notifications/mark-read', {
-                                        method:'POST',
-                                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                                        body: 'csrf_token={{ request.session.csrf_token }}'
-                                    });
-                                    count=0;
-                                }"
+                    <div class="relative" x-data="notificationCenter()" x-init="init()">
+                        <button @click="toggle()"
                                 class="relative p-2 text-slate-400 hover:text-indigo-600 focus:outline-none transition-colors">
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                             <span x-show="count > 0" x-text="count" class="absolute top-1.5 right-1.5 h-3 w-3 bg-indigo-600 rounded-full text-[8px] text-white flex items-center justify-center font-bold"></span>
@@ -118,14 +119,20 @@
                             <div class="px-4 py-2 bg-slate-50 border-b border-slate-100"><h3 class="text-xs font-semibold text-slate-500 uppercase">Уведомления</h3></div>
                             <div class="max-h-60 overflow-y-auto scrollbar-hide">
                                 <template x-for="item in items" :key="item.id">
-                                    <a :href="item.link || '#'" class="block px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                                       :class="item.link ? 'cursor-pointer' : 'cursor-default'">
-                                        <div class="flex justify-between items-start">
-                                            <p class="text-sm font-medium text-slate-800" x-text="item.title"></p>
-                                            <span class="text-[10px] text-slate-400 shrink-0 ml-2" x-text="item.created_at"></span>
+                                    <div class="block px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                                        <div class="flex justify-between items-start gap-3">
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-sm font-medium text-slate-800" x-text="item.title"></p>
+                                                <p class="text-xs text-slate-500 mt-1" x-text="item.message"></p>
+                                            </div>
+                                            <span class="text-[10px] text-slate-400 shrink-0" x-text="item.created_at"></span>
                                         </div>
-                                        <p class="text-xs text-slate-500 mt-1" x-text="item.message"></p>
-                                    </a>
+                                        <div class="mt-3 flex justify-end" x-show="item.link">
+                                            <a :href="item.link" class="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                                                Перейти
+                                            </a>
+                                        </div>
+                                    </div>
                                 </template>
                                 <div x-show="items.length === 0" class="px-4 py-6 text-center text-sm text-slate-400">Нет новых</div>
                             </div>
@@ -149,7 +156,10 @@
                                 <span class="block text-sm font-medium text-slate-700 truncate">{{ request.session.get('auth_name', 'User') }}</span>
                             </div>
                             <a href="/sirius.achievements/profile" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Профиль</a>
-                            <a href="{{ url_for('admin.auth.logout') }}" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">Выйти</a>
+                            <form action="{{ url_for('admin.auth.logout') }}" method="POST" class="block">
+                                <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                                <button type="submit" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Выйти</button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -227,6 +237,7 @@
                         <a href="/sirius.achievements/moderation/users" class="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">Входящие: Пользователи</a>
                         <a href="/sirius.achievements/moderation/achievements" class="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">Входящие: Новые документы</a>
                         <a href="/sirius.achievements/moderation/support" class="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">Входящие: Новые обращения</a>
+                        <a href="/sirius.achievements/moderation/support/chats" class="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">Мои чаты</a>
                         <a href="/sirius.achievements/moderation/support/all" class="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">Все обращения</a>
                     {% endif %}
 
@@ -284,29 +295,72 @@
 
     </div>
 
-    <script>
+    <script nonce="{{ request.state.csp_nonce }}">
     (function() {
-        if (!document.cookie.includes('session')) return;
-        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        let ws;
-        function connect() {
-            ws = new WebSocket(proto + '://' + location.host + '/ws/notifications');
-            ws.onmessage = function(e) {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.type === 'notification') {
-                        const badge = document.getElementById('notif-badge');
-                        if (badge) {
-                            const cur = parseInt(badge.textContent) || 0;
-                            badge.textContent = cur + 1;
-                            badge.classList.remove('hidden');
-                        }
+        window.notificationCenter = function() {
+            return {
+                open: false,
+                count: 0,
+                items: [],
+                ws: null,
+                init() {
+                    fetch('/sirius.achievements/api/notifications/unread-count')
+                        .then(r => r.json())
+                        .then(d => {
+                            this.count = d.count || 0;
+                            this.items = Array.isArray(d.notifications) ? d.notifications : [];
+                        })
+                        .catch(() => {});
+                    this.connect();
+                },
+                toggle() {
+                    this.open = !this.open;
+                    if (this.open) {
+                        this.markRead();
                     }
-                } catch(err) {}
+                },
+                markRead() {
+                    if (!this.count) return;
+                    fetch('/sirius.achievements/api/notifications/mark-read', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'csrf_token={{ request.session.csrf_token }}'
+                    }).catch(() => {});
+                    this.count = 0;
+                },
+                connect() {
+                    if (!document.cookie.includes('session')) return;
+                    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+                    this.ws = new WebSocket(proto + '://' + location.host + '/ws/notifications');
+                    this.ws.onmessage = (e) => {
+                        try {
+                            const data = JSON.parse(e.data);
+                            if (data.type === 'support_queue_updated') {
+                                window.dispatchEvent(new CustomEvent('support-queue-updated', {
+                                    detail: data.payload || {}
+                                }));
+                                return;
+                            }
+                            if (data.type !== 'notification') return;
+                            const item = data.notification || data.item || data.data || null;
+                            this.count += 1;
+                            if (item) {
+                                this.items = [item, ...this.items];
+                            } else {
+                                fetch('/sirius.achievements/api/notifications/unread-count')
+                                    .then(r => r.json())
+                                    .then(d => {
+                                        this.count = d.count || this.count;
+                                        this.items = Array.isArray(d.notifications) ? d.notifications : this.items;
+                                    })
+                                    .catch(() => {});
+                            }
+                        } catch(err) {}
+                    };
+                    this.ws.onclose = () => { setTimeout(() => this.connect(), 5000); };
+                }
             };
-            ws.onclose = function() { setTimeout(connect, 5000); };
-        }
-        connect();
+        };
     })();
     </script>
 </body>

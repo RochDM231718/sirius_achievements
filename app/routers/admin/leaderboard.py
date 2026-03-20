@@ -7,13 +7,48 @@ import csv
 import io
 
 from app.security.csrf import validate_csrf
-from app.routers.admin.admin import guard_router, templates, get_db
+from app.routers.admin.admin import templates, get_db
 from app.models.user import Users
 from app.models.achievement import Achievement
 from app.models.season_result import SeasonResult
 from app.models.enums import UserRole, UserStatus, AchievementStatus, EducationLevel
+from app.routers.admin.deps import require_auth
 
-router = guard_router
+router = APIRouter(
+    prefix="/sirius.achievements",
+    tags=["admin.leaderboard"],
+    dependencies=[Depends(require_auth)],
+)
+
+
+def _scoped_education_level(user: Users, requested_level: str | None):
+    if not user.is_staff:
+        return user.education_level_value or 'all'
+
+    if user.role == UserRole.MODERATOR and user.education_level:
+        return user.education_level_value
+
+    return requested_level or 'all'
+
+
+def _scoped_course(user: Users, requested_course: int | None):
+    if not user.is_staff:
+        return user.course if user.course else 0
+    if requested_course is None:
+        return 0
+    return requested_course
+
+
+def _apply_student_scope(stmt, user: Users, education_level: str | None, course: int | None):
+    if user.role == UserRole.MODERATOR and user.education_level:
+        stmt = stmt.filter(Users.education_level == user.education_level)
+    elif education_level and education_level != 'all':
+        stmt = stmt.filter(Users.education_level == education_level)
+
+    if course and course != 0:
+        stmt = stmt.filter(Users.course == course)
+
+    return stmt
 
 
 @router.get('/leaderboard', response_class=HTMLResponse, name='admin.leaderboard.index')
@@ -26,14 +61,8 @@ async def index(
     user_id = request.session.get('auth_id')
     user = await db.get(Users, user_id)
 
-    if not user.is_staff:
-        education_level = user.education_level_value or 'all'
-        course = user.course if user.course else 0
-    else:
-        if not education_level:
-            education_level = 'all'
-        if course is None:
-            course = 0
+    education_level = _scoped_education_level(user, education_level)
+    course = _scoped_course(user, course)
 
     stmt = (
         select(
@@ -45,10 +74,7 @@ async def index(
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
     )
 
-    if education_level != 'all':
-        stmt = stmt.filter(Users.education_level == education_level)
-    if course != 0:
-        stmt = stmt.filter(Users.course == course)
+    stmt = _apply_student_scope(stmt, user, education_level, course)
 
     stmt = stmt.group_by(Users.id).order_by(desc("total_points"), desc("achievements_count"))
 
@@ -91,8 +117,7 @@ async def export_leaderboard(request: Request, db: AsyncSession = Depends(get_db
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
     )
 
-    if user.role == UserRole.MODERATOR and user.education_level:
-        stmt = stmt.filter(Users.education_level == user.education_level_value)
+    stmt = _apply_student_scope(stmt, user, None, None)
 
     stmt = stmt.group_by(Users.id).order_by(desc("total_points"))
 
@@ -189,13 +214,10 @@ async def export_moderation_report(
     if cutoff:
         stmt = stmt.filter(Achievement.created_at >= cutoff)
 
-    if education_level and education_level != 'all':
-        stmt = stmt.join(Users, Achievement.user_id == Users.id).filter(Users.education_level == education_level)
-    if course and course != 0:
-        if education_level and education_level != 'all':
-            stmt = stmt.filter(Users.course == course)
-        else:
-            stmt = stmt.join(Users, Achievement.user_id == Users.id).filter(Users.course == course)
+    needs_join = user.role == UserRole.MODERATOR or (education_level and education_level != 'all') or (course and course != 0)
+    if needs_join:
+        stmt = stmt.join(Users, Achievement.user_id == Users.id)
+        stmt = _apply_student_scope(stmt, user, education_level, course)
 
     result = await db.execute(stmt)
     docs = result.scalars().unique().all()
@@ -246,12 +268,10 @@ async def export_categories_report(
     if cutoff:
         stmt = stmt.filter(Achievement.created_at >= cutoff)
 
-    if education_level and education_level != 'all':
-        stmt = stmt.join(Users, Achievement.user_id == Users.id).filter(Users.education_level == education_level)
-    if course and course != 0:
-        if not (education_level and education_level != 'all'):
-            stmt = stmt.join(Users, Achievement.user_id == Users.id)
-        stmt = stmt.filter(Users.course == course)
+    needs_join = user.role == UserRole.MODERATOR or (education_level and education_level != 'all') or (course and course != 0)
+    if needs_join:
+        stmt = stmt.join(Users, Achievement.user_id == Users.id)
+        stmt = _apply_student_scope(stmt, user, education_level, course)
 
     stmt = stmt.group_by(Achievement.category, Achievement.level).order_by(Achievement.category, Achievement.level)
 
@@ -302,10 +322,7 @@ async def export_leaderboard_report(
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
     )
 
-    if education_level and education_level != 'all':
-        stmt = stmt.filter(Users.education_level == education_level)
-    if course and course != 0:
-        stmt = stmt.filter(Users.course == course)
+    stmt = _apply_student_scope(stmt, user, education_level, course)
 
     stmt = stmt.group_by(Users.id).order_by(desc("total_points"))
 

@@ -1,5 +1,71 @@
+import sys
+import types
 import pytest
 from unittest.mock import MagicMock, AsyncMock
+
+if "app.repositories.admin.page_repository" not in sys.modules:
+    page_repo_module = types.ModuleType("app.repositories.admin.page_repository")
+    page_repo_module.PageRepository = object
+    sys.modules["app.repositories.admin.page_repository"] = page_repo_module
+
+if "app.services.admin.base_crud_service" not in sys.modules:
+    base_service_module = types.ModuleType("app.services.admin.base_crud_service")
+
+    class BaseCrudService:
+        def __class_getitem__(cls, item):
+            return cls
+
+        def __init__(self, repository):
+            self.repository = repository
+
+        async def find(self, item_id):
+            return await self.repository.find(item_id)
+
+        async def get(self, filters=None):
+            return await self.repository.get(filters)
+
+        async def update(self, item_id, obj_in):
+            return await self.repository.update(item_id, obj_in)
+
+        async def delete(self, item_id):
+            return await self.repository.delete(item_id)
+
+    base_service_module.BaseCrudService = BaseCrudService
+    base_service_module.CreateSchemaType = object
+    base_service_module.ModelType = object
+    sys.modules["app.services.admin.base_crud_service"] = base_service_module
+
+if "app.models.page" not in sys.modules:
+    page_model_module = types.ModuleType("app.models.page")
+
+    class Page:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    page_model_module.Page = Page
+    sys.modules["app.models.page"] = page_model_module
+
+if "app.schemas.admin.pages" not in sys.modules:
+    page_schema_module = types.ModuleType("app.schemas.admin.pages")
+
+    class PageCreate:
+        def __init__(self, title, content, slug=None):
+            self.title = title
+            self.content = content
+            self.slug = slug
+
+    class PageUpdate(PageCreate):
+        pass
+
+    page_schema_module.PageCreate = PageCreate
+    page_schema_module.PageUpdate = PageUpdate
+    sys.modules["app.schemas.admin.pages"] = page_schema_module
+
+if "slugify" not in sys.modules:
+    slugify_module = types.ModuleType("slugify")
+    slugify_module.slugify = lambda value: value.strip().lower().replace(" ", "-")
+    sys.modules["slugify"] = slugify_module
+
 from app.services.admin.page_service import PageService
 from app.schemas.admin.pages import PageCreate, PageUpdate
 from app.models.page import Page

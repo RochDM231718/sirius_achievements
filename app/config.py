@@ -4,10 +4,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    return str(os.getenv(name, str(default))).strip().lower() in {"true", "1", "yes", "on"}
+
+
 class Settings:
     # ── Environment ──
     ENV: str = os.getenv("ENV", "development")
-    DEBUG: bool = str(os.getenv("DEBUG", "False")).lower() in ("true", "1", "yes")
+    DEBUG: bool = _env_bool("DEBUG", False)
 
     # ── Database ──
     DB_HOST: str = os.getenv("DB_HOST", "localhost")
@@ -54,6 +58,11 @@ class Settings:
     # ── Pagination ──
     ITEMS_PER_PAGE: int = int(os.getenv("ITEMS_PER_PAGE", "10"))
     SUPPORT_ITEMS_PER_PAGE: int = int(os.getenv("SUPPORT_ITEMS_PER_PAGE", "20"))
+    SUPPORT_SESSION_DEFAULT_DAYS: int = int(os.getenv("SUPPORT_SESSION_DEFAULT_DAYS", "30"))
+    SUPPORT_SESSION_DAY_DAYS: int = int(os.getenv("SUPPORT_SESSION_DAY_DAYS", "1"))
+    SUPPORT_SESSION_WEEK_DAYS: int = int(os.getenv("SUPPORT_SESSION_WEEK_DAYS", "7"))
+    SUPPORT_SESSION_MONTH_DAYS: int = int(os.getenv("SUPPORT_SESSION_MONTH_DAYS", "30"))
+    SUPPORT_ARCHIVE_AFTER_DAYS: int = int(os.getenv("SUPPORT_ARCHIVE_AFTER_DAYS", "90"))
 
     # ── Points per achievement level ──
     POINTS_SCHOOL: int = int(os.getenv("POINTS_SCHOOL", "10"))
@@ -72,6 +81,8 @@ class Settings:
     # ── Yandex GPT ──
     YANDEX_API_KEY: str = os.getenv("YANDEX_API_KEY", "")
     YANDEX_FOLDER_ID: str = os.getenv("YANDEX_FOLDER_ID", "")
+    RESUME_EXTERNAL_AI_ENABLED: bool = _env_bool("RESUME_EXTERNAL_AI_ENABLED", False)
+    RESUME_OCR_MODEL_DOWNLOAD_ENABLED: bool = _env_bool("RESUME_OCR_MODEL_DOWNLOAD_ENABLED", False)
 
 
 settings = Settings()

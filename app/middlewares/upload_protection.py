@@ -4,10 +4,10 @@ from fastapi import Request
 
 
 class UploadProtectionMiddleware(BaseHTTPMiddleware):
-    """Block direct access to /static/uploads/ without authentication.
+    """Block direct access to private uploads.
 
-    Achievement files and support attachments contain sensitive user data
-    and must only be served to authenticated users.
+    Achievement files and support attachments are only available through
+    authorized preview/download endpoints.
     """
 
     PROTECTED_PATHS = [
@@ -19,12 +19,6 @@ class UploadProtectionMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if any(path.startswith(p) for p in self.PROTECTED_PATHS):
-            try:
-                auth_id = request.session.get("auth_id")
-            except Exception:
-                auth_id = None
-
-            if not auth_id:
-                return Response(status_code=403, content="Forbidden")
+            return Response(status_code=403, content="Forbidden")
 
         return await call_next(request)

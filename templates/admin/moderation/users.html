@@ -67,7 +67,7 @@
                                         Принять
                                     </button>
                                 </form>
-                                <form action="/sirius.achievements/moderation/users/{{ user.id }}/reject" method="POST" onsubmit="return confirm('Отклонить пользователя? Это действие необратимо.');">
+                                <form action="/sirius.achievements/moderation/users/{{ user.id }}/reject" method="POST" data-confirm-reject>
                                     <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
                                     <button type="submit" class="inline-flex text-red-700 bg-red-50 border border-red-100 hover:bg-red-100 px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors shadow-sm">
                                         Отклонить
@@ -89,5 +89,14 @@
         </div>
         {% endif %}
     </div>
+    <script nonce="{{ request.state.csp_nonce }}">
+        document.querySelectorAll('[data-confirm-reject]').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                if (!confirm('Отклонить пользователя? Это действие необратимо.')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
 </div>
 {% endblock %}

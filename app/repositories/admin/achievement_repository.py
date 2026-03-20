@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.repositories.admin.base_crud_repository import BaseCrudRepository
 from app.models.achievement import Achievement
+from app.models.user import Users
 from app.utils.search import escape_like
 
 
@@ -15,10 +16,17 @@ class AchievementRepository(BaseCrudRepository):
             status: str = "",
             category: str = "",
             level: str = "",
-            sort_by: str = "newest"
+            sort_by: str = "newest",
+            owner_education_level=None,
+            owner_id: int | None = None,
     ):
-
         stmt = select(self.model).options(selectinload(self.model.user))
+        if owner_education_level is not None or owner_id is not None:
+            stmt = stmt.join(Users, self.model.user_id == Users.id)
+            if owner_education_level is not None:
+                stmt = stmt.filter(Users.education_level == owner_education_level)
+            if owner_id is not None:
+                stmt = stmt.filter(Users.id == owner_id)
 
         if search:
             stmt = stmt.filter(self.model.title.ilike(f"%{escape_like(search)}%"))
