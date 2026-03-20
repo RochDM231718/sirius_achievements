@@ -98,6 +98,10 @@ async def _apply_schema_updates():
             await conn.execute(text(
                 "ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20)"
             ))
+            # Normalize existing data to lowercase
+            await conn.execute(text(
+                "UPDATE support_tickets SET status = LOWER(status)"
+            ))
             await conn.execute(text("DROP TYPE IF EXISTS supportticketstatus"))
             await conn.execute(text(
                 "CREATE TYPE supportticketstatus AS ENUM ('open', 'in_progress', 'closed')"
