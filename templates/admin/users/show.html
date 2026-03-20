@@ -30,10 +30,11 @@
     </div>
 
     {% set is_guest_or_pending = target_user.role.value in ['GUEST', 'guest'] or target_user.status.value in ['PENDING', 'pending'] %}
+    {% set is_admin_viewer = user.role.value in ['super_admin', 'SUPER_ADMIN', 'moderator', 'MODERATOR'] %}
 
-    <div class="grid grid-cols-1 {% if not is_guest_or_pending %}lg:grid-cols-3{% endif %} gap-6">
+    <div class="grid grid-cols-1 {% if not is_guest_or_pending or is_admin_viewer %}lg:grid-cols-3{% endif %} gap-6">
 
-        <div class="space-y-6 {% if is_guest_or_pending %}max-w-xl mx-auto w-full{% endif %}">
+        <div class="space-y-6 {% if is_guest_or_pending and not is_admin_viewer %}max-w-xl mx-auto w-full{% endif %}">
             <div class="bg-white rounded-xl border border-slate-200 p-6 text-center flex flex-col items-center shadow-sm">
                  <div class="h-28 w-28 mb-4 relative">
                     {% if target_user.avatar_path %}
@@ -112,9 +113,10 @@
             </div>
         </div>
 
-        {% if not is_guest_or_pending %}
+        {% if not is_guest_or_pending or is_admin_viewer %}
         <div class="lg:col-span-2 space-y-6">
 
+            {% if not is_guest_or_pending %}
             <div class="grid grid-cols-2 gap-4">
                 <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                     <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Документов в текущем сезоне</div>
@@ -135,31 +137,10 @@
                 </div>
                 {% endif %}
             </div>
+            {% endif %}
 
             <div class="bg-indigo-50/60 p-5 sm:p-6 rounded-xl border border-indigo-100 shadow-sm"
-                 x-data="{
-                    loading: false,
-                    resumeText: {{ (target_user.resume_text or '') | tojson }},
-                    async generateResume() {
-                        this.loading = true;
-                        try {
-                            const res = await fetch('/sirius.achievements/users/{{ target_user.id }}/generate-resume', {
-                                method: 'POST',
-                                headers: { 'X-CSRF-Token': '{{ request.session.csrf_token }}' }
-                            });
-                            const data = await res.json();
-                            if(data.resume) {
-                                this.resumeText = data.resume;
-                                showToast('Сводка успешно сгенерирована', 'success');
-                            } else {
-                                showToast('Не удалось сгенерировать сводку', 'error');
-                            }
-                        } catch(e) {
-                            showToast('Ошибка сети при генерации', 'error');
-                        }
-                        this.loading = false;
-                    }
-                 }">
+                 x-data="resumeBlock()" x-init="init()">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                     <div>
                         <h3 class="text-base font-bold text-indigo-900 flex items-center gap-2">
@@ -168,12 +149,14 @@
                         </h3>
                         <p class="text-xs text-indigo-700/70 mt-1">Быстрый анализ всех подтвержденных достижений для удобства проверяющего.</p>
                     </div>
-                    <button @click="generateResume()" :disabled="loading" class="shrink-0 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
-                        <svg x-show="loading" class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" x-cloak>
+                    <button type="button" @click="generateResume()" :disabled="loading" class="shrink-0 px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">
+                        <svg x-show="loading" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" x-cloak>
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                         </svg>
-                        <span x-text="resumeText ? 'Обновить сводку' : 'Сгенерировать сводку'"></span>
+                        <svg x-show="!loading" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span x-show="!resumeText">Сгенерировать сводку</span>
+                        <span x-show="resumeText">Обновить сводку</span>
                     </button>
                 </div>
 
@@ -326,6 +309,35 @@
             document.body.appendChild(toast);
             setTimeout(() => { toast.classList.remove('translate-x-full', 'opacity-0'); }, 10);
             setTimeout(() => { toast.classList.add('opacity-0', 'translate-x-full'); setTimeout(() => toast.remove(), 500); }, 3500);
+        }
+
+        function resumeBlock() {
+            return {
+                loading: false,
+                resumeText: '',
+                init() {
+                    this.resumeText = {{ (target_user.resume_text or '') | tojson }};
+                },
+                async generateResume() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch('/sirius.achievements/users/{{ target_user.id }}/generate-resume', {
+                            method: 'POST',
+                            headers: { 'X-CSRF-Token': '{{ request.session.csrf_token }}' }
+                        });
+                        const data = await res.json();
+                        if (data.resume) {
+                            this.resumeText = data.resume;
+                            showToast('Сводка успешно сгенерирована', 'success');
+                        } else {
+                            showToast(data.error || 'Не удалось сгенерировать сводку', 'error');
+                        }
+                    } catch(e) {
+                        showToast('Ошибка сети при генерации', 'error');
+                    }
+                    this.loading = false;
+                }
+            };
         }
     </script>
 </div>

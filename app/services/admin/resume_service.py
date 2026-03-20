@@ -1,11 +1,12 @@
 import os
+import logging
 import httpx
 import asyncio
 import easyocr
-import fitz  # PyMuPDF для работы с PDF
-import structlog
+import fitz  # PyMuPDF
 from pathlib import Path
 from datetime import datetime, timezone
+from collections import Counter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func
 
@@ -14,7 +15,9 @@ from app.models.user import Users
 from app.models.enums import AchievementStatus
 from app.config import settings
 
-logger = structlog.get_logger()
+# Используем стандартный logging вместо structlog — structlog ломается
+# при логировании из фоновых потоков (run_in_executor)
+log = logging.getLogger("resume_service")
 
 _ocr_reader = None
 
@@ -32,16 +35,57 @@ def get_ocr_reader():
                 download_enabled=download_enabled,
                 verbose=False
             )
+            log.info("EasyOCR initialized, model_dir=%s", model_dir)
         except Exception as e:
-            logger.warning("EasyOCR init failed, retrying offline", error=str(e), download_enabled=download_enabled)
-            _ocr_reader = easyocr.Reader(
-                ['ru', 'en'],
-                gpu=False,
-                model_storage_directory=model_dir,
-                download_enabled=False,
-                verbose=False
-            )
+            log.warning("EasyOCR init failed (%s), retrying offline", e)
+            try:
+                _ocr_reader = easyocr.Reader(
+                    ['ru', 'en'],
+                    gpu=False,
+                    model_storage_directory=model_dir,
+                    download_enabled=False,
+                    verbose=False
+                )
+                log.info("EasyOCR initialized (offline mode)")
+            except Exception as e2:
+                log.error("EasyOCR init completely failed: %s", e2)
+                _ocr_reader = None
+                raise
     return _ocr_reader
+
+
+def extract_text_from_pdf(filepath: str) -> str:
+    """Извлекает текст из PDF: сначала вшитый текст, затем OCR для сканов."""
+    text = ""
+    with fitz.open(filepath) as doc:
+        for page in doc:
+            page_text = page.get_text().strip()
+            if page_text:
+                text += page_text + "\n"
+            else:
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img_bytes = pix.tobytes("png")
+                reader = get_ocr_reader()
+                ocr_results = reader.readtext(img_bytes, detail=0, paragraph=True)
+                text += "\n".join(ocr_results) + "\n"
+    return text.strip()
+
+
+def extract_text_from_image(filepath: str) -> str:
+    """Извлекает текст из изображения с помощью EasyOCR."""
+    reader = get_ocr_reader()
+    ocr_results = reader.readtext(filepath, detail=0, paragraph=True)
+    return "\n".join(ocr_results)
+
+
+# Маппинг уровней для сортировки (от высшего к низшему)
+LEVEL_ORDER = {
+    "Международный": 5,
+    "Федеральный": 4,
+    "Региональный": 3,
+    "Муниципальный": 2,
+    "Школьный": 1,
+}
 
 
 class ResumeService:
@@ -54,7 +98,6 @@ class ResumeService:
         if not user:
             return {"allowed": False, "reason": "Пользователь не найден."}
 
-        # Считаем подтверждённые документы
         count_stmt = select(sql_func.count()).select_from(Achievement).filter(
             Achievement.user_id == user_id,
             Achievement.status == AchievementStatus.APPROVED
@@ -64,11 +107,9 @@ class ResumeService:
         if approved_count == 0:
             return {"allowed": False, "reason": "Нет подтверждённых достижений."}
 
-        # Если резюме ещё не генерировалось — можно
         if not user.resume_generated_at:
             return {"allowed": True, "reason": None}
 
-        # Есть ли новые подтверждённые документы после последней генерации?
         new_stmt = select(sql_func.count()).select_from(Achievement).filter(
             Achievement.user_id == user_id,
             Achievement.status == AchievementStatus.APPROVED,
@@ -89,7 +130,6 @@ class ResumeService:
         if user.resume_text and not force_regenerate:
             return {"success": True, "resume": user.resume_text}
 
-        # Проверка права на генерацию (bypass для админов)
         if not bypass_check:
             check = await self.can_generate(user_id)
             if not check["allowed"]:
@@ -98,80 +138,64 @@ class ResumeService:
         stmt = select(Achievement).filter(
             Achievement.user_id == user_id,
             Achievement.status == AchievementStatus.APPROVED
-        )
+        ).order_by(Achievement.created_at.desc())
         achievements = (await self.db.execute(stmt)).scalars().all()
 
         if not achievements:
-            return {"success": False, "error": "У пользователя пока нет подтвержденных достижений для генерации резюме."}
+            return {"success": False, "error": "Нет подтвержденных достижений для генерации."}
 
         student_name = f"{user.first_name} {user.last_name}"
-        combined_text = f"Студент: {student_name}\n\n"
+
+        # Собираем данные по каждому документу
+        docs_data = []
         loop = asyncio.get_running_loop()
 
         for ach in achievements:
+            doc_info = {
+                "title": ach.title or "Без названия",
+                "category": ach.category.value if hasattr(ach.category, 'value') else str(ach.category) if ach.category else "Другое",
+                "level": ach.level.value if hasattr(ach.level, 'value') else str(ach.level) if ach.level else "Не указан",
+                "description": ach.description or "",
+                "points": ach.points or 0,
+                "date": ach.created_at.strftime('%d.%m.%Y') if ach.created_at else "",
+                "ocr_text": "",
+            }
+
             if ach.file_path:
                 full_file_path = Path("static") / ach.file_path
                 ext = full_file_path.suffix.lower()
 
                 if full_file_path.is_file():
-                    # --- ОБРАБОТКА КАРТИНОК ---
                     if ext in ['.jpg', '.jpeg', '.png', '.webp']:
                         try:
-                            reader = get_ocr_reader()
-                            ocr_results = await loop.run_in_executor(
-                                None,
-                                lambda: reader.readtext(str(full_file_path), detail=0, paragraph=True)
+                            doc_info["ocr_text"] = await loop.run_in_executor(
+                                None, extract_text_from_image, str(full_file_path)
                             )
-                            extracted_text = "\n".join(ocr_results)
-                            text_from_ocr = f"Название: {ach.title}\nРаспознанный текст из грамоты:\n{extracted_text}"
                         except Exception as e:
-                            logger.error("Ошибка OCR для картинки", file_path=ach.file_path, error=str(e))
-                            text_from_ocr = f"Название: {ach.title}. Уровень: {ach.level.value if hasattr(ach.level, 'value') else ach.level}."
-
-                    # --- ОБРАБОТКА PDF ---
+                            log.error("OCR error for image %s: %s", ach.file_path, e)
                     elif ext == '.pdf':
                         try:
-                            def process_pdf(filepath):
-                                text = ""
-                                # Открываем PDF файл
-                                with fitz.open(filepath) as doc:
-                                    for page in doc:
-                                        # 1. Пробуем вытащить вшитый текст (электронный PDF)
-                                        page_text = page.get_text().strip()
-                                        if page_text:
-                                            text += page_text + "\n"
-                                        else:
-                                            # 2. Если текста нет, значит это скан. Рендерим страницу в PNG!
-                                            # matrix=fitz.Matrix(2, 2) увеличивает разрешение в 2 раза для лучшего распознавания
-                                            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                                            img_bytes = pix.tobytes("png")
-
-                                            # Передаем байты картинки в EasyOCR
-                                            reader = get_ocr_reader()
-                                            ocr_results = reader.readtext(img_bytes, detail=0, paragraph=True)
-                                            text += "\n".join(ocr_results) + "\n"
-                                return text
-
-                            # Запускаем чтение PDF в фоновом потоке
-                            extracted_text = await loop.run_in_executor(None, process_pdf, str(full_file_path))
-                            text_from_ocr = f"Название: {ach.title}\nТекст из PDF:\n{extracted_text}"
-
+                            doc_info["ocr_text"] = await loop.run_in_executor(
+                                None, extract_text_from_pdf, str(full_file_path)
+                            )
                         except Exception as e:
-                            logger.error("Ошибка чтения PDF", file_path=ach.file_path, error=str(e))
-                            text_from_ocr = f"Название: {ach.title}. Уровень: {ach.level.value if hasattr(ach.level, 'value') else ach.level}."
+                            log.error("OCR error for PDF %s: %s", ach.file_path, e)
 
-                    # Если формат неизвестный
-                    else:
-                        text_from_ocr = f"Название: {ach.title}. Уровень: {ach.level.value if hasattr(ach.level, 'value') else ach.level}."
-                else:
-                    text_from_ocr = f"Название: {ach.title} (файл не найден на сервере)."
-            else:
-                text_from_ocr = f"Название: {ach.title} (файл отсутствует)."
+            docs_data.append(doc_info)
 
-            combined_text += f"--- Документ ---\n{text_from_ocr}\n\n"
+        # Пробуем YandexGPT, если настроен
+        resume_result = None
+        api_key = settings.YANDEX_API_KEY or ""
+        folder_id = settings.YANDEX_FOLDER_ID or ""
+        is_placeholder = not api_key or api_key.startswith("ваш") or not folder_id or folder_id.startswith("ваш")
 
-        # Отправляем в ИИ
-        resume_result = await self._call_yandex_gpt(combined_text, student_name)
+        if settings.RESUME_EXTERNAL_AI_ENABLED and not is_placeholder:
+            combined_text = self._build_combined_text(student_name, docs_data)
+            resume_result = await self._call_yandex_gpt(combined_text, student_name)
+
+        # Если AI не сработал или не настроен — локальная генерация
+        if not resume_result:
+            resume_result = self._generate_local_resume(student_name, user, docs_data)
 
         user.resume_text = resume_result
         user.resume_generated_at = datetime.now(timezone.utc)
@@ -179,12 +203,25 @@ class ResumeService:
 
         return {"success": True, "resume": resume_result}
 
-    async def _call_yandex_gpt(self, combined_text: str, target_name: str) -> str:
-        api_key = settings.YANDEX_API_KEY or os.getenv("YANDEX_API_KEY")
-        folder_id = settings.YANDEX_FOLDER_ID or os.getenv("YANDEX_FOLDER_ID")
+    def _build_combined_text(self, student_name: str, docs_data: list) -> str:
+        """Собирает текст для отправки в AI."""
+        combined = f"Студент: {student_name}\n\n"
+        for doc in docs_data:
+            combined += f"--- Документ ---\n"
+            combined += f"Название: {doc['title']}\n"
+            combined += f"Категория: {doc['category']}\n"
+            combined += f"Уровень: {doc['level']}\n"
+            if doc['description']:
+                combined += f"Описание: {doc['description']}\n"
+            if doc['ocr_text']:
+                combined += f"Распознанный текст:\n{doc['ocr_text']}\n"
+            combined += "\n"
+        return combined
 
-        if not settings.RESUME_EXTERNAL_AI_ENABLED or not api_key or not folder_id:
-            return self._generate_local_resume(combined_text, target_name)
+    async def _call_yandex_gpt(self, combined_text: str, target_name: str) -> str | None:
+        """Вызывает YandexGPT API. Возвращает None при ошибке."""
+        api_key = settings.YANDEX_API_KEY
+        folder_id = settings.YANDEX_FOLDER_ID
 
         prompt = {
             "modelUri": f"gpt://{folder_id}/yandexgpt",
@@ -198,11 +235,11 @@ class ResumeService:
                     "role": "system",
                     "text": (
                         f"Ты — строгий HR-специалист. "
-                        f"Твоя задача — составить краткое профессиональное резюме ТОЛЬКО для одного человека. "
-                        f"Его зовут: {target_name}. "
-                        f"В предоставленном тексте могут быть случайные имена других людей — полностью игнорируй их. "
-                        f"Собери только те достижения и факты, которые относятся к {target_name}. "
-                        f"Напиши связный текст от третьего лица (3-4 предложения). Ни в коем случае не выводи исходный сырой текст."
+                        f"Составь краткое профессиональное резюме для {target_name}. "
+                        f"Игнорируй имена других людей в тексте документов. "
+                        f"Собери достижения, определи сильные стороны и направления. "
+                        f"Напиши связный текст от третьего лица (4-6 предложений). "
+                        f"Не выводи сырой текст документов."
                     )
                 },
                 {
@@ -219,45 +256,99 @@ class ResumeService:
             try:
                 response = await client.post(url, headers=headers, json=prompt, timeout=30.0)
                 response.raise_for_status()
-                return response.json()['result']['alternatives'][0]['message']['text']
+                result = response.json()['result']['alternatives'][0]['message']['text']
+                log.info("YandexGPT resume generated for %s", target_name)
+                return result
+            except httpx.HTTPStatusError as e:
+                log.error("YandexGPT API HTTP %s: %s", e.response.status_code, e.response.text[:200])
+                return None
             except Exception as e:
-                logger.error("Yandex GPT API error", error=str(e))
-                return self._generate_local_resume(combined_text, target_name)
+                log.error("YandexGPT API error: %s", e)
+                return None
 
-    def _generate_local_resume(self, combined_text: str, target_name: str) -> str:
-        """Generate a structured resume locally from OCR-extracted text without AI API."""
-        doc_count = combined_text.count('--- Документ ---')
+    def _generate_local_resume(self, student_name: str, user, docs_data: list) -> str:
+        """Генерирует структурированную сводку профиля на основе данных документов и OCR."""
+        total = len(docs_data)
+        total_points = sum(d.get("points", 0) for d in docs_data)
 
-        # Extract document titles and texts
-        documents = []
-        for block in combined_text.split('--- Документ ---'):
-            block = block.strip()
-            if not block or block.startswith('Студент:'):
-                continue
-            lines = block.split('\n')
-            title = ""
-            text_lines = []
-            for line in lines:
-                line = line.strip()
-                if line.startswith('Название:'):
-                    title = line.replace('Название:', '').strip()
-                elif line and not line.startswith('Распознанный текст') and not line.startswith('Текст из PDF'):
-                    text_lines.append(line)
-            documents.append({'title': title, 'text': ' '.join(text_lines)})
+        # Статистика по категориям и уровням
+        cat_counter = Counter(d["category"] for d in docs_data)
+        level_counter = Counter(d["level"] for d in docs_data)
+        best_level = max(docs_data, key=lambda d: LEVEL_ORDER.get(d["level"], 0))["level"]
 
-        # Build resume
-        parts = [f"{target_name}\n"]
-        parts.append(f"Подтвержденные достижения ({doc_count}):\n")
+        # Образование
+        edu_info = ""
+        if user and hasattr(user, 'education_level') and user.education_level:
+            edu_val = user.education_level.value if hasattr(user.education_level, 'value') else str(user.education_level)
+            course_str = f", {user.course} курс" if user.course else ""
+            edu_info = f"{edu_val}{course_str}"
 
-        for i, doc in enumerate(documents, 1):
-            if doc['title']:
-                parts.append(f"  {i}. {doc['title']}")
-                if doc['text'] and len(doc['text']) > 20:
-                    # Truncate long OCR text to a meaningful snippet
-                    snippet = doc['text'][:200].rsplit(' ', 1)[0] if len(doc['text']) > 200 else doc['text']
-                    parts.append(f"     {snippet}")
-            parts.append("")
+        parts = []
 
-        parts.append("Резюме составлено автоматически на основе распознанных документов.")
+        # Заголовок
+        parts.append(f"СВОДКА ПРОФИЛЯ: {student_name}")
+        parts.append("=" * 40)
 
-        return '\n'.join(parts)
+        # Общая информация
+        if edu_info:
+            parts.append(f"Обучение: {edu_info}")
+        parts.append(f"Подтвержденных достижений: {total}")
+        parts.append(f"Общий балл: {total_points}")
+        parts.append(f"Высший уровень: {best_level}")
+        parts.append("")
+
+        # Распределение по категориям
+        parts.append("ПО КАТЕГОРИЯМ:")
+        for cat, count in cat_counter.most_common():
+            parts.append(f"  - {cat}: {count} шт.")
+        parts.append("")
+
+        # Распределение по уровням
+        parts.append("ПО УРОВНЯМ:")
+        for level_name in sorted(level_counter.keys(), key=lambda x: LEVEL_ORDER.get(x, 0), reverse=True):
+            count = level_counter[level_name]
+            parts.append(f"  - {level_name}: {count}")
+        parts.append("")
+
+        # Список достижений с OCR-данными
+        parts.append("ДОСТИЖЕНИЯ:")
+        parts.append("-" * 40)
+
+        for i, doc in enumerate(docs_data, 1):
+            parts.append(f"\n{i}. {doc['title']}")
+            parts.append(f"   Категория: {doc['category']} | Уровень: {doc['level']}")
+            if doc.get("points"):
+                parts.append(f"   Баллы: +{doc['points']}")
+            if doc.get("date"):
+                parts.append(f"   Дата: {doc['date']}")
+            if doc.get("description"):
+                parts.append(f"   Описание: {doc['description']}")
+
+            # OCR-текст
+            ocr = doc.get("ocr_text", "").strip()
+            if ocr and len(ocr) > 10:
+                clean_lines = [line.strip() for line in ocr.split('\n') if line.strip() and len(line.strip()) > 3]
+                if clean_lines:
+                    snippet = " ".join(clean_lines)
+                    if len(snippet) > 300:
+                        snippet = snippet[:300].rsplit(' ', 1)[0] + "..."
+                    parts.append(f"   Из документа: {snippet}")
+
+        parts.append("")
+        parts.append("-" * 40)
+
+        # Краткий вывод
+        main_cats = [cat for cat, _ in cat_counter.most_common(2)]
+        cats_text = " и ".join(main_cats) if main_cats else "различных направлениях"
+
+        parts.append(
+            f"Итог: {student_name} имеет {total} подтвержденных достижений "
+            f"в области {cats_text.lower()}, "
+            f"с максимальным уровнем \"{best_level}\" "
+            f"и общим баллом {total_points}."
+        )
+
+        generated_at = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
+        parts.append(f"\nСводка сгенерирована: {generated_at}")
+
+        return "\n".join(parts)

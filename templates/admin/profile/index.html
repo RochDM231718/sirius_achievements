@@ -90,64 +90,39 @@
                 </div>
             </form>
 
-            <div class="mt-8 pt-6 border-t border-slate-100"
-                 x-data="{
-                    loading: false,
-                    canGenerate: {{ 'true' if can_generate is defined and can_generate else 'false' }},
-                    reason: '{{ generate_reason if generate_reason is defined else '' }}',
-                    resumeText: {{ (user.resume_text or '') | tojson }},
-                    async generateResume() {
-                        this.loading = true;
-                        try {
-                            const res = await fetch('/sirius.achievements/users/{{ user.id }}/generate-resume', {
-                                method: 'POST',
-                                headers: { 'X-CSRF-Token': '{{ request.session.csrf_token }}' }
-                            });
-                            const data = await res.json();
-                            if(data.error) {
-                                showToast(data.error, 'error');
-                            } else if(data.resume) {
-                                this.resumeText = data.resume;
-                                showToast('Резюме успешно обновлено', 'success');
-                            }
-                            if(data.can_generate !== undefined) {
-                                this.canGenerate = data.can_generate;
-                                this.reason = data.reason || '';
-                            }
-                        } catch(e) {
-                            showToast('Ошибка сети при генерации резюме', 'error');
-                        }
-                        this.loading = false;
-                    }
-                 }">
-                <div class="flex justify-between items-center mb-4">
-                    <div>
-                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                            <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            Умное Резюме (AI)
-                        </h3>
-                        <p class="text-xs text-slate-500 mt-1">Автоматически генерируется нейросетью на основе ваших подтвержденных достижений.</p>
+            <div class="mt-8 pt-6 border-t border-slate-100">
+                <div class="bg-indigo-50/60 p-5 rounded-xl border border-indigo-100 shadow-sm"
+                     x-data="resumeBlock()" x-init="init()">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                        <div>
+                            <h3 class="text-base font-bold text-indigo-900 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                AI-Сводка профиля
+                            </h3>
+                            <p class="text-xs text-indigo-700/70 mt-1">Автоматический анализ всех подтвержденных достижений нейросетью.</p>
+                        </div>
+                        <button type="button" @click="generateResume()" :disabled="loading || !canClick"
+                                class="shrink-0 px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">
+                            <svg x-show="loading" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" x-cloak>
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            </svg>
+                            <svg x-show="!loading" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span x-show="!resumeText">Сгенерировать сводку</span>
+                            <span x-show="resumeText">Обновить сводку</span>
+                        </button>
                     </div>
-                    <button @click="generateResume()" :disabled="loading || !canGenerate"
-                            :class="canGenerate ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed'"
-                            class="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-2 disabled:opacity-50">
-                        <svg x-show="loading" class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" x-cloak>
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                        </svg>
-                        <span x-text="resumeText ? 'Обновить' : 'Сгенерировать'"></span>
-                    </button>
-                </div>
 
-                <template x-if="!canGenerate && reason">
-                    <p class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3" x-text="reason"></p>
-                </template>
+                    <template x-if="!canClick && reason">
+                        <p class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3" x-text="reason"></p>
+                    </template>
 
-                <div x-show="resumeText" x-transition class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed" x-text="resumeText" x-cloak>
-                </div>
+                    <div x-show="resumeText" x-transition class="bg-white border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm" x-text="resumeText" x-cloak>
+                    </div>
 
-                <div x-show="!resumeText && !loading" class="text-center py-6 bg-slate-50 border border-slate-200 border-dashed rounded-lg text-slate-400 text-xs mt-2">
-                    Здесь появится ваше профессиональное резюме.<br>Нажмите кнопку выше, чтобы ИИ проанализировал ваши грамоты.
+                    <div x-show="!resumeText && !loading" class="text-center py-6 bg-white/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">
+                        Здесь появится ваше профессиональное резюме.<br>Нажмите кнопку выше, чтобы ИИ проанализировал ваши грамоты.
+                    </div>
                 </div>
             </div>
             </div>
@@ -300,5 +275,43 @@
     document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
         btn.addEventListener('click', () => togglePwd(btn));
     });
+
+    function resumeBlock() {
+        return {
+            loading: false,
+            isStaff: {{ 'true' if user.role.value in ['super_admin', 'SUPER_ADMIN', 'moderator', 'MODERATOR'] else 'false' }},
+            canGenerate: {{ 'true' if can_generate is defined and can_generate else 'false' }},
+            reason: '',
+            resumeText: '',
+            get canClick() { return this.isStaff || this.canGenerate; },
+            init() {
+                this.resumeText = {{ (user.resume_text or '') | tojson }};
+                this.reason = {{ (generate_reason or '') | tojson if generate_reason is defined else '""' }};
+            },
+            async generateResume() {
+                this.loading = true;
+                try {
+                    const res = await fetch('/sirius.achievements/users/{{ user.id }}/generate-resume', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': '{{ request.session.csrf_token }}' }
+                    });
+                    const data = await res.json();
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else if (data.resume) {
+                        this.resumeText = data.resume;
+                        showToast('Резюме успешно обновлено', 'success');
+                    }
+                    if (data.can_generate !== undefined) {
+                        this.canGenerate = data.can_generate;
+                        this.reason = data.reason || '';
+                    }
+                } catch(e) {
+                    showToast('Ошибка сети при генерации резюме', 'error');
+                }
+                this.loading = false;
+            }
+        };
+    }
 </script>
 {% endblock %}

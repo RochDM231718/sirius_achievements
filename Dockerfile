@@ -21,12 +21,16 @@ RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+ENV HOME=/home/appuser
+
+RUN addgroup --system appgroup \
+    && adduser --system --ingroup appgroup --home /home/appuser appuser \
     && mkdir -p /app/static/uploads/achievements \
                 /app/static/uploads/avatars \
                 /app/static/uploads/support \
                 /app/easyocr_models \
-    && chown -R appuser:appgroup /app \
+                /home/appuser/.EasyOCR \
+    && chown -R appuser:appgroup /app /home/appuser \
     && chmod +x /app/entrypoint.sh
 
 ENTRYPOINT ["/app/entrypoint.sh"]
