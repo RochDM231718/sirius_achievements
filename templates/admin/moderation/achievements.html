@@ -1,155 +1,136 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto space-y-6">
-    <div class="flex items-center justify-between">
+<div class="max-w-6xl mx-auto space-y-6">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h2 class="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Очередь модерации</h2>
-            <p class="text-xs md:text-sm text-slate-500 mt-0.5">Документы, ожидающие проверки</p>
+            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Новые документы</h2>
+            <p class="text-sm text-slate-500 mt-1">{{ total_pending }} документов ожидают проверки</p>
         </div>
-        {% if total_pending > 0 %}
-        <span class="bg-indigo-50 border border-indigo-100 text-indigo-700 py-1 px-2.5 rounded-md text-[10px] md:text-xs font-bold uppercase tracking-wider">
-            Осталось: {{ total_pending }}
-        </span>
-        {% endif %}
+        <div class="flex items-center gap-3">
+            <a href="/sirius.achievements/my-work/achievements" class="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
+                Мои документы
+            </a>
+            <a href="/sirius.achievements/pages" class="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
+                Все документы
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </a>
+        </div>
     </div>
 
-    <div class="space-y-3" x-data="{ selected: [], selectAll: false, toggleAll() { if (this.selectAll) { this.selected = [{% for item in achievements %}'{{ item.id }}'{% if not loop.last %},{% endif %}{% endfor %}]; } else { this.selected = []; } } }">
-        {% if achievements %}
-
-            <div class="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3" x-show="selected.length > 0" x-cloak>
-                <span class="text-xs font-medium text-slate-600">Выбрано: <span class="font-bold text-indigo-600" x-text="selected.length"></span></span>
-                <form action="/sirius.achievements/moderation/achievements/batch" method="POST" class="flex gap-2">
-                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
-                    <input type="hidden" name="ids" :value="selected.join(',')">
-                    <button type="submit" name="action" value="approved" class="bg-green-600 hover:bg-green-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition-colors">Одобрить все</button>
-                    <button type="submit" name="action" value="rejected" class="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition-colors">Отклонить все</button>
-                </form>
-                <label class="flex items-center gap-1.5 ml-auto cursor-pointer">
-                    <input type="checkbox" x-model="selectAll" @change="toggleAll()" class="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                    <span class="text-xs text-slate-500">Выбрать все</span>
-                </label>
-            </div>
-
-            {% for item in achievements %}
-            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden p-3 transition-colors hover:border-slate-300" x-data="{ rejectModalOpen: false }">
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <div class="flex items-start pt-1 pl-1">
-                        <input type="checkbox" value="{{ item.id }}" x-model="selected" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
-                    </div>
-
-                    <div class="flex gap-3 flex-1">
-                        <div class="w-20 h-24 sm:w-28 sm:h-28 shrink-0 bg-slate-50 rounded-lg overflow-hidden relative cursor-pointer border border-slate-100 flex flex-col items-center justify-center group"
-                             @click="$dispatch('open-preview', {src: '/sirius.achievements/documents/{{ item.id }}/preview', type: '{{ 'pdf' if item.file_path.endswith('.pdf') else 'image' }}'})"
-                             title="Нажмите для просмотра">
-                            {% if item.file_path and (item.file_path.endswith('.jpg') or item.file_path.endswith('.png') or item.file_path.endswith('.jpeg') or item.file_path.endswith('.webp')) %}
-                                <img src="/sirius.achievements/documents/{{ item.id }}/preview" class="w-full h-full object-cover">
-                                <div class="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/10 transition-colors flex items-center justify-center">
-                                    <svg class="w-5 h-5 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
-                                </div>
-                            {% elif item.file_path and item.file_path.endswith('.pdf') %}
-                                <svg class="w-6 h-6 text-slate-400 mb-1 group-hover:text-indigo-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                                <span class="text-[9px] font-bold text-slate-500 uppercase">PDF</span>
-                            {% else %}
-                                <span class="text-[9px] font-bold text-slate-400 uppercase">Нет файла</span>
-                            {% endif %}
-                        </div>
-
-                        <div class="flex-1 min-w-0 flex flex-col py-0.5">
-                            <h3 class="text-sm font-bold text-slate-800 leading-tight line-clamp-2 mb-1.5" title="{{ item.title }}">{{ item.title }}</h3>
-
-                            <div class="flex flex-wrap gap-1.5 mb-2">
-                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100/50">
-                                    {{ item.category | attr('value') | default(item.category, true) if item.category else 'Без категории' }}
-                                </span>
-                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200/50">
-                                    {{ item.level | attr('value') | default(item.level, true) if item.level else 'Без уровня' }}
-                                </span>
-                            </div>
-
-                            <div class="flex items-center gap-1.5 mb-1.5">
-                                <div class="h-4 w-4 rounded bg-slate-100 flex items-center justify-center text-[8px] font-bold text-slate-600 shrink-0">
-                                    {{ item.user.first_name[:1] }}
-                                </div>
-                                <span class="text-xs font-medium text-slate-700 truncate">{{ item.user.first_name }} {{ item.user.last_name }}</span>
-                            </div>
-
-                            <div class="mt-auto flex justify-between items-end">
-                                <span class="text-[9px] font-medium text-slate-400 uppercase tracking-wider">
-                                    {{ item.created_at.strftime('%d.%m.%Y') if item.created_at else 'Дата не указана' }}
-                                </span>
-                                {% if item.description %}
-                                    <span class="text-[10px] text-slate-400 truncate max-w-[120px] italic" title="{{ item.description }}">{{ item.description }}</span>
+    {% if achievements %}
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+                    <tr>
+                        <th class="px-5 py-3 font-bold">Превью</th>
+                        <th class="px-5 py-3 font-bold">Документ</th>
+                        <th class="px-5 py-3 font-bold">Студент</th>
+                        <th class="px-5 py-3 font-bold">Категория</th>
+                        <th class="px-5 py-3 font-bold">Дата</th>
+                        <th class="px-5 py-3 font-bold">Статус</th>
+                        <th class="px-5 py-3 font-bold">Модератор</th>
+                        <th class="px-5 py-3 font-bold text-right">Действие</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    {% for item in achievements %}
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-5 py-3">
+                            <div class="w-12 h-14 shrink-0 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center cursor-pointer group"
+                                 @click="$dispatch('open-preview', {src: '/sirius.achievements/documents/{{ item.id }}/preview', type: '{{ 'pdf' if item.file_path.endswith('.pdf') else 'image' }}'})">
+                                {% if item.file_path and (item.file_path.endswith('.jpg') or item.file_path.endswith('.png') or item.file_path.endswith('.jpeg') or item.file_path.endswith('.webp')) %}
+                                    <img src="/sirius.achievements/documents/{{ item.id }}/preview" class="w-full h-full object-cover">
+                                {% elif item.file_path and item.file_path.endswith('.pdf') %}
+                                    <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                {% else %}
+                                    <span class="text-[8px] text-slate-400">—</span>
                                 {% endif %}
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="flex sm:flex-col gap-2 shrink-0 sm:w-36 justify-center border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-3">
-                        <form action="/sirius.achievements/moderation/achievements/{{ item.id }}" method="POST" class="flex-1 sm:flex-none">
-                            <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
-                            <input type="hidden" name="status" value="approved">
-                            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex flex-col items-center justify-center leading-tight shadow-sm">
-                                <span>Одобрить</span>
-                                <span class="text-[9px] opacity-90 mt-0.5 font-normal">+{{ item.projected_points }} баллов</span>
-                            </button>
-                        </form>
-
-                        <button @click="rejectModalOpen = true" type="button" class="flex-1 sm:flex-none w-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex flex-col items-center justify-center leading-tight shadow-sm">
-                            <span>Отклонить /</span>
-                            <span>Вернуть</span>
-                        </button>
-
-                        <a href="/sirius.achievements/documents/{{ item.id }}/download" class="flex-1 sm:flex-none w-full bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            <span>Скачать</span>
-                        </a>
-                    </div>
-                </div>
-
-                <div x-show="rejectModalOpen" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" x-cloak>
-                    <div class="bg-white rounded-xl shadow-lg w-full max-w-lg flex flex-col overflow-hidden" @click.outside="rejectModalOpen = false">
-                        <div class="p-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 class="text-sm font-bold text-slate-800">Решение по документу</h3>
-                            <button type="button" @click="rejectModalOpen = false" class="text-slate-400 hover:text-slate-600"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-                        </div>
-                        <form action="/sirius.achievements/moderation/achievements/{{ item.id }}" method="POST" class="flex flex-col flex-1">
-                            <div class="p-4 bg-slate-50">
-                                <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Причина или комментарий для студента <span class="text-red-500">*</span></label>
-                                <textarea name="rejection_reason" rows="3" required
-                                          class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
-                                          placeholder="Например: 'Размытое фото, загрузите еще раз' или 'Документ не является дипломом'"></textarea>
+                        </td>
+                        <td class="px-5 py-3">
+                            <div class="max-w-[200px]">
+                                <div class="text-sm font-medium text-slate-800 truncate" title="{{ item.title }}">{{ item.title }}</div>
+                                {% if item.description %}
+                                <div class="text-[10px] text-slate-400 truncate mt-0.5" title="{{ item.description }}">{{ item.description }}</div>
+                                {% endif %}
                             </div>
-                            <div class="p-4 border-t border-slate-100 bg-white grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <button type="submit" name="status" value="revision" class="w-full px-4 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-200 text-sm font-medium rounded-lg hover:bg-yellow-100 transition-colors flex items-center justify-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                    На доработку
-                                </button>
-                                <button type="submit" name="status" value="rejected" class="w-full px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm flex items-center justify-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                                    Полный отказ
-                                </button>
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-600">
+                            <a href="/sirius.achievements/users/{{ item.user.id }}" class="hover:text-indigo-600 transition-colors">
+                                {{ item.user.first_name }} {{ item.user.last_name }}
+                            </a>
+                            <div class="text-[10px] text-slate-400">{{ item.user.email }}</div>
+                        </td>
+                        <td class="px-5 py-3">
+                            <div class="flex flex-col gap-1">
+                                <span class="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100/50 w-fit">
+                                    {{ item.category | attr('value') | default(item.category, true) if item.category else '—' }}
+                                </span>
+                                <span class="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200/50 w-fit">
+                                    {{ item.level | attr('value') | default(item.level, true) if item.level else '—' }}
+                                </span>
                             </div>
-                        </form>
-                    </div>
-                </div>
-
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-slate-200 text-center">
-                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-50 text-green-600 mb-3">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                </div>
-                <h3 class="text-base font-bold text-slate-800">Всё проверено!</h3>
-                <p class="text-sm text-slate-500 mt-1">Нет новых документов для модерации.</p>
-            </div>
-        {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
+                            {{ item.created_at.strftime('%d.%m.%Y') if item.created_at else '—' }}
+                        </td>
+                        <td class="px-5 py-3">
+                            {% if not item.moderator_id %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-50 text-yellow-700 border border-yellow-200">Новый</span>
+                            {% elif item.moderator_id == user.id %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">В работе</span>
+                            {% else %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Занят</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-500">
+                            {% if item.moderator_id == user.id %}
+                                <div class="font-medium text-slate-700">Вы</div>
+                            {% elif item.moderator_id %}
+                                <span class="text-slate-400">Другой модератор</span>
+                            {% else %}
+                                <span class="text-slate-400">Ещё не взято</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-right">
+                            <div class="flex justify-end items-center gap-2">
+                                <a href="/sirius.achievements/documents/{{ item.id }}/download" class="text-xs text-slate-500 hover:text-slate-700 transition-colors" title="Скачать">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                </a>
+                                {% if not item.moderator_id %}
+                                <form action="/sirius.achievements/moderation/achievements/{{ item.id }}/take" method="POST" class="inline-flex">
+                                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                                    <button type="submit" class="text-xs text-indigo-600 font-bold hover:underline">Взять в работу</button>
+                                </form>
+                                {% elif item.moderator_id == user.id %}
+                                <a href="/sirius.achievements/my-work/achievements" class="text-xs text-indigo-600 font-bold hover:underline">Моя работа</a>
+                                {% else %}
+                                <span class="text-xs text-slate-400">Занят</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     {% if total_pages > 1 %}
-    <div class="flex justify-center mt-6">
+    <div class="flex justify-center gap-1">
+        {% for p in range(1, total_pages + 1) %}
+            <a href="?page={{ p }}" class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors {{ 'bg-indigo-600 text-white' if p == page else 'text-slate-600 hover:bg-slate-100' }}">{{ p }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+        <div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
+            <div class="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <p class="text-sm text-slate-500">Нет новых документов для модерации</p>
         </div>
     {% endif %}
 </div>

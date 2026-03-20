@@ -35,6 +35,7 @@ from app.routers.admin.pages import router as admin_pages_router
 from app.routers.admin.profile import router as admin_profile_router
 from app.routers.admin.support import router as admin_support_router
 from app.routers.admin.users import router as admin_users_router
+from app.routers.admin.my_work import router as admin_my_work_router
 from app.routers.api.auth import router as api_auth_router
 from app.security.csrf import get_csrf_token
 from app.services.admin.support_maintenance import process_support_ticket_maintenance
@@ -79,6 +80,10 @@ async def _apply_schema_updates():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS api_refresh_version INTEGER NOT NULL DEFAULT 1",
         # user_tokens
         "ALTER TABLE user_tokens ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ",
+        # achievement assignment
+        "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS moderator_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        # user moderation assignment
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS reviewed_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
     ]
     async with engine.begin() as conn:
         # Fix supportticketstatus enum if values don't match
@@ -191,6 +196,7 @@ app.include_router(admin_leaderboard_router)
 app.include_router(admin_pages_router)
 app.include_router(admin_support_router)
 app.include_router(admin_moderation_support_router)
+app.include_router(admin_my_work_router)
 app.include_router(api_auth_router)
 
 

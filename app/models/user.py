@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.infrastructure.database import Base
@@ -25,13 +25,15 @@ class Users(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    reviewed_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     failed_attempts = Column(Integer, default=0)
     blocked_until = Column(DateTime, nullable=True)
     session_version = Column(Integer, nullable=False, default=1, server_default="1")
     api_access_version = Column(Integer, nullable=False, default=1, server_default="1")
     api_refresh_version = Column(Integer, nullable=False, default=1, server_default="1")
 
-    achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan")
+    achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan", foreign_keys="Achievement.user_id")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     tokens = relationship("UserToken", back_populates="user", cascade="all, delete-orphan")
     support_tickets = relationship(
@@ -44,6 +46,16 @@ class Users(Base):
         "SupportTicket",
         back_populates="moderator",
         foreign_keys="SupportTicket.moderator_id",
+    )
+    assigned_achievements = relationship(
+        "Achievement",
+        back_populates="moderator",
+        foreign_keys="Achievement.moderator_id",
+    )
+    reviewer = relationship(
+        "Users",
+        remote_side="Users.id",
+        foreign_keys=[reviewed_by_id],
     )
 
     resume_text = Column(Text, nullable=True)

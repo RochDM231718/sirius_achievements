@@ -4,8 +4,12 @@
 <div class="max-w-6xl mx-auto space-y-6">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
         <div>
-            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Пользователи</h2>
+            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Все пользователи</h2>
             <p class="text-sm text-slate-500">Управление аккаунтами платформы</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/sirius.achievements/moderation/users" class="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">Новые пользователи</a>
+            <a href="/sirius.achievements/my-work/users" class="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">Мои пользователи</a>
         </div>
     </div>
 
@@ -74,19 +78,21 @@
         </form>
     </div>
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm whitespace-nowrap">
-                <thead class="bg-slate-50 text-[11px] uppercase text-slate-500 font-bold tracking-wider border-b border-slate-200">
+                <thead class="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
                     <tr>
-                        <th class="px-5 py-3">ID</th>
-                        <th class="px-5 py-3">Пользователь</th>
-                        <th class="px-5 py-3">Поток</th>
-                        <th class="px-5 py-3">Роль / Статус</th>
-                        <th class="px-5 py-3 text-right">Действия</th>
+                        <th class="px-5 py-3 font-bold">#</th>
+                        <th class="px-5 py-3 font-bold">Пользователь</th>
+                        <th class="px-5 py-3 font-bold">Поток</th>
+                        <th class="px-5 py-3 font-bold">Статус</th>
+                        <th class="px-5 py-3 font-bold">Модератор</th>
+                        <th class="px-5 py-3 font-bold">Создано</th>
+                        <th class="px-5 py-3 font-bold text-right">Действие</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody class="divide-y divide-slate-50">
                     {% for u in users %}
                     <tr class="hover:bg-slate-50 transition-colors">
                         <td class="px-5 py-3 text-xs text-slate-400">{{ u.id }}</td>
@@ -94,14 +100,14 @@
                             <a href="{{ url_for('admin.users.show', id=u.id) }}" class="font-medium text-slate-800 hover:text-indigo-600 transition-colors block">
                                 {{ u.first_name }} {{ u.last_name }}
                             </a>
-                            <span class="text-[10px] text-slate-400">{{ u.email }}</span>
+                            <div class="text-[10px] text-slate-400">{{ u.email }}</div>
                         </td>
                         <td class="px-5 py-3">
                             {% if u.education_level %}
                                 <span class="block text-xs text-slate-700">{{ u.education_level.value }}</span>
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ u.course }} курс</span>
                             {% else %}
-                                <span class="text-xs text-slate-400">—</span>
+                                <span class="text-xs text-slate-400">&mdash;</span>
                             {% endif %}
                         </td>
                         <td class="px-5 py-3">
@@ -110,16 +116,44 @@
                             </span>
                             <br>
                             {% if u.status.value == 'active' %}
-                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-100">Активен</span>
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-50 text-green-700 border border-green-100">Активен</span>
                             {% elif u.status.value == 'pending' %}
-                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-yellow-50 text-yellow-700 border border-yellow-100">Ожидает</span>
+                                {% if not u.reviewed_by_id %}
+                                    <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-50 text-yellow-700 border border-yellow-200">Новый</span>
+                                {% elif u.reviewed_by_id == user.id %}
+                                    <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">В работе</span>
+                                {% else %}
+                                    <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Принято</span>
+                                {% endif %}
                             {% else %}
-                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-100">Блок</span>
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-100">Блок</span>
                             {% endif %}
                         </td>
+                        <td class="px-5 py-3 text-xs text-slate-500">
+                            {% if u.status.value == 'pending' and u.reviewed_by_id %}
+                                {% if u.reviewed_by_id == user.id %}
+                                    <div class="font-medium text-slate-700">Вы</div>
+                                {% else %}
+                                    <span class="text-slate-400">Другой модератор</span>
+                                {% endif %}
+                            {% elif u.status.value == 'pending' %}
+                                <span class="text-slate-400">Свободно</span>
+                            {% else %}
+                                <span class="text-slate-400">&mdash;</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-500">{{ u.created_at.strftime('%d.%m.%Y %H:%M') if u.created_at else '—' }}</td>
                         <td class="px-5 py-3 text-right">
-                            <div class="flex justify-end items-center gap-3">
-                                <a href="{{ url_for('admin.users.show', id=u.id) }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors">Профиль</a>
+                            <div class="flex justify-end items-center gap-2">
+                                {% if u.status.value == 'pending' and not u.reviewed_by_id %}
+                                <form action="/sirius.achievements/moderation/users/{{ u.id }}/take" method="POST" class="inline-flex">
+                                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                                    <button type="submit" class="text-xs text-indigo-600 font-bold hover:underline">Взять</button>
+                                </form>
+                                {% elif u.status.value == 'pending' and u.reviewed_by_id == user.id %}
+                                <a href="/sirius.achievements/my-work/users" class="text-xs text-indigo-600 font-bold hover:underline">Моя работа</a>
+                                {% endif %}
+                                <a href="{{ url_for('admin.users.show', id=u.id) }}" class="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors">Профиль</a>
                                 <button @click="$dispatch('confirm-delete', {url: '/sirius.achievements/users/{{ u.id }}/delete', title: 'Удалить пользователя?', desc: 'Доступ будет заблокирован навсегда.'})"
                                         class="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors cursor-pointer">
                                     Удалить

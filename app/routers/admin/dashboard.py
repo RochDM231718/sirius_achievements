@@ -88,7 +88,7 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
         recent_docs_stmt = (
             select(Achievement)
             .options(selectinload(Achievement.user))
-            .join(Users)
+            .join(Users, Achievement.user_id == Users.id)
             .filter(Achievement.created_at >= start_date)
             .order_by(Achievement.created_at.desc())
             .limit(5)

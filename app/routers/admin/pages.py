@@ -64,7 +64,7 @@ async def search_documents(request: Request, query: str, status: Optional[str] =
 
     if not query: return []
 
-    stmt = select(Achievement).options(selectinload(Achievement.user)).join(Users)
+    stmt = select(Achievement).options(selectinload(Achievement.user)).join(Users, Achievement.user_id == Users.id)
     zone_filter = _zone_filter_for(current_user)
     if zone_filter is not None:
         stmt = stmt.filter(Users.education_level == zone_filter)
@@ -86,7 +86,7 @@ async def index(request: Request, query: Optional[str] = "", status: Optional[st
                 sort: Optional[str] = "created_at", order: Optional[str] = "desc", db: AsyncSession = Depends(get_db)):
     current_user = await check_access(request, db)
 
-    stmt = select(Achievement).options(selectinload(Achievement.user)).join(Users)
+    stmt = select(Achievement).options(selectinload(Achievement.user)).join(Users, Achievement.user_id == Users.id)
     zone_filter = _zone_filter_for(current_user)
     if zone_filter is not None:
         stmt = stmt.filter(Users.education_level == zone_filter)
@@ -107,7 +107,7 @@ async def index(request: Request, query: Optional[str] = "", status: Optional[st
     result = await db.execute(stmt)
     documents = result.scalars().all()
 
-    count_stmt = select(func.count()).select_from(Achievement).join(Users)
+    count_stmt = select(func.count()).select_from(Achievement).join(Users, Achievement.user_id == Users.id)
     if zone_filter is not None:
         count_stmt = count_stmt.filter(Users.education_level == zone_filter)
     if query: count_stmt = count_stmt.filter(

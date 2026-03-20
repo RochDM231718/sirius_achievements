@@ -23,7 +23,10 @@ class Achievement(Base):
     status = Column(Enum(AchievementStatus), default=AchievementStatus.PENDING)
     rejection_reason = Column(Text, nullable=True)
 
+    moderator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=func.now(), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
-    user = relationship("Users", back_populates="achievements")
+    user = relationship("Users", back_populates="achievements", foreign_keys=[user_id])
+    moderator = relationship("Users", back_populates="assigned_achievements", foreign_keys=[moderator_id])

@@ -4,8 +4,12 @@
 <div class="max-w-6xl mx-auto space-y-6">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
         <div>
-            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Архив документов</h2>
+            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Все документы</h2>
             <p class="text-sm text-slate-500">Управление базой достижений</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/sirius.achievements/moderation/achievements" class="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">Новые документы</a>
+            <a href="/sirius.achievements/my-work/achievements" class="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">Мои документы</a>
         </div>
     </div>
 
@@ -86,54 +90,84 @@
         {% if achievements %}
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm whitespace-nowrap">
-                <thead class="bg-slate-50 text-[11px] uppercase text-slate-500 font-bold tracking-wider border-b border-slate-200">
+                <thead class="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
                     <tr>
-                        <th class="px-5 py-3 w-12 text-center">Файл</th>
-                        <th class="px-5 py-3">Название</th>
-                        <th class="px-5 py-3">Вид / Уровень</th>
-                        <th class="px-5 py-3">Статус</th>
-                        <th class="px-5 py-3">Владелец</th>
-                        <th class="px-5 py-3 text-right">Действия</th>
+                        <th class="px-5 py-3 font-bold">Файл</th>
+                        <th class="px-5 py-3 font-bold">Название</th>
+                        <th class="px-5 py-3 font-bold">Студент</th>
+                        <th class="px-5 py-3 font-bold">Категория</th>
+                        <th class="px-5 py-3 font-bold">Статус</th>
+                        <th class="px-5 py-3 font-bold">Модератор</th>
+                        <th class="px-5 py-3 font-bold">Создано</th>
+                        <th class="px-5 py-3 font-bold text-right">Действие</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody class="divide-y divide-slate-50">
                     {% for item in achievements %}
+                    {% set status_val = item.status | attr('value') | default(item.status, true) %}
                     <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="px-5 py-3 text-center">
+                        <td class="px-5 py-3">
                             <button @click="$dispatch('open-preview', {src: '/sirius.achievements/documents/{{ item.id }}/preview', type: '{{ 'pdf' if item.file_path and item.file_path.endswith('.pdf') else 'image' }}'})"
                                     class="inline-flex w-8 h-8 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors items-center justify-center"
                                     title="Предпросмотр">
                                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                             </button>
                         </td>
-                        <td class="px-5 py-3 font-medium text-slate-800">{{ item.title }}</td>
-                        <td class="px-5 py-3 text-slate-600 text-xs">
+                        <td class="px-5 py-3">
+                            <div class="font-medium text-slate-800">{{ item.title }}</div>
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-600">
+                            <a href="{{ url_for('admin.users.show', id=item.user.id) }}?from=documents" class="hover:text-indigo-600 transition-colors">
+                                {{ item.user.first_name }} {{ item.user.last_name }}
+                            </a>
+                            <div class="text-[10px] text-slate-400">ID: {{ item.user.id }} · {{ item.user.email }}</div>
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-600">
                             <span class="block">{{ item.category | attr('value') | default(item.category, true) }}</span>
                             <span class="text-slate-400">{{ item.level | attr('value') | default(item.level, true) }}</span>
                         </td>
                         <td class="px-5 py-3">
-                            {% set status_val = item.status | attr('value') | default(item.status, true) %}
                             {% if status_val == 'approved' %}
                                 <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-50 text-green-700 border border-green-200">Одобрено</span>
                             {% elif status_val == 'rejected' %}
                                 <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">Отклонено</span>
                             {% elif status_val == 'revision' %}
-                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-100 text-yellow-800 border border-yellow-300">На доработке</span>
-                            {% else %}
-                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">На проверке</span>
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-100 text-yellow-800 border border-yellow-300">Доработка</span>
+                            {% elif status_val == 'pending' and not item.moderator_id %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-50 text-yellow-700 border border-yellow-200">Новый</span>
+                            {% elif status_val == 'pending' and item.moderator_id == user.id %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">В работе</span>
+                            {% elif status_val == 'pending' %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Принято</span>
                             {% endif %}
                         </td>
-                        <td class="px-5 py-3">
-                            <a href="{{ url_for('admin.users.show', id=item.user.id) }}?from=documents" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors">
-                                {{ item.user.first_name }} {{ item.user.last_name }}
-                            </a>
-                            <div class="text-[10px] text-slate-400">ID: {{ item.user.id }}</div>
+                        <td class="px-5 py-3 text-xs text-slate-500">
+                            {% if status_val == 'pending' and item.moderator_id %}
+                                {% if item.moderator_id == user.id %}
+                                    <div class="font-medium text-slate-700">Вы</div>
+                                {% else %}
+                                    <span class="text-slate-400">Другой модератор</span>
+                                {% endif %}
+                            {% elif status_val == 'pending' %}
+                                <span class="text-slate-400">Свободно</span>
+                            {% else %}
+                                <span class="text-slate-400">&mdash;</span>
+                            {% endif %}
                         </td>
+                        <td class="px-5 py-3 text-xs text-slate-500">{{ item.created_at.strftime('%d.%m.%Y %H:%M') if item.created_at else '—' }}</td>
                         <td class="px-5 py-3 text-right">
-                            <div class="flex items-center justify-end gap-3">
+                            <div class="flex items-center justify-end gap-2">
                                 <a href="/sirius.achievements/documents/{{ item.id }}/download" class="text-slate-400 hover:text-indigo-600 transition-colors" title="Скачать">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                 </a>
+                                {% if status_val == 'pending' and not item.moderator_id %}
+                                <form action="/sirius.achievements/moderation/achievements/{{ item.id }}/take" method="POST" class="inline-flex">
+                                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                                    <button type="submit" class="text-xs text-indigo-600 font-bold hover:underline">Взять</button>
+                                </form>
+                                {% elif status_val == 'pending' and item.moderator_id == user.id %}
+                                <a href="/sirius.achievements/my-work/achievements" class="text-xs text-indigo-600 font-bold hover:underline">Моя работа</a>
+                                {% endif %}
                                 <button type="button" @click.prevent="$dispatch('confirm-delete', {url: '/sirius.achievements/documents/{{ item.id }}/delete', title: 'Удалить документ?', desc: 'Файл «{{ item.title }}» будет удален навсегда.'})"
                                         class="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">
                                     Удалить

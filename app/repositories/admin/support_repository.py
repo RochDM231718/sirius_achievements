@@ -44,7 +44,7 @@ class SupportTicketRepository(CrudRepository):
             .order_by(desc(SupportTicket.created_at))
         )
         if education_level is not None:
-            stmt = stmt.join(Users).filter(Users.education_level == education_level)
+            stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(Users.education_level == education_level)
         if page > 0:
             stmt = stmt.limit(self.ITEMS_PER_PAGE).offset(self.ITEMS_PER_PAGE * (page - 1))
         result = await self.db.execute(stmt)
@@ -56,7 +56,7 @@ class SupportTicketRepository(CrudRepository):
             SupportTicket.archived_at.is_(None),
         )
         if education_level is not None:
-            stmt = stmt.join(Users).filter(Users.education_level == education_level)
+            stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(Users.education_level == education_level)
         result = await self.db.execute(stmt)
         return result.scalar()
 
@@ -88,7 +88,7 @@ class SupportTicketRepository(CrudRepository):
                     stmt = stmt.filter(SupportTicket.status == status)
             if filters.get('query'):
                 like_term = f"%{escape_like(filters['query'])}%"
-                stmt = stmt.join(Users)
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
                 joined_users = True
                 stmt = stmt.filter(
                     or_(
@@ -106,7 +106,7 @@ class SupportTicketRepository(CrudRepository):
 
         if education_level is not None:
             if not joined_users:
-                stmt = stmt.join(Users).filter(
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(
                     Users.education_level == education_level
                 )
             else:
@@ -137,7 +137,7 @@ class SupportTicketRepository(CrudRepository):
                     stmt = stmt.filter(SupportTicket.status == status)
             if filters.get('query'):
                 like_term = f"%{escape_like(filters['query'])}%"
-                stmt = stmt.join(Users)
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
                 joined_users = True
                 stmt = stmt.filter(
                     or_(
@@ -155,7 +155,7 @@ class SupportTicketRepository(CrudRepository):
 
         if education_level is not None:
             if not joined_users:
-                stmt = stmt.join(Users).filter(
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(
                     Users.education_level == education_level
                 )
             else:

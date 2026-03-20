@@ -72,6 +72,7 @@ async def pending_users(request: Request, db: AsyncSession = Depends(get_db)):
             "users": users,
             "total_count": len(users),
             "user": user,
+            "current_user": user,
         },
     )
 
