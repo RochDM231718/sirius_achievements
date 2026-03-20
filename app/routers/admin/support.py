@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.admin.support_repository import SupportMessageRepository, SupportTicketRepository
 from app.routers.admin.admin import get_db, templates
-from app.routers.admin.deps import get_current_user, require_auth
+from app.routers.admin.deps import get_current_user, require_active_portal_access
 from app.security.csrf import validate_csrf
 from app.services.admin.support_service import SupportService
 from app.utils.access import is_in_zone
@@ -21,7 +21,7 @@ logger = structlog.get_logger()
 router = APIRouter(
     prefix="/sirius.achievements",
     tags=["admin.support"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_active_portal_access)],
 )
 
 

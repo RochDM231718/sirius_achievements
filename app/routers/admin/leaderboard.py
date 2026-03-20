@@ -12,12 +12,12 @@ from app.models.user import Users
 from app.models.achievement import Achievement
 from app.models.season_result import SeasonResult
 from app.models.enums import UserRole, UserStatus, AchievementStatus, EducationLevel, AchievementCategory
-from app.routers.admin.deps import require_auth
+from app.routers.admin.deps import require_active_portal_access
 
 router = APIRouter(
     prefix="/sirius.achievements",
     tags=["admin.leaderboard"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_active_portal_access)],
 )
 
 

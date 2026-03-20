@@ -16,7 +16,7 @@ from app.repositories.admin.achievement_repository import AchievementRepository
 from app.utils.search import escape_like
 from app.config import settings
 from app.utils.rate_limiter import rate_limiter
-from app.routers.admin.deps import require_auth
+from app.routers.admin.deps import require_active_portal_access
 import structlog
 
 logger = structlog.get_logger()
@@ -24,7 +24,7 @@ logger = structlog.get_logger()
 router = APIRouter(
     prefix="/sirius.achievements",
     tags=["admin.achievements"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_active_portal_access)],
 )
 
 
