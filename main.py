@@ -81,6 +81,35 @@ async def _apply_schema_updates():
         "ALTER TABLE user_tokens ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ",
     ]
     async with engine.begin() as conn:
+        # Fix supportticketstatus enum if values don't match
+        # Check if enum exists with wrong values
+        enum_check = await conn.execute(text(
+            "SELECT enumlabel FROM pg_enum "
+            "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid "
+            "WHERE pg_type.typname = 'supportticketstatus' ORDER BY enumsortorder"
+        ))
+        existing_labels = [row[0] for row in enum_check.fetchall()]
+        expected_labels = ["open", "in_progress", "closed"]
+        if existing_labels and existing_labels != expected_labels:
+            # Recreate enum with correct values
+            await conn.execute(text(
+                "ALTER TABLE support_tickets ALTER COLUMN status DROP DEFAULT"
+            ))
+            await conn.execute(text(
+                "ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20)"
+            ))
+            await conn.execute(text("DROP TYPE IF EXISTS supportticketstatus"))
+            await conn.execute(text(
+                "CREATE TYPE supportticketstatus AS ENUM ('open', 'in_progress', 'closed')"
+            ))
+            await conn.execute(text(
+                "ALTER TABLE support_tickets ALTER COLUMN status TYPE supportticketstatus "
+                "USING status::supportticketstatus"
+            ))
+            await conn.execute(text(
+                "ALTER TABLE support_tickets ALTER COLUMN status SET DEFAULT 'open'"
+            ))
+
         # Create any brand-new tables first
         from app.infrastructure.database import Base
         await conn.run_sync(Base.metadata.create_all)
