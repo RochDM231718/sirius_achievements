@@ -62,8 +62,39 @@ async def _support_maintenance_loop():
         await asyncio.sleep(3600)
 
 
+async def _apply_schema_updates():
+    """Add missing columns to existing tables (safe: IF NOT EXISTS)."""
+    from sqlalchemy import text
+
+    alter_statements = [
+        # support_tickets lifecycle columns
+        "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS moderator_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ",
+        "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ",
+        "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ",
+        "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+        # users security columns
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS api_access_version INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS api_refresh_version INTEGER NOT NULL DEFAULT 1",
+        # user_tokens
+        "ALTER TABLE user_tokens ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ",
+    ]
+    async with engine.begin() as conn:
+        # Create any brand-new tables first
+        from app.infrastructure.database import Base
+        await conn.run_sync(Base.metadata.create_all)
+        # Then add missing columns to existing tables
+        for stmt in alter_statements:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass  # column/table may already exist
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await _apply_schema_updates()
     task = asyncio.create_task(_support_maintenance_loop())
     try:
         yield
