@@ -11,7 +11,7 @@ from app.routers.admin.admin import templates, get_db
 from app.models.user import Users
 from app.models.achievement import Achievement
 from app.models.season_result import SeasonResult
-from app.models.enums import UserRole, UserStatus, AchievementStatus, EducationLevel
+from app.models.enums import UserRole, UserStatus, AchievementStatus, EducationLevel, AchievementCategory
 from app.routers.admin.deps import require_auth
 
 router = APIRouter(
@@ -56,6 +56,7 @@ async def index(
         request: Request,
         education_level: str = Query(None),
         course: int = Query(None),
+        category: str = Query(None),
         db: AsyncSession = Depends(get_db)
 ):
     user_id = request.session.get('auth_id')
@@ -64,13 +65,17 @@ async def index(
     education_level = _scoped_education_level(user, education_level)
     course = _scoped_course(user, course)
 
+    achievement_filter = (Achievement.status == AchievementStatus.APPROVED)
+    if category and category != 'all':
+        achievement_filter = achievement_filter & (Achievement.category == category)
+
     stmt = (
         select(
             Users,
             func.coalesce(func.sum(Achievement.points), 0).label("total_points"),
             func.count(Achievement.id).label("achievements_count")
         )
-        .outerjoin(Achievement, (Users.id == Achievement.user_id) & (Achievement.status == AchievementStatus.APPROVED))
+        .outerjoin(Achievement, (Users.id == Achievement.user_id) & achievement_filter)
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
     )
 
@@ -97,6 +102,8 @@ async def index(
         'my_points': my_points,
         'current_education_level': education_level,
         'current_course': course,
+        'current_category': category or 'all',
+        'categories': list(AchievementCategory),
         'education_levels': list(EducationLevel)
     })
 
