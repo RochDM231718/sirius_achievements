@@ -1,18 +1,64 @@
+import asyncio
+import importlib
+import sys
+import types
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
-from datetime import datetime, timezone, timedelta
+
+fastapi_module = sys.modules.get("fastapi") or types.ModuleType("fastapi")
+
+
+class HTTPException(Exception):
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
+fastapi_module.HTTPException = HTTPException
+sys.modules["fastapi"] = fastapi_module
+
+sqlalchemy_module = sys.modules.get("sqlalchemy") or types.ModuleType("sqlalchemy")
+sqlalchemy_module.desc = getattr(sqlalchemy_module, "desc", lambda value: value)
+sqlalchemy_module.select = getattr(sqlalchemy_module, "select", lambda value: value)
+sys.modules["sqlalchemy"] = sqlalchemy_module
+
+if "app.repositories.admin.user_token_repository" not in sys.modules:
+    repo_module = types.ModuleType("app.repositories.admin.user_token_repository")
+    repo_module.UserTokenRepository = object
+    sys.modules["app.repositories.admin.user_token_repository"] = repo_module
+
+if "app.schemas.admin.user_tokens" not in sys.modules:
+    token_schema_module = types.ModuleType("app.schemas.admin.user_tokens")
+
+    class UserTokenCreate:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    token_schema_module.UserTokenCreate = UserTokenCreate
+    sys.modules["app.schemas.admin.user_tokens"] = token_schema_module
+
 from fastapi import HTTPException
 
-from app.services.admin.user_token_service import UserTokenService
-from app.schemas.admin.user_tokens import UserTokenCreate
 from app.models.enums import UserTokenType
+from app.schemas.admin.user_tokens import UserTokenCreate
+
+existing_service_module = sys.modules.get("app.services.admin.user_token_service")
+if existing_service_module is not None and not getattr(existing_service_module, "__file__", None):
+    del sys.modules["app.services.admin.user_token_service"]
+
+UserTokenService = importlib.import_module("app.services.admin.user_token_service").UserTokenService
 
 
 @pytest.fixture
 def mock_repo():
     repo = MagicMock()
     repo.create = AsyncMock()
-    repo.find_by_token = AsyncMock()
+    repo.find_active_token = AsyncMock()
+    repo.invalidate_user_tokens = AsyncMock()
+    repo.mark_used = AsyncMock()
     repo.delete = AsyncMock()
     repo.db = MagicMock()
     repo.db.execute = AsyncMock()
@@ -25,69 +71,62 @@ def service(mock_repo):
     return UserTokenService(repo=mock_repo)
 
 
-@pytest.mark.asyncio
-async def test_create_user_token(service, mock_repo):
+def test_create_user_token_invalidates_previous_active_tokens(service, mock_repo):
     data = UserTokenCreate(user_id=1, type=UserTokenType.RESET_PASSWORD)
     mock_repo.create.return_value = MagicMock(id=1, token="123456")
 
-    result = await service.create(data)
+    result = asyncio.run(service.create(data))
 
-    mock_repo.create.assert_called_once()
-    call_args = mock_repo.create.call_args[0][0]
+    assert result.token == "123456"
+    mock_repo.invalidate_user_tokens.assert_awaited_once_with(1, UserTokenType.RESET_PASSWORD)
+    mock_repo.create.assert_awaited_once()
+    call_args = mock_repo.create.call_args.args[0]
     assert call_args["user_id"] == 1
     assert len(call_args["token"]) == 6
     assert call_args["token"].isdigit()
     assert call_args["expires_at"] > datetime.now(timezone.utc)
 
 
-@pytest.mark.asyncio
-async def test_get_reset_password_token_success(service, mock_repo):
+def test_get_reset_password_token_success(service, mock_repo):
     token = MagicMock()
     token.token_type = UserTokenType.RESET_PASSWORD.value
     token.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_repo.find_by_token.return_value = token
+    mock_repo.find_active_token.return_value = token
 
-    result = await service.getResetPasswordToken("123456")
+    result = asyncio.run(service.getResetPasswordToken(10, "123456"))
+
     assert result == token
-    mock_repo.find_by_token.assert_called_once_with("123456")
+    mock_repo.find_active_token.assert_awaited_once_with(10, UserTokenType.RESET_PASSWORD, "123456")
 
 
-@pytest.mark.asyncio
-async def test_get_reset_password_token_not_found(service, mock_repo):
-    mock_repo.find_by_token.return_value = None
+def test_get_reset_password_token_not_found(service, mock_repo):
+    mock_repo.find_active_token.return_value = None
 
     with pytest.raises(HTTPException) as exc:
-        await service.getResetPasswordToken("invalid")
+        asyncio.run(service.getResetPasswordToken(10, "invalid"))
+
     assert exc.value.status_code == 404
 
 
-@pytest.mark.asyncio
-async def test_get_reset_password_token_expired(service, mock_repo):
+def test_consume_reset_password_token_marks_token_as_used(service, mock_repo):
     token = MagicMock()
+    token.id = 77
     token.token_type = UserTokenType.RESET_PASSWORD.value
-    token.expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
-    mock_repo.find_by_token.return_value = token
-
-    with pytest.raises(HTTPException) as exc:
-        await service.getResetPasswordToken("expired")
-    assert exc.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_get_reset_password_token_wrong_type(service, mock_repo):
-    token = MagicMock()
-    token.token_type = "EMAIL_VERIFICATION"
     token.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_repo.find_by_token.return_value = token
+    token.used_at = None
+    mock_repo.find_active_token.return_value = token
 
-    with pytest.raises(HTTPException) as exc:
-        await service.getResetPasswordToken("123456")
-    assert exc.value.status_code == 404
+    result = asyncio.run(service.consume_reset_password_token(10, "123456"))
+
+    assert result == token
+    mock_repo.mark_used.assert_awaited_once_with(77)
+    assert result.used_at is not None
 
 
-@pytest.mark.asyncio
-async def test_delete_token(service, mock_repo):
+def test_delete_token(service, mock_repo):
     mock_repo.delete.return_value = True
-    result = await service.delete(1)
-    mock_repo.delete.assert_called_once_with(1)
+
+    result = asyncio.run(service.delete(1))
+
+    mock_repo.delete.assert_awaited_once_with(1)
     assert result is True

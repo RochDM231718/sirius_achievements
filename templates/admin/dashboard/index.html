@@ -152,7 +152,7 @@
             </div>
         </div>
 
-        <script>
+        <script nonce="{{ request.state.csp_nonce }}">
         function exportPanel() {
             return {
                 reportType: 'moderation',
@@ -285,7 +285,7 @@
             </div>
         </div>
 
-        <script>
+        <script nonce="{{ request.state.csp_nonce }}">
             document.addEventListener('DOMContentLoaded', function() {
                 const ctx = document.getElementById('adminChart');
                 if(ctx) {
@@ -309,7 +309,10 @@
                         },
                         options: {
                             responsive: true, maintainAspectRatio: false,
-                            plugins: { legend: { display: false }, tooltip: { padding: 10, cornerRadius: 8 } },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { padding: 10, cornerRadius: 8 }
+                            },
                             scales: {
                                 y: { beginAtZero: true, grid: { color: '#f1f5f9', drawBorder: false }, ticks: { font: {size: 11}, color: '#94a3b8', stepSize: 1 } },
                                 x: { grid: { display: false, drawBorder: false }, ticks: { font: {size: 11}, color: '#64748b' } }
@@ -425,7 +428,7 @@
             </div>
         </div>
 
-        <script>
+        <script nonce="{{ request.state.csp_nonce }}">
             document.addEventListener('DOMContentLoaded', function() {
                 const ctx = document.getElementById('studentChart');
                 if (ctx) {

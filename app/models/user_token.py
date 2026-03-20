@@ -12,5 +12,6 @@ class UserToken(Base):
     token_type = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("Users", back_populates="tokens")

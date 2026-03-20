@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_support_tables'
@@ -19,14 +20,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Create enum type
-    supportticketstatus = sa.Enum('open', 'in_progress', 'closed', name='supportticketstatus')
+    supportticketstatus = postgresql.ENUM('open', 'in_progress', 'closed', name='supportticketstatus')
     supportticketstatus.create(op.get_bind(), checkfirst=True)
 
     op.create_table('support_tickets',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),
         sa.Column('subject', sa.String(length=255), nullable=False),
-        sa.Column('status', sa.Enum('open', 'in_progress', 'closed', name='supportticketstatus', create_type=False), nullable=True),
+        sa.Column(
+            'status',
+            postgresql.ENUM('open', 'in_progress', 'closed', name='supportticketstatus', create_type=False),
+            nullable=True,
+        ),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
@@ -55,4 +60,4 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_support_tickets_id'), table_name='support_tickets')
     op.drop_table('support_tickets')
 
-    sa.Enum(name='supportticketstatus').drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name='supportticketstatus').drop(op.get_bind(), checkfirst=True)

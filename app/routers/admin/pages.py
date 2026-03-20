@@ -1,10 +1,10 @@
-from fastapi import Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, asc, desc
 from sqlalchemy.orm import selectinload
 from typing import Optional
-from app.routers.admin.admin import guard_router, templates, get_db
+from app.routers.admin.admin import templates, get_db
 from app.models.achievement import Achievement
 from app.models.user import Users
 from app.models.enums import UserRole, AchievementStatus
@@ -12,9 +12,15 @@ from app.services.admin.achievement_service import AchievementService
 from app.repositories.admin.achievement_repository import AchievementRepository
 from app.infrastructure.tranaslations import TranslationManager
 from app.security.csrf import validate_csrf
+from app.routers.admin.deps import require_auth
 from app.utils.search import escape_like
+from app.utils.access import is_in_zone
 
-router = guard_router
+router = APIRouter(
+    prefix="/sirius.achievements",
+    tags=["admin.pages"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 def get_achievement_service(db: AsyncSession = Depends(get_db)):
@@ -34,15 +40,34 @@ async def check_access(request: Request, db: AsyncSession):
     if user.role not in [UserRole.MODERATOR, UserRole.SUPER_ADMIN]:
         raise HTTPException(status_code=403, detail="Access denied")
 
+    return user
+
+
+def _zone_filter_for(current_user):
+    if current_user.role == UserRole.MODERATOR and current_user.education_level:
+        return current_user.education_level
+    return None
+
+
+def _can_access_document(current_user, document: Achievement) -> bool:
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return True
+    if not document.user:
+        return False
+    return is_in_zone(current_user, document.user.education_level)
+
 
 @router.get('/pages/search', response_class=JSONResponse, name='admin.pages.search_api')
 async def search_documents(request: Request, query: str, status: Optional[str] = None,
                            db: AsyncSession = Depends(get_db)):
-    await check_access(request, db)
+    current_user = await check_access(request, db)
 
     if not query: return []
 
     stmt = select(Achievement).options(selectinload(Achievement.user)).join(Users)
+    zone_filter = _zone_filter_for(current_user)
+    if zone_filter is not None:
+        stmt = stmt.filter(Users.education_level == zone_filter)
 
     stmt = stmt.filter(or_(Achievement.title.ilike(f"%{escape_like(query)}%"), Users.first_name.ilike(f"%{escape_like(query)}%"),
                            Users.last_name.ilike(f"%{escape_like(query)}%"), Users.email.ilike(f"%{escape_like(query)}%")))
@@ -59,9 +84,12 @@ async def search_documents(request: Request, query: str, status: Optional[str] =
 @router.get('/pages', response_class=HTMLResponse, name="admin.pages.index")
 async def index(request: Request, query: Optional[str] = "", status: Optional[str] = None,
                 sort: Optional[str] = "created_at", order: Optional[str] = "desc", db: AsyncSession = Depends(get_db)):
-    await check_access(request, db)
+    current_user = await check_access(request, db)
 
     stmt = select(Achievement).options(selectinload(Achievement.user)).join(Users)
+    zone_filter = _zone_filter_for(current_user)
+    if zone_filter is not None:
+        stmt = stmt.filter(Users.education_level == zone_filter)
 
     if query: stmt = stmt.filter(or_(Achievement.title.ilike(f"%{escape_like(query)}%"), Users.first_name.ilike(f"%{escape_like(query)}%"),
                                      Users.last_name.ilike(f"%{escape_like(query)}%")))
@@ -80,6 +108,8 @@ async def index(request: Request, query: Optional[str] = "", status: Optional[st
     documents = result.scalars().all()
 
     count_stmt = select(func.count()).select_from(Achievement).join(Users)
+    if zone_filter is not None:
+        count_stmt = count_stmt.filter(Users.education_level == zone_filter)
     if query: count_stmt = count_stmt.filter(
         or_(Achievement.title.ilike(f"%{escape_like(query)}%"), Users.first_name.ilike(f"%{escape_like(query)}%"),
             Users.last_name.ilike(f"%{escape_like(query)}%")))
@@ -101,12 +131,22 @@ async def delete_document(
         service: AchievementService = Depends(get_achievement_service),
         db: AsyncSession = Depends(get_db)
 ):
-    await check_access(request, db)
+    current_user = await check_access(request, db)
+    document = await db.scalar(
+        select(Achievement)
+        .options(selectinload(Achievement.user))
+        .where(Achievement.id == id)
+    )
+    if not document or not _can_access_document(current_user, document):
+        raise HTTPException(status_code=404, detail="Document not found")
 
-    user_id = request.session['auth_id']
-    user_role = request.session.get('auth_role')
-
-    await service.delete(id, user_id, user_role)
+    await service.delete(
+        id,
+        current_user.id,
+        current_user.role,
+        actor_education_level=current_user.education_level,
+        target_education_level=document.user.education_level if document.user else None,
+    )
 
     locale = request.session.get('locale', 'en')
     translator = TranslationManager()

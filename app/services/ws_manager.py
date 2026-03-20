@@ -21,7 +21,7 @@ class ConnectionManager:
             self._connections.pop(user_id, None)
 
     async def send_to_user(self, user_id: int, data: dict):
-        for ws in self._connections.get(user_id, []):
+        for ws in list(self._connections.get(user_id, [])):
             try:
                 await ws.send_json(data)
             except Exception:

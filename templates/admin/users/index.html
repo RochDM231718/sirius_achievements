@@ -133,7 +133,7 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{ request.state.csp_nonce }}">
         function autocomplete(url) {
             return {
                 query: new URLSearchParams(window.location.search).get('query') || '',

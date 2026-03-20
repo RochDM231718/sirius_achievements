@@ -5,10 +5,9 @@ from sqlalchemy import select, func, or_, case
 from urllib.parse import quote
 import math
 import os
-import traceback
 
 from app.security.csrf import validate_csrf
-from app.routers.admin.admin import guard_router, templates, get_db
+from app.routers.admin.admin import templates, get_db
 from app.models.achievement import Achievement
 from app.models.user import Users
 from app.models.enums import AchievementStatus, AchievementCategory, AchievementLevel, UserRole
@@ -17,11 +16,16 @@ from app.repositories.admin.achievement_repository import AchievementRepository
 from app.utils.search import escape_like
 from app.config import settings
 from app.utils.rate_limiter import rate_limiter
+from app.routers.admin.deps import require_auth
 import structlog
 
 logger = structlog.get_logger()
 
-router = guard_router
+router = APIRouter(
+    prefix="/sirius.achievements",
+    tags=["admin.achievements"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 def get_service(db: AsyncSession = Depends(get_db)):
@@ -151,8 +155,7 @@ async def store(
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote(str(e))}&toast_type=error",
                                 status_code=302)
     except Exception as e:
-        traceback.print_exc()
-        print(f"UPLOAD ERROR: {type(e).__name__}: {e}", flush=True)
+        logger.exception("Achievement upload failed", error=str(e), user_id=user_id)
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote('Произошла ошибка при загрузке')}&toast_type=error",
                                 status_code=302)
 
@@ -202,8 +205,7 @@ async def revise(
             status_code=302
         )
     except Exception as e:
-        traceback.print_exc()
-        print(f"REVISE ERROR: {type(e).__name__}: {e}", flush=True)
+        logger.exception("Achievement revise failed", error=str(e), achievement_id=id, user_id=user_id)
         return RedirectResponse(
             url="/sirius.achievements/achievements?toast_msg=Произошла ошибка при загрузке&toast_type=error",
             status_code=302
@@ -224,15 +226,14 @@ async def delete(id: int, request: Request, service: AchievementService = Depend
         )
 
     is_owner = achievement.user_id == user_id
-    is_staff = str(user_role) in [UserRole.MODERATOR.value, UserRole.SUPER_ADMIN.value, 'moderator', 'super_admin']
 
-    if not is_owner and not is_staff:
+    if not is_owner:
         return RedirectResponse(
             url="/sirius.achievements/achievements?toast_msg=У вас нет прав на удаление этого файла&toast_type=error",
             status_code=302
         )
 
-    await service.repo.delete(id)
+    await service.delete(id, user_id, user_role)
 
     return RedirectResponse(
         url="/sirius.achievements/achievements?toast_msg=Достижение удалено&toast_type=success",

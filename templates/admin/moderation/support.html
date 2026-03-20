@@ -4,52 +4,89 @@
 <div class="max-w-6xl mx-auto space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Новые обращения</h2>
-            <p class="text-sm text-slate-500 mt-1">{{ total }} обращений ожидают ответа</p>
+            <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Общие обращения</h2>
+            <p class="text-sm text-slate-500 mt-1">{{ total }} активных обращений в общем потоке</p>
         </div>
-        <a href="/sirius.achievements/moderation/support/all" class="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
-            Все обращения
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-        </a>
+        <div class="flex items-center gap-3">
+            <a href="/sirius.achievements/moderation/support/chats" class="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
+                Мои чаты
+            </a>
+            <a href="/sirius.achievements/moderation/support/all" class="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
+                Все обращения
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </a>
+        </div>
     </div>
 
     {% if tickets %}
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <table class="w-full text-left text-sm whitespace-nowrap">
-            <thead class="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
-                <tr>
-                    <th class="px-5 py-3 font-bold">#</th>
-                    <th class="px-5 py-3 font-bold">Тема</th>
-                    <th class="px-5 py-3 font-bold">Студент</th>
-                    <th class="px-5 py-3 font-bold">Сообщений</th>
-                    <th class="px-5 py-3 font-bold">Дата</th>
-                    <th class="px-5 py-3 font-bold text-right">Действие</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-50">
-                {% for ticket in tickets %}
-                <tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-5 py-3 text-xs text-slate-400">{{ ticket.id }}</td>
-                    <td class="px-5 py-3">
-                        <a href="/sirius.achievements/moderation/support/{{ ticket.id }}" class="font-medium text-slate-800 hover:text-indigo-600 transition-colors">{{ ticket.subject }}</a>
-                    </td>
-                    <td class="px-5 py-3 text-slate-600 text-xs">
-                        {% if ticket.user %}
-                            <a href="/sirius.achievements/users/{{ ticket.user.id }}" class="hover:text-indigo-600 transition-colors">
-                                {{ ticket.user.first_name }} {{ ticket.user.last_name }}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm whitespace-nowrap">
+                <thead class="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+                    <tr>
+                        <th class="px-5 py-3 font-bold">#</th>
+                        <th class="px-5 py-3 font-bold">Тема</th>
+                        <th class="px-5 py-3 font-bold">Студент</th>
+                        <th class="px-5 py-3 font-bold">Статус</th>
+                        <th class="px-5 py-3 font-bold">Модератор</th>
+                        <th class="px-5 py-3 font-bold">Сообщений</th>
+                        <th class="px-5 py-3 font-bold">Обновлено</th>
+                        <th class="px-5 py-3 font-bold text-right">Действие</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    {% for ticket in tickets %}
+                    {% set st = ticket.status.value if ticket.status.value is defined else ticket.status %}
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-5 py-3 text-xs text-slate-400">{{ ticket.id }}</td>
+                        <td class="px-5 py-3">
+                            <a href="/sirius.achievements/moderation/support/{{ ticket.id }}?back=new" class="font-medium text-slate-800 hover:text-indigo-600 transition-colors">
+                                {{ ticket.subject }}
                             </a>
-                            <div class="text-[10px] text-slate-400">ID: {{ ticket.user.id }} · {{ ticket.user.email }}</div>
-                        {% endif %}
-                    </td>
-                    <td class="px-5 py-3 text-xs text-slate-500">{{ ticket.messages | length }}</td>
-                    <td class="px-5 py-3 text-xs text-slate-500">{{ ticket.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
-                    <td class="px-5 py-3 text-right">
-                        <a href="/sirius.achievements/moderation/support/{{ ticket.id }}" class="text-xs text-indigo-600 font-bold hover:underline">Ответить</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        </td>
+                        <td class="px-5 py-3 text-slate-600 text-xs">
+                            {% if ticket.user %}
+                                <a href="/sirius.achievements/users/{{ ticket.user.id }}" class="hover:text-indigo-600 transition-colors">
+                                    {{ ticket.user.first_name }} {{ ticket.user.last_name }}
+                                </a>
+                                <div class="text-[10px] text-slate-400">ID: {{ ticket.user.id }} · {{ ticket.user.email }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3">
+                            {% if st == 'open' and not ticket.moderator_id %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-50 text-yellow-700 border border-yellow-200">Новое</span>
+                            {% else %}
+                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">Принято</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-500">
+                            {% if ticket.moderator %}
+                                <div class="font-medium text-slate-700">{{ ticket.moderator.first_name }} {{ ticket.moderator.last_name }}</div>
+                                <div class="text-[10px] text-slate-400">{{ ticket.moderator.email }}</div>
+                            {% else %}
+                                <span class="text-slate-400">Еще не взято</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-xs text-slate-500">{{ ticket.messages | length }}</td>
+                        <td class="px-5 py-3 text-xs text-slate-500">{{ ticket.updated_at.strftime('%d.%m.%Y %H:%M') if ticket.updated_at else ticket.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td class="px-5 py-3 text-right">
+                            {% if not ticket.moderator_id %}
+                            <form action="/sirius.achievements/moderation/support/{{ ticket.id }}/take" method="POST" class="inline-flex">
+                                <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                                <input type="hidden" name="back" value="new">
+                                <button type="submit" class="text-xs text-indigo-600 font-bold hover:underline">Взять в работу</button>
+                            </form>
+                            {% elif ticket.moderator_id == user.id %}
+                            <a href="/sirius.achievements/moderation/support/{{ ticket.id }}?back=chats" class="text-xs text-indigo-600 font-bold hover:underline">Мой чат</a>
+                            {% else %}
+                            <a href="/sirius.achievements/moderation/support/{{ ticket.id }}?back=new" class="text-xs text-slate-500 font-bold hover:underline">Просмотр</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     {% if total_pages > 1 %}
@@ -59,14 +96,19 @@
         {% endfor %}
     </div>
     {% endif %}
-
     {% else %}
     <div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
         <div class="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
         </div>
-        <p class="text-sm text-slate-500">Нет новых обращений</p>
+        <p class="text-sm text-slate-500">Нет активных обращений</p>
     </div>
     {% endif %}
 </div>
+<script nonce="{{ request.state.csp_nonce }}">
+    window.addEventListener('support-queue-updated', () => {
+        clearTimeout(window.__supportQueueReloadTimer);
+        window.__supportQueueReloadTimer = setTimeout(() => window.location.reload(), 350);
+    });
+</script>
 {% endblock %}

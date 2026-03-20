@@ -12,6 +12,7 @@ from sqlalchemy import select, func as sql_func
 from app.models.achievement import Achievement
 from app.models.user import Users
 from app.models.enums import AchievementStatus
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -22,16 +23,17 @@ def get_ocr_reader():
     global _ocr_reader
     if _ocr_reader is None:
         model_dir = os.getenv('EASYOCR_MODEL_DIR', '/app/easyocr_models')
+        download_enabled = settings.RESUME_OCR_MODEL_DOWNLOAD_ENABLED
         try:
             _ocr_reader = easyocr.Reader(
                 ['ru', 'en'],
                 gpu=False,
                 model_storage_directory=model_dir,
-                download_enabled=True,
+                download_enabled=download_enabled,
                 verbose=False
             )
         except Exception as e:
-            logger.warning("EasyOCR init with download failed, retrying offline", error=str(e))
+            logger.warning("EasyOCR init failed, retrying offline", error=str(e), download_enabled=download_enabled)
             _ocr_reader = easyocr.Reader(
                 ['ru', 'en'],
                 gpu=False,
@@ -178,10 +180,10 @@ class ResumeService:
         return {"success": True, "resume": resume_result}
 
     async def _call_yandex_gpt(self, combined_text: str, target_name: str) -> str:
-        api_key = os.getenv("YANDEX_API_KEY")
-        folder_id = os.getenv("YANDEX_FOLDER_ID")
+        api_key = settings.YANDEX_API_KEY or os.getenv("YANDEX_API_KEY")
+        folder_id = settings.YANDEX_FOLDER_ID or os.getenv("YANDEX_FOLDER_ID")
 
-        if not api_key or not folder_id:
+        if not settings.RESUME_EXTERNAL_AI_ENABLED or not api_key or not folder_id:
             return self._generate_local_resume(combined_text, target_name)
 
         prompt = {

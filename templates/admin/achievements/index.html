@@ -92,7 +92,7 @@
                     {% for item in achievements %}
                     <tr class="transition-colors {% if item.status.value == 'revision' %}bg-yellow-50/30{% else %}hover:bg-slate-50{% endif %}">
                         <td class="px-5 py-3 text-center">
-                            <button @click="$dispatch('open-preview', {src: '/static/{{ item.file_path }}', type: '{{ 'pdf' if item.file_path.endswith('.pdf') else 'image' }}'})"
+                            <button @click="$dispatch('open-preview', {src: '/sirius.achievements/documents/{{ item.id }}/preview', type: '{{ 'pdf' if item.file_path.endswith('.pdf') else 'image' }}'})"
                                     class="inline-flex w-8 h-8 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors items-center justify-center">
                                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                             </button>
@@ -170,7 +170,7 @@
                     <p class="text-xs text-slate-600 mb-4">Пожалуйста, загрузите исправленный или недостающий файл. Старый файл будет удален, а документ отправится на повторную модерацию.</p>
 
                     <div class="w-full relative border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center hover:bg-slate-50 hover:border-indigo-400 transition-colors group cursor-pointer">
-                        <input type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.webp" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="document.getElementById('fileNameRevise').textContent = this.files[0] ? this.files[0].name : 'Файл не выбран';">
+                        <input type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.webp" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" data-file-input data-file-indicator="#fileNameRevise">
                         <div class="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                         </div>
@@ -207,7 +207,16 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{ request.state.csp_nonce }}">
+        document.querySelectorAll('[data-file-input]').forEach((input) => {
+            input.addEventListener('change', () => {
+                const target = document.querySelector(input.dataset.fileIndicator);
+                if (target) {
+                    target.textContent = input.files && input.files[0] ? input.files[0].name : 'Файл не выбран';
+                }
+            });
+        });
+
         function autocomplete(url) {
             return {
                 query: new URLSearchParams(window.location.search).get('query') || '',

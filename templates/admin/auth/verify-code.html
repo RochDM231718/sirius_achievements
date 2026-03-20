@@ -9,7 +9,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='icon.png') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='icon.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='icon.png') }}">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 antialiased font-sans min-h-screen flex items-center justify-center p-4">
 
@@ -49,7 +49,7 @@
         </form>
     </div>
 
-    <script>
+    <script nonce="{{ request.state.csp_nonce }}">
         let timeLeft = {{ seconds_left }};
         const timerSpan = document.getElementById('timer');
         const resendBtn = document.getElementById('resendBtn');
@@ -59,7 +59,7 @@
                 resendBtn.disabled = false;
                 resendBtn.classList.remove('text-slate-400', 'cursor-not-allowed');
                 resendBtn.classList.add('text-indigo-600', 'hover:text-indigo-800', 'cursor-pointer');
-                resendBtn.innerHTML = "Отправить код повторно";
+                resendBtn.textContent = "Отправить код повторно";
             } else {
                 timerSpan.textContent = `(${timeLeft})`;
                 timeLeft--;

@@ -27,11 +27,24 @@ class Users(Base):
 
     failed_attempts = Column(Integer, default=0)
     blocked_until = Column(DateTime, nullable=True)
+    session_version = Column(Integer, nullable=False, default=1, server_default="1")
+    api_access_version = Column(Integer, nullable=False, default=1, server_default="1")
+    api_refresh_version = Column(Integer, nullable=False, default=1, server_default="1")
 
     achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     tokens = relationship("UserToken", back_populates="user", cascade="all, delete-orphan")
-    support_tickets = relationship("SupportTicket", back_populates="user", cascade="all, delete-orphan")
+    support_tickets = relationship(
+        "SupportTicket",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="SupportTicket.user_id",
+    )
+    assigned_support_tickets = relationship(
+        "SupportTicket",
+        back_populates="moderator",
+        foreign_keys="SupportTicket.moderator_id",
+    )
 
     resume_text = Column(Text, nullable=True)
     resume_generated_at = Column(DateTime(timezone=True), nullable=True)

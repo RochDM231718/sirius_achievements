@@ -28,6 +28,8 @@ async def auth(request: Request):
 
         if not user or user.status == UserStatus.REJECTED or not user.is_active:
             raise HTTPException(status_code=401, detail=translation_manager.gettext('api.auth.user_not_found'))
+        if int(payload.get("av", 0)) != int(user.api_access_version or 0):
+            raise HTTPException(status_code=401, detail=translation_manager.gettext('api.auth.invalid_token'))
 
     request.state.user = user
     request.state.user_role = UserRole(user.role)

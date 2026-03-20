@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.user import Users
 from app.models.enums import UserStatus
+from app.infrastructure.database import async_session_maker
 import structlog
 
 logger = structlog.get_logger()
@@ -10,6 +11,7 @@ logger = structlog.get_logger()
 
 async def get_current_user(request: Request, db: AsyncSession):
     user_id = request.session.get("auth_id")
+    session_version = request.session.get("auth_session_version")
     if not user_id:
         return None
 
@@ -18,7 +20,13 @@ async def get_current_user(request: Request, db: AsyncSession):
         result = await db.execute(query)
         user = result.scalars().first()
 
-        if not user or user.status == UserStatus.REJECTED:
+        if (
+            not user
+            or user.status == UserStatus.REJECTED
+            or not user.is_active
+            or session_version is None
+            or int(session_version) != int(user.session_version or 0)
+        ):
             request.session.clear()
             return None
 
@@ -31,7 +39,24 @@ async def get_current_user(request: Request, db: AsyncSession):
 async def require_auth(request: Request):
     """Guard dependency: redirects unauthenticated users to login."""
     auth_id = request.session.get("auth_id")
-    if not auth_id:
+    auth_session_version = request.session.get("auth_session_version")
+    if not auth_id or auth_session_version is None:
         if request.headers.get('x-requested-with') == 'XMLHttpRequest':
             raise HTTPException(status_code=401, detail="Unauthorized")
         raise HTTPException(status_code=302, headers={"Location": "/sirius.achievements/login"})
+
+    async with async_session_maker() as db:
+        query = select(Users).where(Users.id == auth_id)
+        result = await db.execute(query)
+        user = result.scalars().first()
+
+        if (
+            not user
+            or user.status == UserStatus.REJECTED
+            or not user.is_active
+            or int(auth_session_version) != int(user.session_version or 0)
+        ):
+            request.session.clear()
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(status_code=302, headers={"Location": "/sirius.achievements/login"})

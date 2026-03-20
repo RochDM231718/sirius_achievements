@@ -6,14 +6,14 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     environment:
-      POSTGRES_USER: ${DB_USERNAME:-sirius_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-sirius_password}
-      POSTGRES_DB: ${DB_NAME:-sirius_db}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
       TZ: Europe/Moscow
     volumes:
       - postgres_data_new:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-sirius_user} -d ${DB_NAME:-sirius_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,9 +22,9 @@ services:
     image: redis:7-alpine
     container_name: sirius_redis_new
     restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD:-sirius_redis_pass}
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sirius_redis_pass}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,10 +44,10 @@ services:
       - .env
     environment:
       - DB_HOST=db
-      - DB_USERNAME=${DB_USERNAME:-sirius_user}
-      - DB_PASSWORD=${DB_PASSWORD:-sirius_password}
-      - DB_NAME=${DB_NAME:-sirius_db}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-sirius_redis_pass}@redis:6379
+      - DB_USERNAME=${DB_USERNAME:?DB_USERNAME is required}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - DB_NAME=${DB_NAME:?DB_NAME is required}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       - TZ=Europe/Moscow
     volumes:
       - uploads_data:/app/static/uploads

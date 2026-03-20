@@ -2,7 +2,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script nonce="{{ request.state.csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
 <div class="max-w-2xl mx-auto" x-data="{ activeTab: '{{ active_tab or request.query_params.get('active_tab', 'profile') }}' }">
     <div class="mb-4">
@@ -95,7 +95,7 @@
                     loading: false,
                     canGenerate: {{ 'true' if can_generate is defined and can_generate else 'false' }},
                     reason: '{{ generate_reason if generate_reason is defined else '' }}',
-                    resumeText: `{{ user.resume_text or '' }}`,
+                    resumeText: {{ (user.resume_text or '') | tojson }},
                     async generateResume() {
                         this.loading = true;
                         try {
@@ -161,7 +161,7 @@
                     <div class="relative">
                         <input type="password" name="current_password" id="curPwd" required
                                class="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
-                        <button type="button" onclick="togglePwd('curPwd', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <button type="button" data-toggle-password="curPwd" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                             <svg class="w-4 h-4 eye-open" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                             <svg class="w-4 h-4 eye-closed hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
                         </button>
@@ -172,7 +172,7 @@
                     <div class="relative">
                         <input type="password" name="new_password" id="newPwd" required
                                class="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
-                        <button type="button" onclick="togglePwd('newPwd', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <button type="button" data-toggle-password="newPwd" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                             <svg class="w-4 h-4 eye-open" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                             <svg class="w-4 h-4 eye-closed hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
                         </button>
@@ -183,7 +183,7 @@
                     <div class="relative">
                         <input type="password" name="confirm_password" id="confirmPwd" required
                                class="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
-                        <button type="button" onclick="togglePwd('confirmPwd', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <button type="button" data-toggle-password="confirmPwd" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                             <svg class="w-4 h-4 eye-open" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                             <svg class="w-4 h-4 eye-closed hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
                         </button>
@@ -218,12 +218,20 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
     function showToast(message, type = 'error') {
         const toast = document.createElement('div');
         toast.className = `fixed top-20 right-4 z-[90] max-w-xs w-full bg-white border border-slate-200 rounded-lg shadow-sm flex items-center p-3 transform transition-all duration-300`;
-        const dotColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
-        toast.innerHTML = `<div class="flex-shrink-0 mr-3"><div class="h-2 w-2 rounded-full ${dotColor}"></div></div><p class="text-sm font-medium text-slate-700 flex-1">${message}</p>`;
+        const dot = document.createElement('div');
+        dot.className = `h-2 w-2 rounded-full ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
+        const dotWrap = document.createElement('div');
+        dotWrap.className = 'flex-shrink-0 mr-3';
+        dotWrap.appendChild(dot);
+        const text = document.createElement('p');
+        text.className = 'text-sm font-medium text-slate-700 flex-1';
+        text.textContent = message;
+        toast.appendChild(dotWrap);
+        toast.appendChild(text);
         document.body.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
     }
@@ -280,12 +288,17 @@
             }, 'image/jpeg');
         }
     });
-    function togglePwd(id, btn) {
+    function togglePwd(btn) {
+        const id = btn.dataset.togglePassword;
         const inp = document.getElementById(id);
         const isHidden = inp.type === 'password';
         inp.type = isHidden ? 'text' : 'password';
         btn.querySelector('.eye-open').classList.toggle('hidden', isHidden);
         btn.querySelector('.eye-closed').classList.toggle('hidden', !isHidden);
     }
+
+    document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
+        btn.addEventListener('click', () => togglePwd(btn));
+    });
 </script>
 {% endblock %}

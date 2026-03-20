@@ -7,13 +7,17 @@ from datetime import datetime, timedelta
 import json
 
 from app.security.csrf import validate_csrf
-from app.routers.admin.admin import guard_router, templates, get_db
+from app.routers.admin.admin import templates, get_db
 from app.models.user import Users
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole, UserStatus, EducationLevel
-from app.routers.admin.deps import get_current_user
+from app.routers.admin.deps import get_current_user, require_auth
 
-router = guard_router
+router = APIRouter(
+    prefix="/sirius.achievements",
+    tags=["admin.dashboard"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get('/dashboard', response_class=HTMLResponse, name='admin.dashboard.index')

@@ -4,10 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
 
 from app.security.csrf import validate_csrf
-from app.routers.admin.admin import guard_router, get_db
+from app.routers.admin.admin import get_db
+from app.routers.admin.deps import require_auth
 from app.models.notification import Notification
 
-router = guard_router
+router = APIRouter(
+    prefix="/sirius.achievements",
+    tags=["admin.notifications"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get('/api/notifications/unread-count')
@@ -18,14 +23,16 @@ async def get_unread_count(request: Request, db: AsyncSession = Depends(get_db))
 
     count_stmt = select(func.count()).filter(
         Notification.user_id == user_id,
-        Notification.is_read == False
+        Notification.is_read.is_(False)
     )
     count = (await db.execute(count_stmt)).scalar() or 0
 
-    items_stmt = select(Notification) \
-        .filter(Notification.user_id == user_id) \
-        .order_by(Notification.created_at.desc()) \
+    items_stmt = (
+        select(Notification)
+        .filter(Notification.user_id == user_id)
+        .order_by(Notification.is_read.asc(), Notification.created_at.desc())
         .limit(5)
+    )
 
     items = (await db.execute(items_stmt)).scalars().all()
 
