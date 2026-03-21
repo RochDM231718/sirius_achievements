@@ -10,10 +10,12 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='icon.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='icon.png') }}">
     <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.tailwindcss.com"></script>
+    {% include "partials/theme_head.html" %}
 </head>
-<body class="bg-slate-50 antialiased font-sans min-h-screen flex items-center justify-center p-4">
+<body class="theme-auth-page bg-slate-50 antialiased font-sans min-h-screen flex items-center justify-center p-4">
+    {% include "partials/theme_toggle_floating.html" %}
 
-    <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+    <div class="theme-auth-card w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
         <div class="text-center mb-8">
             <h1 class="text-2xl font-bold text-slate-800 tracking-tight">С возвращением</h1>
             <p class="text-sm text-slate-500 mt-1">Войдите в свой аккаунт</p>

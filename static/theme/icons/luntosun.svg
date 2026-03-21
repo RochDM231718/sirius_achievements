@@ -1,0 +1,76 @@
+<svg viewBox="0 0 200 200" width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="moon-mask">
+      <rect x="0" y="0" width="200" height="200" fill="white" />
+      <circle cx="100" cy="100" r="35" fill="black" class="mask-circle" />
+    </mask>
+  </defs>
+
+  <style>
+    .sun-center {
+      fill: #ffffff;
+      mask: url(#moon-mask);
+      filter: drop-shadow(0 0 12px rgba(255,255,255,0.9));
+      animation: morphToSun 3s ease-in-out forwards;
+    }
+
+    .ray {
+      opacity: 0;
+      stroke: #888888;
+      stroke-width: 4;
+      stroke-linecap: round;
+      transform-origin: 100px 100px;
+      transform: scale(0.5) rotate(45deg);
+      animation: showRays 3s ease-in-out forwards;
+    }
+
+    .mask-circle {
+      transform: translate(20px, -15px);
+      animation: removeMask 3s ease-in-out forwards;
+    }
+
+    @keyframes morphToSun {
+      0% {
+        fill: #ffffff;
+        filter: drop-shadow(0 0 12px rgba(255,255,255,0.9));
+      }
+      100% {
+        fill: #888888;
+        filter: drop-shadow(0 0 0px rgba(255,255,255,0));
+      }
+    }
+
+    @keyframes showRays {
+      0% {
+        opacity: 0;
+        transform: scale(0.5) rotate(45deg);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+      }
+    }
+
+    @keyframes removeMask {
+      0% {
+        transform: translate(20px, -15px);
+      }
+      100% {
+        transform: translate(80px, -80px);
+      }
+    }
+  </style>
+
+  <g>
+    <line x1="100" y1="20" x2="100" y2="45" class="ray" />
+    <line x1="100" y1="155" x2="100" y2="180" class="ray" />
+    <line x1="20" y1="100" x2="45" y2="100" class="ray" />
+    <line x1="155" y1="100" x2="180" y2="100" class="ray" />
+    <line x1="43" y1="43" x2="61" y2="61" class="ray" />
+    <line x1="157" y1="157" x2="139" y2="139" class="ray" />
+    <line x1="43" y1="157" x2="61" y2="139" class="ray" />
+    <line x1="157" y1="43" x2="139" y2="61" class="ray" />
+
+    <circle cx="100" cy="100" r="35" class="sun-center" />
+  </g>
+</svg>

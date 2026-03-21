@@ -12,6 +12,7 @@
     <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.tailwindcss.com/3.4.16"></script>
     <script nonce="{{ request.state.csp_nonce }}" defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" crossorigin="anonymous"></script>
     <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+    {% include "partials/theme_head.html" %}
 
     <style>
         [x-cloak] { display: none !important; }
@@ -20,7 +21,7 @@
         .scroll-smooth-ios { -webkit-overflow-scrolling: touch; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased font-sans overflow-hidden">
+<body class="theme-shell bg-slate-50 text-slate-800 antialiased font-sans overflow-hidden">
 
     <div class="flex h-[100dvh] overflow-hidden" x-data="{ mobileMenuOpen: false }">
 
@@ -130,6 +131,7 @@
                 <div class="hidden md:block flex-1"></div>
 
                 <div class="flex items-center space-x-3">
+                    {% include "partials/theme_toggle_button.html" %}
                     <div class="relative" x-data="notificationCenter()" x-init="init()">
                         <button @click="toggle()"
                                 class="relative p-2 text-slate-400 hover:text-indigo-600 focus:outline-none transition-colors">

@@ -1,0 +1,12 @@
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="{{ url_for('static', path='theme/theme.css') }}">
+<script nonce="{{ request.state.csp_nonce }}">
+    (function () {
+        try {
+            document.documentElement.dataset.theme = localStorage.getItem('sirius_theme') === 'dark' ? 'dark' : 'light';
+        } catch (error) {
+            document.documentElement.dataset.theme = 'light';
+        }
+    })();
+</script>
+<script nonce="{{ request.state.csp_nonce }}" defer src="{{ url_for('static', path='theme/theme.js') }}"></script>
