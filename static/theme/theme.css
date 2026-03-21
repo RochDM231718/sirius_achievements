@@ -344,6 +344,10 @@ html[data-theme="dark"] .border-white\/5 {
   border-color: rgba(255, 255, 255, 0.09) !important;
 }
 
+html[data-theme="dark"] .text-slate-900 {
+  color: var(--theme-text) !important;
+}
+
 html[data-theme="dark"] .text-slate-800 {
   color: var(--theme-text) !important;
 }
