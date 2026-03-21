@@ -17,6 +17,9 @@ def test_default_settings():
     assert s.SUPPORT_ITEMS_PER_PAGE == 20
     assert s.POINTS_SCHOOL == 10
     assert s.POINTS_INTERNATIONAL == 100
+    assert s.ENABLE_STARTUP_SCHEMA_UPDATES is False
+    assert s.ENABLE_SUPPORT_MAINTENANCE is True
+    assert s.SUPPORT_MAINTENANCE_INTERVAL_SECONDS == 3600
     assert s.RESUME_EXTERNAL_AI_ENABLED is False
     assert s.RESUME_OCR_MODEL_DOWNLOAD_ENABLED is False
 

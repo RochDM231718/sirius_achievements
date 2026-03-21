@@ -12,6 +12,11 @@ class Settings:
     # ── Environment ──
     ENV: str = os.getenv("ENV", "development")
     DEBUG: bool = _env_bool("DEBUG", False)
+    ENABLE_STARTUP_SCHEMA_UPDATES: bool = _env_bool("ENABLE_STARTUP_SCHEMA_UPDATES", False)
+    ENABLE_SUPPORT_MAINTENANCE: bool = _env_bool("ENABLE_SUPPORT_MAINTENANCE", True)
+    SUPPORT_MAINTENANCE_INTERVAL_SECONDS: int = int(
+        os.getenv("SUPPORT_MAINTENANCE_INTERVAL_SECONDS", "3600")
+    )
 
     # ── Database ──
     DB_HOST: str = os.getenv("DB_HOST", "localhost")

@@ -92,13 +92,13 @@ class SupportService:
     async def take_ticket(self, ticket_id: int, moderator_id: int) -> SupportTicket:
         ticket = await self.ticket_repo.find(ticket_id)
         if not ticket:
-            raise ValueError("РћР±СЂР°С‰РµРЅРёРµ РЅРµ РЅР°Р№РґРµРЅРѕ")
+            raise ValueError("Обращение не найдено")
         if ticket.archived_at:
-            raise ValueError("РђСЂС…РёРІРЅРѕРµ РѕР±СЂР°С‰РµРЅРёРµ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РґР»СЏ С‡С‚РµРЅРёСЏ")
+            raise ValueError("Архивное обращение доступно только для чтения")
         if ticket.moderator_id and ticket.moderator_id != moderator_id:
-            raise ValueError("РћР±СЂР°С‰РµРЅРёРµ СѓР¶Рµ РїСЂРёРЅСЏС‚Рѕ РґСЂСѓРіРёРј РјРѕРґРµСЂР°С‚РѕСЂРѕРј")
+            raise ValueError("Обращение уже принято другим модератором")
         if ticket.status == SupportTicketStatus.CLOSED:
-            raise ValueError("Р—Р°РєСЂС‹С‚РѕРµ РѕР±СЂР°С‰РµРЅРёРµ РЅСѓР¶РЅРѕ СЃРЅР°С‡Р°Р»Р° РїРµСЂРµРѕС‚РєСЂС‹С‚СЊ")
+            raise ValueError("Закрытое обращение нужно сначала переоткрыть")
 
         now = datetime.now(timezone.utc)
         ticket.moderator_id = moderator_id
@@ -151,7 +151,7 @@ class SupportService:
         ticket.updated_at = now
         if is_from_moderator:
             if ticket.moderator_id and ticket.moderator_id != sender_id:
-                raise ValueError("РћР±СЂР°С‰РµРЅРёРµ СѓР¶Рµ РїСЂРёРЅСЏС‚Рѕ РґСЂСѓРіРёРј РјРѕРґРµСЂР°С‚РѕСЂРѕРј")
+                raise ValueError("Обращение уже принято другим модератором")
             if ticket.moderator_id is None:
                 ticket.moderator_id = sender_id
                 ticket.assigned_at = now

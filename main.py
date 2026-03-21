@@ -47,25 +47,51 @@ setup_logging(
     log_level="DEBUG" if settings.DEBUG else "INFO",
 )
 logger = structlog.get_logger()
+STARTUP_SCHEMA_LOCK_KEY = 824915101
+SUPPORT_MAINTENANCE_LOCK_KEY = 824915102
+
+
+async def _try_advisory_lock(executor, key: int) -> bool:
+    from sqlalchemy import text
+
+    result = await executor.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": key})
+    return bool(result.scalar())
+
+
+async def _release_advisory_lock(executor, key: int) -> None:
+    from sqlalchemy import text
+
+    await executor.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
 
 
 async def _support_maintenance_loop():
+    interval_seconds = max(60, settings.SUPPORT_MAINTENANCE_INTERVAL_SECONDS)
     while True:
         try:
             async with async_session_maker() as db:
-                stats = await process_support_ticket_maintenance(db)
-                if stats["closed"] or stats["archived"]:
-                    logger.info("support_ticket_maintenance_completed", **stats)
+                if not await _try_advisory_lock(db, SUPPORT_MAINTENANCE_LOCK_KEY):
+                    logger.debug("support_ticket_maintenance_skipped_lock_not_acquired")
+                else:
+                    try:
+                        stats = await process_support_ticket_maintenance(db)
+                        if stats["closed"] or stats["archived"]:
+                            logger.info("support_ticket_maintenance_completed", **stats)
+                    finally:
+                        await _release_advisory_lock(db, SUPPORT_MAINTENANCE_LOCK_KEY)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.error("support_ticket_maintenance_failed", error=str(exc))
-        await asyncio.sleep(3600)
+        await asyncio.sleep(interval_seconds)
 
 
 async def _apply_schema_updates():
-    """Add missing columns to existing tables (safe: IF NOT EXISTS)."""
+    """Optional compatibility hook for local recovery scenarios."""
     from sqlalchemy import text
+
+    if not settings.ENABLE_STARTUP_SCHEMA_UPDATES:
+        logger.info("startup_schema_updates_disabled")
+        return
 
     alter_statements = [
         # support_tickets lifecycle columns
@@ -86,60 +112,67 @@ async def _apply_schema_updates():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS reviewed_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
     ]
     async with engine.begin() as conn:
-        # Fix supportticketstatus enum if values don't match
-        # Check if enum exists with wrong values
-        enum_check = await conn.execute(text(
-            "SELECT enumlabel FROM pg_enum "
-            "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid "
-            "WHERE pg_type.typname = 'supportticketstatus' ORDER BY enumsortorder"
-        ))
-        existing_labels = [row[0] for row in enum_check.fetchall()]
-        expected_labels = ["open", "in_progress", "closed"]
-        if existing_labels and existing_labels != expected_labels:
-            # Recreate enum with correct values
-            await conn.execute(text(
-                "ALTER TABLE support_tickets ALTER COLUMN status DROP DEFAULT"
-            ))
-            await conn.execute(text(
-                "ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20)"
-            ))
-            # Normalize existing data to lowercase
-            await conn.execute(text(
-                "UPDATE support_tickets SET status = LOWER(status)"
-            ))
-            await conn.execute(text("DROP TYPE IF EXISTS supportticketstatus"))
-            await conn.execute(text(
-                "CREATE TYPE supportticketstatus AS ENUM ('open', 'in_progress', 'closed')"
-            ))
-            await conn.execute(text(
-                "ALTER TABLE support_tickets ALTER COLUMN status TYPE supportticketstatus "
-                "USING status::supportticketstatus"
-            ))
-            await conn.execute(text(
-                "ALTER TABLE support_tickets ALTER COLUMN status SET DEFAULT 'open'"
-            ))
+        if not await _try_advisory_lock(conn, STARTUP_SCHEMA_LOCK_KEY):
+            logger.info("startup_schema_updates_skipped_lock_not_acquired")
+            return
 
-        # Create any brand-new tables first
-        from app.infrastructure.database import Base
-        await conn.run_sync(Base.metadata.create_all)
-        # Then add missing columns to existing tables
-        for stmt in alter_statements:
-            try:
-                await conn.execute(text(stmt))
-            except Exception:
-                pass  # column/table may already exist
+        try:
+            enum_check = await conn.execute(text(
+                "SELECT enumlabel FROM pg_enum "
+                "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid "
+                "WHERE pg_type.typname = 'supportticketstatus' ORDER BY enumsortorder"
+            ))
+            existing_labels = [row[0] for row in enum_check.fetchall()]
+            expected_labels = ["open", "in_progress", "closed"]
+            if existing_labels and existing_labels != expected_labels:
+                await conn.execute(text(
+                    "ALTER TABLE support_tickets ALTER COLUMN status DROP DEFAULT"
+                ))
+                await conn.execute(text(
+                    "ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20)"
+                ))
+                await conn.execute(text(
+                    "UPDATE support_tickets SET status = LOWER(status)"
+                ))
+                await conn.execute(text("DROP TYPE IF EXISTS supportticketstatus"))
+                await conn.execute(text(
+                    "CREATE TYPE supportticketstatus AS ENUM ('open', 'in_progress', 'closed')"
+                ))
+                await conn.execute(text(
+                    "ALTER TABLE support_tickets ALTER COLUMN status TYPE supportticketstatus "
+                    "USING status::supportticketstatus"
+                ))
+                await conn.execute(text(
+                    "ALTER TABLE support_tickets ALTER COLUMN status SET DEFAULT 'open'"
+                ))
+
+            from app.infrastructure.database import Base
+
+            await conn.run_sync(Base.metadata.create_all)
+            for stmt in alter_statements:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception:
+                    pass  # column/table may already exist
+        finally:
+            await _release_advisory_lock(conn, STARTUP_SCHEMA_LOCK_KEY)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _apply_schema_updates()
-    task = asyncio.create_task(_support_maintenance_loop())
+    task = None
+    if settings.ENABLE_SUPPORT_MAINTENANCE:
+        task = asyncio.create_task(_support_maintenance_loop())
+    else:
+        logger.info("support_ticket_maintenance_disabled")
     try:
         yield
     finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         await engine.dispose()
         logger.info("Database engine disposed. Graceful shutdown complete.")
 
