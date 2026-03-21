@@ -4,10 +4,10 @@
   const DEFAULT_CONFIG = {
     storageKey: DEFAULT_STORAGE_KEY,
     icons: {
-      light: "/static/theme/icons/luntosun2.svg",
-      dark: "/static/theme/icons/suntolun2.svg",
-      lightAlt: "/static/theme/icons/luntosun.svg",
-      darkAlt: "/static/theme/icons/suntolun.svg"
+      light: "/static/theme/icons/luntosun.svg",
+      dark: "/static/theme/icons/suntolun.svg",
+      lightAlt: "/static/theme/icons/luntosun2.svg",
+      darkAlt: "/static/theme/icons/suntolun2.svg"
     },
     light: {
       bg: "#f4f5fb",
@@ -73,11 +73,23 @@
     return `${url}${separator}v=${Date.now()}`;
   }
 
+  function getSystemTheme() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+
   function readTheme(storageKey) {
     try {
-      return localStorage.getItem(storageKey) === "dark" ? "dark" : "light";
+      const storedTheme = localStorage.getItem(storageKey);
+      if (storedTheme === "dark" || storedTheme === "light") {
+        return storedTheme;
+      }
+      return getSystemTheme();
     } catch (error) {
-      return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+      return document.documentElement.dataset.theme === "dark"
+        ? "dark"
+        : getSystemTheme();
     }
   }
 
@@ -145,7 +157,7 @@
   function updateToggleButtons(replayAnimation) {
     const nextTheme = state.theme === "dark" ? "light" : "dark";
     const currentIcon = state.theme === "dark" ? state.config.icons.dark : state.config.icons.light;
-    const currentTitle = nextTheme === "dark" ? "Включить темную тему" : "Включить светлую тему";
+    const currentTitle = nextTheme === "dark" ? "\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0442\u0435\u043c\u043d\u0443\u044e \u0442\u0435\u043c\u0443" : "\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0441\u0432\u0435\u0442\u043b\u0443\u044e \u0442\u0435\u043c\u0443";
 
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
       button.setAttribute("aria-pressed", state.theme === "dark" ? "true" : "false");
@@ -155,7 +167,7 @@
 
     document.querySelectorAll("[data-theme-toggle-icon]").forEach((image) => {
       image.src = replayAnimation ? appendCacheBuster(currentIcon) : currentIcon;
-      image.alt = state.theme === "dark" ? "Темная тема" : "Светлая тема";
+      image.alt = state.theme === "dark" ? "\u0422\u0435\u043c\u043d\u0430\u044f \u0442\u0435\u043c\u0430" : "\u0421\u0432\u0435\u0442\u043b\u0430\u044f \u0442\u0435\u043c\u0430";
     });
   }
 
