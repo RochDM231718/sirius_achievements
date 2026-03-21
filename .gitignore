@@ -33,3 +33,6 @@ static/uploads/
 
 # EasyOCR models
 models/
+
+# Local product notes
+*.local.md
