@@ -1,8 +1,13 @@
+import json
+
 from fastapi import APIRouter, Request, Depends, Form, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
 
+from app.models.achievement import Achievement
+from app.models.enums import AchievementStatus, UserRole
 from app.security.csrf import validate_csrf
 from app.routers.admin.admin import templates, get_db
 from app.services.admin.user_service import UserService
@@ -32,6 +37,22 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
     resume_service = ResumeService(db)
     check = await resume_service.can_generate(user.id)
 
+    # Progress chart: approved achievements by month
+    chart_query = (
+        select(
+            func.date_trunc("month", Achievement.created_at).label("m"),
+            func.count().label("cnt"),
+            func.coalesce(func.sum(Achievement.points), 0).label("pts"),
+        )
+        .filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.APPROVED)
+        .group_by("m")
+        .order_by("m")
+    )
+    chart_rows = (await db.execute(chart_query)).all()
+    chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
+    chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
+    chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+
     return templates.TemplateResponse(
         "profile/index.html",
         {
@@ -39,6 +60,9 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
             "user": user,
             "can_generate": check["allowed"],
             "generate_reason": check.get("reason", ""),
+            "chart_labels": chart_labels,
+            "chart_counts": chart_counts,
+            "chart_points": chart_points,
         },
     )
 

@@ -1,13 +1,17 @@
+import json
 import secrets
 import time
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.enums import EducationLevel
+from app.models.achievement import Achievement
+from app.models.enums import AchievementStatus, EducationLevel, UserRole, UserStatus
+from app.models.user import Users
 from app.repositories.admin.user_repository import UserRepository
 from app.repositories.admin.user_token_repository import UserTokenRepository
 from app.routers.admin.admin import get_db, templates
@@ -474,3 +478,79 @@ async def resend_verify_email(
             request.session["verify_email_retry_at"] = int(time.time()) + retry_after
 
     return RedirectResponse(url=request.url_for("admin.auth.verify_email_page"), status_code=302)
+
+
+@router.get("/privacy", response_class=HTMLResponse, name="admin.auth.privacy")
+async def privacy_policy(request: Request):
+    return templates.TemplateResponse("auth/privacy.html", {"request": request})
+
+
+@router.get("/students/{id}", response_class=HTMLResponse, name="public.student.profile")
+async def public_student_profile(id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    student = await db.get(Users, id)
+    if not student or student.role != UserRole.STUDENT or student.status != UserStatus.ACTIVE:
+        return templates.TemplateResponse("public/student_not_found.html", {"request": request}, status_code=404)
+
+    achievements_stmt = (
+        select(Achievement)
+        .filter(Achievement.user_id == id, Achievement.status == AchievementStatus.APPROVED)
+        .order_by(Achievement.created_at.desc())
+    )
+    achievements = (await db.execute(achievements_stmt)).scalars().all()
+    total_points = sum(a.points or 0 for a in achievements)
+
+    # Rank
+    leaderboard_stmt = (
+        select(
+            Users.id,
+            func.coalesce(func.sum(Achievement.points), 0).label("total_points"),
+        )
+        .outerjoin(Achievement, (Users.id == Achievement.user_id) & (Achievement.status == AchievementStatus.APPROVED))
+        .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
+        .group_by(Users.id)
+        .order_by(desc("total_points"))
+    )
+    results = (await db.execute(leaderboard_stmt)).all()
+    rank = None
+    for idx, (uid, _pts) in enumerate(results, 1):
+        if uid == id:
+            rank = idx
+            break
+
+    # Chart data
+    chart_query = (
+        select(
+            func.date_trunc("month", Achievement.created_at).label("m"),
+            func.count().label("cnt"),
+            func.coalesce(func.sum(Achievement.points), 0).label("pts"),
+        )
+        .filter(Achievement.user_id == id, Achievement.status == AchievementStatus.APPROVED)
+        .group_by("m")
+        .order_by("m")
+    )
+    chart_rows = (await db.execute(chart_query)).all()
+    chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
+    chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
+    chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+
+    # Category stats
+    cat_stats = {}
+    for a in achievements:
+        cat = a.category.value if a.category else "Другое"
+        cat_stats[cat] = cat_stats.get(cat, 0) + 1
+
+    return templates.TemplateResponse(
+        "public/student_profile.html",
+        {
+            "request": request,
+            "student": student,
+            "achievements": achievements,
+            "total_points": total_points,
+            "total_docs": len(achievements),
+            "rank": rank,
+            "cat_stats": cat_stats,
+            "chart_labels": chart_labels,
+            "chart_counts": chart_counts,
+            "chart_points": chart_points,
+        },
+    )

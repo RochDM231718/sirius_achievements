@@ -22,11 +22,25 @@
             {% endif %}
         {% endif %}
 
-        <a href="{{ back_url }}"
-           class="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">
-            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            Назад
-        </a>
+        <div class="flex items-center gap-3">
+            {% if target_user.role.value in ['STUDENT', 'student'] and target_user.status.value in ['ACTIVE', 'active'] %}
+            <a href="/sirius.achievements/students/{{ target_user.id }}" target="_blank"
+               class="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+                <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                Публичный профиль
+            </a>
+            {% endif %}
+            <a href="/sirius.achievements/users/{{ target_user.id }}/export-pdf"
+               class="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+                <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                PDF
+            </a>
+            <a href="{{ back_url }}"
+               class="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                Назад
+            </a>
+        </div>
     </div>
 
     {% set is_guest_or_pending = target_user.role.value in ['GUEST', 'guest'] or target_user.status.value in ['PENDING', 'pending'] %}
@@ -340,5 +354,54 @@
             };
         }
     </script>
+
+    {% if target_user.role.value == 'STUDENT' %}
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 class="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>
+        {% if chart_labels != '[]' %}
+        <div class="h-48">
+            <canvas id="userProgressChart"></canvas>
+        </div>
+        <script nonce="{{ request.state.csp_nonce }}">
+        (function() {
+            const ctx = document.getElementById('userProgressChart');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: {{ chart_labels | safe }},
+                    datasets: [{
+                        label: 'Баллы',
+                        data: {{ chart_points | safe }},
+                        borderColor: '#4f46e5',
+                        backgroundColor: 'rgba(79, 70, 229, 0.08)',
+                        fill: true, tension: 0.3, borderWidth: 2,
+                        pointBackgroundColor: '#fff', pointBorderColor: '#4f46e5',
+                        pointRadius: 3, pointHoverRadius: 6
+                    }, {
+                        label: 'Документов',
+                        data: {{ chart_counts | safe }},
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.06)',
+                        fill: true, tension: 0.3, borderWidth: 2,
+                        pointBackgroundColor: '#fff', pointBorderColor: '#10b981',
+                        pointRadius: 3, pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { font: { size: 11 }, usePointStyle: true, padding: 16 } }, tooltip: { padding: 10, cornerRadius: 8 } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9', drawBorder: false }, ticks: { font: { size: 11 }, color: '#94a3b8', stepSize: 1 } },
+                        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#64748b' } }
+                    }
+                }
+            });
+        })();
+        </script>
+        {% else %}
+        <div class="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

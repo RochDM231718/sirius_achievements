@@ -26,6 +26,8 @@ class UserRepository(CrudRepository):
                         self.model.last_name.ilike(like_term),
                         self.model.email.ilike(like_term),
                         self.model.phone_number.ilike(like_term),
+                        (self.model.first_name + " " + self.model.last_name).ilike(like_term),
+                        (self.model.last_name + " " + self.model.first_name).ilike(like_term),
                     )
                 )
             if 'role' in filters and filters['role']:

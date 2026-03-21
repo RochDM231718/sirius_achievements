@@ -69,8 +69,15 @@ async def search_documents(request: Request, query: str, status: Optional[str] =
     if zone_filter is not None:
         stmt = stmt.filter(Users.education_level == zone_filter)
 
-    stmt = stmt.filter(or_(Achievement.title.ilike(f"%{escape_like(query)}%"), Users.first_name.ilike(f"%{escape_like(query)}%"),
-                           Users.last_name.ilike(f"%{escape_like(query)}%"), Users.email.ilike(f"%{escape_like(query)}%")))
+    like_term = f"%{escape_like(query)}%"
+    stmt = stmt.filter(or_(
+        Achievement.title.ilike(like_term),
+        Achievement.description.ilike(like_term),
+        Users.first_name.ilike(like_term),
+        Users.last_name.ilike(like_term),
+        Users.email.ilike(like_term),
+        (Users.first_name + " " + Users.last_name).ilike(like_term),
+    ))
     if status: stmt = stmt.filter(Achievement.status == status)
     stmt = stmt.limit(10)
 
@@ -91,8 +98,16 @@ async def index(request: Request, query: Optional[str] = "", status: Optional[st
     if zone_filter is not None:
         stmt = stmt.filter(Users.education_level == zone_filter)
 
-    if query: stmt = stmt.filter(or_(Achievement.title.ilike(f"%{escape_like(query)}%"), Users.first_name.ilike(f"%{escape_like(query)}%"),
-                                     Users.last_name.ilike(f"%{escape_like(query)}%")))
+    if query:
+        like_term = f"%{escape_like(query)}%"
+        stmt = stmt.filter(or_(
+            Achievement.title.ilike(like_term),
+            Achievement.description.ilike(like_term),
+            Users.first_name.ilike(like_term),
+            Users.last_name.ilike(like_term),
+            Users.email.ilike(like_term),
+            (Users.first_name + " " + Users.last_name).ilike(like_term),
+        ))
     if status: stmt = stmt.filter(Achievement.status == status)
 
     allowed_sort_fields = {'created_at', 'updated_at', 'title', 'status', 'category', 'level'}
@@ -110,9 +125,16 @@ async def index(request: Request, query: Optional[str] = "", status: Optional[st
     count_stmt = select(func.count()).select_from(Achievement).join(Users, Achievement.user_id == Users.id)
     if zone_filter is not None:
         count_stmt = count_stmt.filter(Users.education_level == zone_filter)
-    if query: count_stmt = count_stmt.filter(
-        or_(Achievement.title.ilike(f"%{escape_like(query)}%"), Users.first_name.ilike(f"%{escape_like(query)}%"),
-            Users.last_name.ilike(f"%{escape_like(query)}%")))
+    if query:
+        like_term = f"%{escape_like(query)}%"
+        count_stmt = count_stmt.filter(or_(
+            Achievement.title.ilike(like_term),
+            Achievement.description.ilike(like_term),
+            Users.first_name.ilike(like_term),
+            Users.last_name.ilike(like_term),
+            Users.email.ilike(like_term),
+            (Users.first_name + " " + Users.last_name).ilike(like_term),
+        ))
     if status: count_stmt = count_stmt.filter(Achievement.status == status)
 
     res_count = await db.execute(count_stmt)

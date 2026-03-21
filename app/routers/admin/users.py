@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import math
 import time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import desc, func, or_, select
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from sqlalchemy import desc, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.achievement import Achievement
@@ -66,11 +67,15 @@ ROLE_HIERARCHY = {
 @router.get("/api/users/search", response_class=JSONResponse)
 async def api_users_search(request: Request, q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
     current_user = await check_admin_rights(request, db)
+    like_term = f"%{escape_like(q)}%"
     stmt = select(Users).filter(
         or_(
-            Users.first_name.ilike(f"%{escape_like(q)}%"),
-            Users.last_name.ilike(f"%{escape_like(q)}%"),
-            Users.email.ilike(f"%{escape_like(q)}%"),
+            Users.first_name.ilike(like_term),
+            Users.last_name.ilike(like_term),
+            Users.email.ilike(like_term),
+            Users.phone_number.ilike(like_term),
+            (Users.first_name + " " + Users.last_name).ilike(like_term),
+            (Users.last_name + " " + Users.first_name).ilike(like_term),
         )
     ).limit(5)
 
@@ -106,11 +111,15 @@ async def index(
         stmt = stmt.filter(Users.education_level == zone_filter)
 
     if query:
+        like_term = f"%{escape_like(query)}%"
         stmt = stmt.filter(
             or_(
-                Users.first_name.ilike(f"%{escape_like(query)}%"),
-                Users.last_name.ilike(f"%{escape_like(query)}%"),
-                Users.email.ilike(f"%{escape_like(query)}%"),
+                Users.first_name.ilike(like_term),
+                Users.last_name.ilike(like_term),
+                Users.email.ilike(like_term),
+                Users.phone_number.ilike(like_term),
+                (Users.first_name + " " + Users.last_name).ilike(like_term),
+                (Users.last_name + " " + Users.first_name).ilike(like_term),
             )
         )
     if role and role != "all":
@@ -153,6 +162,19 @@ async def index(
 
 @router.get("/users/{id}", response_class=HTMLResponse, name="admin.users.show")
 async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    current_user = await get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+
+    # Студент пытается открыть чужой профиль → публичный профиль
+    if not current_user.is_staff and current_user.id != id:
+        return RedirectResponse(url=f"/sirius.achievements/students/{id}", status_code=302)
+
+    # Студент открывает свой профиль → страница настроек
+    if not current_user.is_staff and current_user.id == id:
+        return RedirectResponse(url="/sirius.achievements/profile", status_code=302)
+
+    # Дальше только стафф
     current_user = await check_admin_rights(request, db)
 
     target_user_obj = await db.get(Users, id)
@@ -193,6 +215,22 @@ async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db
                 total_points = pts
                 break
 
+    # Progress chart: approved achievements by month
+    chart_query = (
+        select(
+            func.date_trunc("month", Achievement.created_at).label("m"),
+            func.count().label("cnt"),
+            func.coalesce(func.sum(Achievement.points), 0).label("pts"),
+        )
+        .filter(Achievement.user_id == id, Achievement.status == AchievementStatus.APPROVED)
+        .group_by(literal_column("m"))
+        .order_by(literal_column("m"))
+    )
+    chart_rows = (await db.execute(chart_query)).all()
+    chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
+    chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
+    chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+
     return templates.TemplateResponse(
         "users/show.html",
         {
@@ -207,6 +245,9 @@ async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db
             "roles": list(UserRole),
             "education_levels": list(EducationLevel),
             "timestamp": int(time.time()),
+            "chart_labels": chart_labels,
+            "chart_counts": chart_counts,
+            "chart_points": chart_points,
         },
     )
 
@@ -367,4 +408,124 @@ async def api_generate_resume(id: int, request: Request, db: AsyncSession = Depe
             "can_generate": check["allowed"],
             "reason": check.get("reason"),
         }
+    )
+
+
+@router.get("/users/{id}/export-pdf", name="admin.users.export_pdf")
+async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    current_user = await get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+
+    target_user = await db.get(Users, id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Allow self-export or staff access
+    if current_user.id != id:
+        if not current_user.is_staff or not _can_access_target(current_user, target_user):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    achievements_stmt = (
+        select(Achievement)
+        .filter(Achievement.user_id == id, Achievement.status == AchievementStatus.APPROVED)
+        .order_by(Achievement.created_at.desc())
+    )
+    achievements = (await db.execute(achievements_stmt)).scalars().all()
+    total_points = sum(a.points or 0 for a in achievements)
+
+    import fitz  # PyMuPDF
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)  # A4
+
+    y = 50
+    # Title
+    page.insert_text((50, y), "Sirius.Achievements", fontsize=18, fontname="helv", color=(0.3, 0.27, 0.95))
+    y += 30
+    page.insert_text((50, y), "Отчёт по студенту", fontsize=14, fontname="helv", color=(0.2, 0.2, 0.2))
+    y += 35
+
+    # User info
+    page.insert_text((50, y), f"ФИО: {target_user.first_name} {target_user.last_name}", fontsize=11, fontname="helv")
+    y += 18
+    page.insert_text((50, y), f"Email: {target_user.email}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
+    y += 18
+    edu = target_user.education_level.value if target_user.education_level else "Не указано"
+    course = f", {target_user.course} курс" if target_user.course else ""
+    page.insert_text((50, y), f"Образование: {edu}{course}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
+    y += 18
+    page.insert_text((50, y), f"Баллов: {total_points}  |  Документов: {len(achievements)}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
+    y += 30
+
+    # Divider
+    page.draw_line((50, y), (545, y), color=(0.85, 0.85, 0.85), width=0.5)
+    y += 20
+
+    # Achievements table header
+    page.insert_text((50, y), "Одобренные достижения", fontsize=12, fontname="helv", color=(0.2, 0.2, 0.2))
+    y += 22
+
+    if achievements:
+        # Table header
+        page.insert_text((50, y), "#", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((70, y), "Название", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((300, y), "Категория", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((420, y), "Уровень", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((510, y), "Баллы", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        y += 5
+        page.draw_line((50, y), (545, y), color=(0.9, 0.9, 0.9), width=0.3)
+        y += 12
+
+        for i, a in enumerate(achievements, 1):
+            if y > 780:
+                page = doc.new_page(width=595, height=842)
+                y = 50
+            title = (a.title or "—")[:35]
+            cat = a.category.value if a.category else "—"
+            lvl = a.level.value if a.level else "—"
+            page.insert_text((50, y), str(i), fontsize=9, fontname="helv")
+            page.insert_text((70, y), title, fontsize=9, fontname="helv")
+            page.insert_text((300, y), cat, fontsize=9, fontname="helv")
+            page.insert_text((420, y), lvl, fontsize=9, fontname="helv")
+            page.insert_text((510, y), str(a.points or 0), fontsize=9, fontname="helv")
+            y += 16
+    else:
+        page.insert_text((50, y), "Нет одобренных достижений", fontsize=10, fontname="helv", color=(0.6, 0.6, 0.6))
+        y += 20
+
+    # Resume
+    if target_user.resume_text:
+        y += 15
+        if y > 700:
+            page = doc.new_page(width=595, height=842)
+            y = 50
+        page.draw_line((50, y), (545, y), color=(0.85, 0.85, 0.85), width=0.5)
+        y += 20
+        page.insert_text((50, y), "AI-сводка профиля", fontsize=12, fontname="helv", color=(0.2, 0.2, 0.2))
+        y += 20
+        # Wrap resume text
+        for line in target_user.resume_text.split("\n"):
+            if y > 800:
+                page = doc.new_page(width=595, height=842)
+                y = 50
+            # Truncate long lines
+            while len(line) > 80:
+                page.insert_text((50, y), line[:80], fontsize=9, fontname="helv", color=(0.3, 0.3, 0.3))
+                y += 14
+                line = line[80:]
+                if y > 800:
+                    page = doc.new_page(width=595, height=842)
+                    y = 50
+            page.insert_text((50, y), line, fontsize=9, fontname="helv", color=(0.3, 0.3, 0.3))
+            y += 14
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    filename = f"report_{target_user.last_name}_{target_user.first_name}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
