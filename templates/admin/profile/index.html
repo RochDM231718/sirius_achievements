@@ -51,6 +51,29 @@
             </div>
             {% endif %}
 
+            {% if user.role.value == 'STUDENT' %}
+            <div class="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="bg-white border border-slate-200 rounded-xl p-4">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Оценка модератора</p>
+                    <div class="flex items-end gap-2">
+                        <span class="text-2xl font-bold text-slate-800">{{ user.session_gpa or '—' }}</span>
+                        {% if user.session_gpa %}
+                        <span class="text-xs text-slate-400 mb-1">из 5.0</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">Средний балл сессии, который влияет на рейтинг</p>
+                </div>
+                <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                    <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Бонус в рейтинг</p>
+                    <div class="flex items-end gap-2">
+                        <span class="text-2xl font-bold text-indigo-700">{% if gpa_bonus %}+{{ gpa_bonus }}{% else %}0{% endif %}</span>
+                        <span class="text-xs text-indigo-400 mb-1">баллов</span>
+                    </div>
+                    <p class="text-[11px] text-indigo-500/80 mt-1">Бонус автоматически считается из оценки модератора</p>
+                </div>
+            </div>
+            {% endif %}
+
             <form id="profileForm" action="/sirius.achievements/profile/update" method="POST" enctype="multipart/form-data" class="space-y-5">
                 <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
 
@@ -335,37 +358,38 @@
             <h3 class="text-sm font-semibold text-slate-700">Мои документы</h3>
             <a href="/sirius.achievements/achievements" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Все →</a>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {% for doc in my_docs[:6] %}
-            <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-indigo-200 transition-colors">
-                <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
-                    {% if doc.status.value == 'approved' %}bg-green-50 text-green-600
-                    {% elif doc.status.value == 'revision' %}bg-yellow-50 text-yellow-600
-                    {% elif doc.status.value == 'rejected' %}bg-red-50 text-red-600
-                    {% else %}bg-slate-100 text-slate-400{% endif %}">
-                    {% if doc.file_path.endswith('.pdf') %}
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <a href="/sirius.achievements/achievements" class="group block bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all overflow-hidden">
+                <div class="h-28 w-full bg-slate-100 flex items-center justify-center overflow-hidden relative">
+                    {% set fp = doc.file_path|lower if doc.file_path else '' %}
+                    {% if fp.endswith('.jpg') or fp.endswith('.jpeg') or fp.endswith('.png') or fp.endswith('.webp') %}
+                    <img src="/sirius.achievements/documents/{{ doc.id }}/preview" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" alt="{{ doc.title }}" loading="lazy">
+                    {% elif fp.endswith('.pdf') %}
+                    <div class="flex flex-col items-center gap-1">
+                        <svg class="w-10 h-10 text-red-400" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zM8.5 13h1c.55 0 1 .45 1 1s-.45 1-1 1h-1v1.5a.5.5 0 01-1 0V13a.5.5 0 01.5-.5h1zm3.5-.5a.5.5 0 01.5.5v3.5a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5V13a.5.5 0 01.5-.5h1zm3 0a.5.5 0 01.5.5.5.5 0 01-.5.5H14v.75h1a.5.5 0 010 1H14v1.25a.5.5 0 01-1 0V13a.5.5 0 01.5-.5H15z"/></svg>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">PDF</span>
+                    </div>
                     {% else %}
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <svg class="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     {% endif %}
-                </div>
-                <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-slate-800 truncate">{{ doc.title }}</p>
-                    <div class="flex items-center gap-2 mt-0.5">
-                        <span class="text-[10px] text-slate-400">{{ doc.category.value }}</span>
-                        <span class="text-[10px] text-slate-300">•</span>
+                    <div class="absolute top-2 right-2">
                         {% if doc.status.value == 'approved' %}
-                        <span class="text-[10px] font-bold text-green-600">{{ doc.points }} б.</span>
+                        <span class="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-green-500 text-white shadow-sm">{{ doc.points }} б.</span>
                         {% elif doc.status.value == 'revision' %}
-                        <span class="text-[10px] font-bold text-yellow-600">На доработке</span>
+                        <span class="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-yellow-500 text-white shadow-sm">Доработка</span>
                         {% elif doc.status.value == 'rejected' %}
-                        <span class="text-[10px] font-bold text-red-500">Отклонено</span>
+                        <span class="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-500 text-white shadow-sm">Отклонено</span>
                         {% else %}
-                        <span class="text-[10px] font-bold text-slate-400">На проверке</span>
+                        <span class="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-500 text-white shadow-sm">Проверка</span>
                         {% endif %}
                     </div>
                 </div>
-            </div>
+                <div class="p-2.5">
+                    <p class="text-xs font-medium text-slate-800 truncate">{{ doc.title }}</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">{{ doc.category.value }}{% if doc.result %} · {{ doc.result.value if doc.result.value is defined else doc.result }}{% endif %}</p>
+                </div>
+            </a>
             {% endfor %}
         </div>
         {% if my_docs|length > 6 %}

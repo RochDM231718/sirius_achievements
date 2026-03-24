@@ -143,6 +143,44 @@ async def moderation_support_chats(
     )
 
 
+@router.get("/api/support/search", name="admin.moderation.support.search")
+async def api_support_search(
+    request: Request,
+    q: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_moderator),
+):
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import or_, select
+    from app.models.support_ticket import SupportTicket
+    from app.models.user import Users
+    from app.utils.search import escape_like
+
+    like_term = f"%{escape_like(q)}%"
+    stmt = (
+        select(SupportTicket)
+        .join(Users, SupportTicket.user_id == Users.id)
+        .filter(
+            or_(
+                SupportTicket.subject.ilike(like_term),
+                Users.first_name.ilike(like_term),
+                Users.last_name.ilike(like_term),
+                Users.email.ilike(like_term),
+                (Users.first_name + " " + Users.last_name).ilike(like_term),
+            )
+        )
+    )
+    education_level = _moderator_zone(user)
+    if education_level is not None:
+        stmt = stmt.filter(Users.education_level == education_level)
+    stmt = stmt.order_by(SupportTicket.created_at.desc()).limit(7)
+    tickets = (await db.execute(stmt)).scalars().all()
+    return JSONResponse([
+        {"value": t.subject, "text": f"#{t.id} — {t.subject}"}
+        for t in tickets
+    ])
+
+
 @router.get("/moderation/support/all", response_class=HTMLResponse, name="admin.moderation.support.all")
 async def moderation_support_all(
     request: Request,

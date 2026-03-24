@@ -3,8 +3,8 @@ import secrets
 import time
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,8 @@ from app.schemas.admin.auth import ResetPasswordSchema, UserRegister
 from app.security.csrf import validate_csrf
 from app.services.admin.user_token_service import UserTokenService
 from app.services.auth_service import AuthService, UserBlockedException
+from app.utils.media_paths import guess_media_type, resolve_static_path
+from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 from app.utils.rate_limiter import rate_limiter
 
 logger = structlog.get_logger()
@@ -41,6 +43,20 @@ def _set_authenticated_session(request: Request, user):
     request.session["auth_avatar"] = user.avatar_path
     request.session["auth_role"] = user.role.value if hasattr(user.role, "value") else str(user.role)
     request.session["auth_session_version"] = int(user.session_version or 1)
+
+
+def _public_media_response(relative_path: str) -> FileResponse:
+    try:
+        full_path = resolve_static_path(relative_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Недопустимый путь к файлу") from exc
+
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="Файл физически отсутствует на сервере")
+
+    response = FileResponse(path=full_path, media_type=guess_media_type(full_path))
+    response.headers["Content-Disposition"] = f'inline; filename="{full_path.name}"'
+    return response
 
 
 @router.get("/login", response_class=HTMLResponse, name="admin.auth.login_page")
@@ -488,6 +504,34 @@ async def privacy_policy(request: Request):
     return templates.TemplateResponse("auth/privacy.html", {"request": request})
 
 
+@router.get("/students/{student_id}/documents/{document_id}/preview", name="public.student.document.preview")
+async def public_student_document_preview(
+    student_id: int,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    raise HTTPException(status_code=404, detail="Публичный просмотр документов отключен")
+
+    stmt = (
+        select(Achievement)
+        .join(Users, Achievement.user_id == Users.id)
+        .where(
+            Achievement.id == document_id,
+            Achievement.user_id == student_id,
+            Achievement.status == AchievementStatus.APPROVED,
+            Users.id == student_id,
+            Users.role == UserRole.STUDENT,
+            Users.status == UserStatus.ACTIVE,
+        )
+    )
+    document = (await db.execute(stmt)).scalars().first()
+
+    if not document or not document.file_path:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    return _public_media_response(document.file_path)
+
+
 @router.get("/students/{id}", response_class=HTMLResponse, name="public.student.profile")
 async def public_student_profile(id: int, request: Request, db: AsyncSession = Depends(get_db)):
     student = await db.get(Users, id)
@@ -500,13 +544,17 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
         .order_by(Achievement.created_at.desc())
     )
     achievements = (await db.execute(achievements_stmt)).scalars().all()
-    total_points = sum(a.points or 0 for a in achievements)
+    total_points = sum(a.points or 0 for a in achievements) + calculate_gpa_bonus(student.session_gpa)
 
     # Rank
+    achievement_points = func.coalesce(func.sum(Achievement.points), 0)
+    total_points_expr = (
+        achievement_points + aggregated_gpa_bonus_expr(Users.session_gpa)
+    ).label("total_points")
     leaderboard_stmt = (
         select(
             Users.id,
-            func.coalesce(func.sum(Achievement.points), 0).label("total_points"),
+            total_points_expr,
         )
         .outerjoin(Achievement, (Users.id == Achievement.user_id) & (Achievement.status == AchievementStatus.APPROVED))
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
@@ -535,6 +583,7 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
     chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
     chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
     chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+    gpa_bonus = calculate_gpa_bonus(student.session_gpa)
 
     # Category stats
     cat_stats = {}
@@ -555,5 +604,6 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
             "chart_labels": chart_labels,
             "chart_counts": chart_counts,
             "chart_points": chart_points,
+            "gpa_bonus": gpa_bonus,
         },
     )

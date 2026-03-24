@@ -1,27 +1,7 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto space-y-6" x-data="{ seasonModalOpen: false, highlightMe() {
-    const target = document.getElementById('my-row') || document.getElementById('my-card');
-    if (!target) return;
-    const scrollBox = document.querySelector('main.overflow-y-auto') || target.closest('.overflow-y-auto') || window;
-    const rect = target.getBoundingClientRect();
-    const boxRect = scrollBox === window ? { top: 0, height: window.innerHeight } : scrollBox.getBoundingClientRect();
-    const offset = rect.top - boxRect.top - (boxRect.height / 2) + (rect.height / 2);
-    if (scrollBox === window) {
-        window.scrollBy({ top: offset, behavior: 'smooth' });
-    } else {
-        scrollBox.scrollBy({ top: offset, behavior: 'smooth' });
-    }
-    setTimeout(() => {
-        target.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
-        if (target.tagName === 'TR') target.classList.add('bg-indigo-100');
-    }, 400);
-    setTimeout(() => {
-        target.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2');
-        if (target.tagName === 'TR') target.classList.remove('bg-indigo-100');
-    }, 3500);
-} }">
+<div class="max-w-4xl mx-auto space-y-6" x-data="{ seasonModalOpen: false }" data-focus-me="{{ 'true' if should_focus_me else 'false' }}">
 
     <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
@@ -54,10 +34,10 @@
                 </div>
             </div>
             {% if my_rank > 0 %}
-            <button @click="highlightMe()" class="flex-1 md:flex-none inline-flex items-center justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors border border-indigo-200">
+            <a id="find-me-btn" href="{{ find_me_url }}" class="flex-1 md:flex-none inline-flex items-center justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors border border-indigo-200">
                 <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 Найти меня
-            </button>
+            </a>
             {% endif %}
             {% else %}
             <a href="/sirius.achievements/leaderboard/export" class="flex-1 md:flex-none inline-flex items-center justify-center bg-green-50 text-green-700 hover:bg-green-100 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors border border-green-200">
@@ -98,18 +78,130 @@
     </div>
 
     <script nonce="{{ request.state.csp_nonce }}">
+    (function() {
+        function getTarget() {
+            return document.querySelector('[data-leaderboard-self="true"]');
+        }
+
+        function getScrollParent(element) {
+            var parent = element ? element.parentElement : null;
+
+            while (parent) {
+                var style = window.getComputedStyle(parent);
+                var canScroll = (style.overflowY === 'auto' || style.overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight;
+                if (canScroll) {
+                    return parent;
+                }
+                parent = parent.parentElement;
+            }
+
+            return document.scrollingElement || document.documentElement;
+        }
+
+        function restoreHighlight(target) {
+            if (!target) return;
+
+            target.style.boxShadow = target.dataset.findMeBoxShadow || '';
+            target.style.transform = target.dataset.findMeTransform || '';
+            target.style.backgroundColor = target.dataset.findMeBackground || '';
+            target.style.borderColor = target.dataset.findMeBorderColor || '';
+            target.style.position = target.dataset.findMePosition || '';
+            target.style.zIndex = target.dataset.findMeZIndex || '';
+        }
+
+        function applyHighlight(target) {
+            if (!target) return;
+
+            restoreHighlight(target);
+
+            target.dataset.findMeBoxShadow = target.style.boxShadow || '';
+            target.dataset.findMeTransform = target.style.transform || '';
+            target.dataset.findMeBackground = target.style.backgroundColor || '';
+            target.dataset.findMeBorderColor = target.style.borderColor || '';
+            target.dataset.findMePosition = target.style.position || '';
+            target.dataset.findMeZIndex = target.style.zIndex || '';
+
+            target.style.boxShadow = '0 0 0 3px var(--theme-accent, #6d5ef3), 0 18px 36px rgba(15, 23, 42, 0.18)';
+            target.style.transform = 'translateY(-2px)';
+            target.style.backgroundColor = 'var(--theme-accent-soft, #eef2ff)';
+            target.style.borderColor = 'var(--theme-accent, #6d5ef3)';
+            target.style.position = 'relative';
+            target.style.zIndex = '1';
+
+            window.setTimeout(function() {
+                restoreHighlight(target);
+            }, 3600);
+        }
+
+        function scrollToTarget(target) {
+            var container = getScrollParent(target);
+
+            if (!container || container === document.body || container === document.documentElement || container === document.scrollingElement) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+
+            var targetRect = target.getBoundingClientRect();
+            var containerRect = container.getBoundingClientRect();
+            var offset = targetRect.top - containerRect.top + container.scrollTop - (container.clientHeight / 2) + (targetRect.height / 2);
+
+            container.scrollTo({
+                top: Math.max(0, offset),
+                behavior: 'smooth'
+            });
+        }
+
+        function isTargetVisible(target) {
+            var container = getScrollParent(target);
+            var targetRect = target.getBoundingClientRect();
+            var padding = 24;
+
+            if (!container || container === document.body || container === document.documentElement || container === document.scrollingElement) {
+                return targetRect.top >= padding && targetRect.bottom <= (window.innerHeight - padding);
+            }
+
+            var containerRect = container.getBoundingClientRect();
+            return targetRect.top >= (containerRect.top + padding) && targetRect.bottom <= (containerRect.bottom - padding);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var root = document.querySelector('[data-focus-me]');
+            var target = getTarget();
+            if (!root || root.dataset.focusMe !== 'true' || !target) return;
+
+            window.setTimeout(function() {
+                if (isTargetVisible(target)) {
+                    applyHighlight(target);
+                } else {
+                    scrollToTarget(target);
+                    window.setTimeout(function() {
+                        applyHighlight(target);
+                    }, 250);
+                }
+            }, 120);
+
+            if (window.history && window.history.replaceState) {
+                var url = new URL(window.location.href);
+                url.searchParams.delete('focus_me');
+                url.hash = '';
+                window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+            }
+        });
+    })();
     function leaderboardFilters() {
         return {
-            eduLevel: '{{ current_education_level }}',
-            course: '{{ current_course }}',
-            selectedGroup: '{{ current_group }}',
-            courseMapping: {
+            eduLevel: {{ current_education_level | tojson }},
+            course: {{ (current_course ~ '') | tojson }},
+            selectedGroup: {{ current_group | tojson }},
+            courseMapping: {{ course_mapping | tojson }},
+            /*
                 'Колледж': 4,
                 'Бакалавриат': 4,
                 'Специалитет': 6,
                 'Магистратура': 2,
                 'Аспирантура': 4
             },
+            */
             groupMapping: {{ group_mapping | tojson }},
             get maxCourses() {
                 return this.courseMapping[this.eduLevel] || 0;
@@ -173,7 +265,7 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-4">
         {% if leaderboard|length > 1 %}
         {% set u2 = leaderboard[1][0] %}
-        <div {{ 'id="my-card"' if u2.id == user.id else '' }} class="order-2 md:order-1 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
+        <div {% if u2.id == user.id %}id="leaderboard-me" data-leaderboard-self="true"{% endif %} class="order-2 md:order-1 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
             <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">2</div>
             <div class="mt-2 mb-3">
                 {% if u2.avatar_path %}
@@ -190,8 +282,8 @@
         {% endif %}
 
         {% set u1 = leaderboard[0][0] %}
-        <div {{ 'id="my-card"' if u1.id == user.id else '' }} class="order-1 md:order-2 bg-white rounded-xl border-t-4 border-indigo-600 shadow-sm p-6 flex flex-col items-center relative transition-all duration-500">
-            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">1</div>
+        <div {% if u1.id == user.id %}id="leaderboard-me" data-leaderboard-self="true"{% endif %} class="order-1 md:order-2 bg-white rounded-xl shadow-sm p-6 flex flex-col items-center relative transition-all duration-500" style="border-top: 4px solid var(--theme-accent, #6d5ef3);">
+            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 w-8 h-8 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md" style="background: var(--theme-accent, #6d5ef3);">1</div>
             <div class="mt-2 mb-3">
                 {% if u1.avatar_path %}
                     <img src="/static/{{ u1.avatar_path }}" class="w-20 h-20 rounded-full object-cover border border-slate-200">
@@ -201,13 +293,13 @@
             </div>
             <div class="text-center">
                 <a href="/sirius.achievements/users/{{ u1.id }}" class="font-bold text-slate-900 text-base hover:text-indigo-600">{{ u1.first_name }} {{ u1.last_name }}</a>
-                <div class="mt-2 inline-flex bg-indigo-50 text-indigo-700 text-sm font-bold px-4 py-1.5 rounded-md border border-indigo-100">{{ leaderboard[0][1] | int }} баллов</div>
+                <div class="mt-2 inline-flex text-sm font-bold px-4 py-1.5 rounded-md" style="background: var(--theme-accent-soft, #f0edff); color: var(--theme-accent-strong, #5f4ee6); border: 1px solid var(--theme-border-soft, #ebeff6);">{{ leaderboard[0][1] | int }} баллов</div>
             </div>
         </div>
 
         {% if leaderboard|length > 2 %}
         {% set u3 = leaderboard[2][0] %}
-        <div {{ 'id="my-card"' if u3.id == user.id else '' }} class="order-3 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
+        <div {% if u3.id == user.id %}id="leaderboard-me" data-leaderboard-self="true"{% endif %} class="order-3 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
             <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">3</div>
             <div class="mt-2 mb-3">
                 {% if u3.avatar_path %}
@@ -237,7 +329,7 @@
                 <tbody class="divide-y divide-slate-100">
                     {% for row in leaderboard[3:] %}
                     {% set is_me = (row[0].id == user.id) %}
-                    <tr {{ 'id="my-row"' if is_me else '' }} class="transition-all duration-500 {% if is_me %}bg-indigo-50/50 hover:bg-indigo-50{% else %}hover:bg-slate-50{% endif %}">
+                    <tr {% if is_me %}id="leaderboard-me" data-leaderboard-self="true"{% endif %} class="transition-all duration-500 {% if is_me %}bg-indigo-50/50 hover:bg-indigo-50{% else %}hover:bg-slate-50{% endif %}">
                         <td class="px-5 py-3 w-12 text-center">
                             <span class="text-sm font-medium {% if is_me %}text-indigo-600{% else %}text-slate-400{% endif %}">{{ loop.index + 3 }}</span>
                         </td>

@@ -20,6 +20,7 @@ from app.security.csrf import validate_csrf
 from app.services.admin.resume_service import ResumeService
 from app.services.admin.user_service import UserService
 from app.utils.access import is_in_zone
+from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 from app.utils.search import escape_like
 
 router = APIRouter(
@@ -95,7 +96,7 @@ async def index(
     role: str = None,
     status: str = None,
     education_level: str = None,
-    course: int = None,
+    course: str = None,
     sort_by: str = "newest",
     db: AsyncSession = Depends(get_db),
 ):
@@ -103,6 +104,8 @@ async def index(
 
     limit = 10
     offset = (page - 1) * limit
+
+    course_int = int(course) if course and course.isdigit() else None
 
     stmt = select(Users)
 
@@ -128,8 +131,8 @@ async def index(
         stmt = stmt.filter(Users.status == status)
     if education_level and education_level != "all":
         stmt = stmt.filter(Users.education_level == education_level)
-    if course and course != 0:
-        stmt = stmt.filter(Users.course == course)
+    if course_int and course_int != 0:
+        stmt = stmt.filter(Users.course == course_int)
 
     if sort_by == "oldest":
         stmt = stmt.order_by(Users.created_at.asc())
@@ -195,13 +198,18 @@ async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db
 
     total_docs = len(achievements)
     rank = None
-    total_points = 0
+    total_points = calculate_gpa_bonus(target_user_obj.session_gpa)
+    gpa_bonus = calculate_gpa_bonus(target_user_obj.session_gpa)
 
     if target_user_obj.role == UserRole.STUDENT and target_user_obj.status == UserStatus.ACTIVE:
+        achievement_points = func.coalesce(func.sum(Achievement.points), 0)
+        total_points_expr = (
+            achievement_points + aggregated_gpa_bonus_expr(Users.session_gpa)
+        ).label("total_points")
         leaderboard_stmt = (
             select(
                 Users.id,
-                func.coalesce(func.sum(Achievement.points), 0).label("total_points"),
+                total_points_expr,
             )
             .outerjoin(Achievement, (Users.id == Achievement.user_id) & (Achievement.status == AchievementStatus.APPROVED))
             .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
@@ -242,6 +250,7 @@ async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db
             "total_docs": total_docs,
             "rank": rank,
             "total_points": total_points,
+            "gpa_bonus": gpa_bonus,
             "roles": list(UserRole),
             "education_levels": list(EducationLevel),
             "timestamp": int(time.time()),
@@ -557,15 +566,7 @@ async def set_gpa(
             status_code=302,
         )
 
-    # Convert GPA to bonus points: 2.0=0, 3.0=5, 4.0=15, 5.0=30
-    if gpa_val < 3.0:
-        bonus = 0
-    elif gpa_val < 4.0:
-        bonus = int((gpa_val - 3.0) * 15)  # 3.0->0, 3.5->7, 3.9->13
-    elif gpa_val < 4.5:
-        bonus = 15 + int((gpa_val - 4.0) * 20)  # 4.0->15, 4.4->23
-    else:
-        bonus = 25 + int((gpa_val - 4.5) * 10)  # 4.5->25, 5.0->30
+    bonus = calculate_gpa_bonus(gpa_val)
 
     target_user.session_gpa = f"{gpa_val:.1f}"
     await db.commit()

@@ -12,6 +12,7 @@ from app.models.user import Users
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole, UserStatus, EducationLevel
 from app.routers.admin.deps import get_current_user, require_auth
+from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 
 router = APIRouter(
     prefix="/sirius.achievements",
@@ -56,6 +57,7 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
         date_trunc = 'month'
         date_fmt = '%m.%Y'
 
+    include_gpa_bonus = period == 'all'
     stats = {}
 
     if user.is_staff:
@@ -72,14 +74,21 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
             )
         )).first()
 
+        top_students_points = (
+            func.coalesce(func.sum(Achievement.points), 0)
+            + aggregated_gpa_bonus_expr(Users.session_gpa, include_bonus=include_gpa_bonus)
+        )
         top_students_stmt = (
-            select(Users, func.sum(Achievement.points).label('points'))
-            .join(Achievement, Users.id == Achievement.user_id)
-            .filter(
-                Achievement.status == AchievementStatus.APPROVED,
-                Achievement.updated_at >= start_date
+            select(Users, top_students_points.label('points'))
+            .outerjoin(
+                Achievement,
+                (Users.id == Achievement.user_id)
+                & (Achievement.status == AchievementStatus.APPROVED)
+                & (Achievement.updated_at >= start_date)
             )
+            .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
             .group_by(Users.id)
+            .having(top_students_points > 0)
             .order_by(desc('points'))
             .limit(5)
         )
@@ -144,14 +153,16 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
         }
 
     else:
-        my_points = (await db.execute(
+        achievement_points = (await db.execute(
             select(func.coalesce(func.sum(Achievement.points), 0))
             .filter(
                 Achievement.user_id == user.id,
                 Achievement.status == AchievementStatus.APPROVED,
                 Achievement.updated_at >= start_date
             )
-        )).scalar()
+        )).scalar() or 0
+        gpa_bonus = calculate_gpa_bonus(user.session_gpa) if include_gpa_bonus else 0
+        my_points = int(achievement_points) + gpa_bonus
 
         doc_stats = (await db.execute(
             select(
@@ -166,13 +177,20 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
             )
         )).first()
 
+        total_points_expr = (
+            func.coalesce(func.sum(Achievement.points), 0)
+            + aggregated_gpa_bonus_expr(Users.session_gpa, include_bonus=include_gpa_bonus)
+        ).label('total_points')
         subquery_points = (
-            select(Achievement.user_id, func.sum(Achievement.points).label('total_points'))
-            .filter(
-                Achievement.status == AchievementStatus.APPROVED,
-                Achievement.updated_at >= start_date
+            select(Users.id.label('user_id'), total_points_expr)
+            .outerjoin(
+                Achievement,
+                (Users.id == Achievement.user_id)
+                & (Achievement.status == AchievementStatus.APPROVED)
+                & (Achievement.updated_at >= start_date)
             )
-            .group_by(Achievement.user_id)
+            .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
+            .group_by(Users.id)
             .subquery()
         )
 
@@ -202,6 +220,9 @@ async def index(request: Request, period: str = 'all', db: AsyncSession = Depend
 
         c_labels = [row[0].value if hasattr(row[0], 'value') else row[0] for row in cat_stats if row[0]]
         c_data = [row[1] for row in cat_stats if row[0]]
+        if gpa_bonus > 0:
+            c_labels.append('Оценка модератора')
+            c_data.append(gpa_bonus)
 
         stats = {
             'my_points': my_points,

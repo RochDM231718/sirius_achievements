@@ -15,6 +15,7 @@ from app.services.admin.resume_service import ResumeService
 from app.repositories.admin.user_repository import UserRepository
 from app.routers.admin.deps import get_current_user, require_auth
 from app.schemas.admin.auth import ResetPasswordSchema
+from app.utils.points import calculate_gpa_bonus
 
 router = APIRouter(
     prefix="/sirius.achievements",
@@ -52,6 +53,7 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
     chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
     chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
     chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+    gpa_bonus = calculate_gpa_bonus(user.session_gpa)
 
     # User's uploaded documents
     docs_query = (
@@ -72,6 +74,7 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
             "chart_counts": chart_counts,
             "chart_points": chart_points,
             "my_docs": my_docs,
+            "gpa_bonus": gpa_bonus,
         },
     )
 

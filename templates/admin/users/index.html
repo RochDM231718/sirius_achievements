@@ -167,6 +167,15 @@
         </div>
     </div>
 
+    {% if total_pages > 1 %}
+    <div class="flex justify-center gap-1">
+        {% for p in range(1, total_pages + 1) %}
+            <a href="?page={{ p }}&query={{ query or '' }}&role={{ role or '' }}&status={{ status or '' }}&education_level={{ education_level or '' }}&course={{ course or '' }}&sort_by={{ sort_by }}"
+               class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors {{ 'bg-indigo-600 text-white' if p == page else 'text-slate-600 hover:bg-slate-100' }}">{{ p }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <script nonce="{{ request.state.csp_nonce }}">
         function autocomplete(url) {
             return {

@@ -7,6 +7,7 @@ import shutil
 import hashlib
 import queue
 import atexit
+from copy import copy
 from logging.handlers import TimedRotatingFileHandler, QueueHandler, QueueListener
 from structlog.types import Processor
 
@@ -35,6 +36,12 @@ def archive_and_hash_rotator(source: str, dest: str):
             os.remove(source)
     except Exception as e:
         sys.stderr.write(f"Error rotating logs: {e}\n")
+
+
+class StructlogQueueHandler(QueueHandler):
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        # QueueListener runs in-process, so we can preserve the original event dict.
+        return copy(record)
 
 def setup_logging(json_logs: bool = False, log_level: str = "INFO", log_file: str = "app.log"):
     shared_processors: list[Processor] = [
@@ -103,7 +110,7 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO", log_file: st
 
     log_queue = queue.Queue(-1)
 
-    queue_handler = QueueHandler(log_queue)
+    queue_handler = StructlogQueueHandler(log_queue)
 
     listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
     listener.start()
