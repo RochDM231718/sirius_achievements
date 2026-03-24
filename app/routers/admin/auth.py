@@ -127,6 +127,7 @@ async def register(
     email: str = Form(...),
     education_level: EducationLevel = Form(...),
     course: int = Form(...),
+    group: str = Form(...),
     password: str = Form(...),
     password_confirm: str = Form(...),
     service: AuthService = Depends(get_service),
@@ -137,6 +138,7 @@ async def register(
         "email": email,
         "education_level": education_level.value,
         "course": course,
+        "group": group,
     }
 
     if password != password_confirm:
@@ -157,6 +159,7 @@ async def register(
             email=email,
             education_level=education_level,
             course=course,
+            group=group,
             password=password,
             password_confirm=password_confirm,
         )

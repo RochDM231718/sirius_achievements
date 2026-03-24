@@ -85,6 +85,14 @@ async def _apply_schema_updates():
         "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS moderator_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
         # user moderation assignment
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS reviewed_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        # groups and session GPA
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS study_group VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_gpa VARCHAR",
+        # achievement result (Участник/Призёр/Победитель)
+        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'achievementresult') THEN CREATE TYPE achievementresult AS ENUM ('Участник', 'Призёр', 'Победитель'); END IF; END $$",
+        "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS result VARCHAR",
+        # Add Хакатон to achievementcategory enum if missing
+        "DO $$ BEGIN ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'Хакатон'; EXCEPTION WHEN duplicate_object THEN NULL; END $$",
     ]
     async with engine.begin() as conn:
         # Fix supportticketstatus enum if values don't match

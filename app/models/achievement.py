@@ -3,7 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from app.infrastructure.database import Base
-from app.models.enums import AchievementStatus, AchievementCategory, AchievementLevel
+from app.models.enums import AchievementStatus, AchievementCategory, AchievementLevel, AchievementResult
 
 
 class Achievement(Base):
@@ -18,6 +18,7 @@ class Achievement(Base):
 
     category = Column(Enum(AchievementCategory), default=AchievementCategory.OTHER, nullable=False)
     level = Column(Enum(AchievementLevel), default=AchievementLevel.SCHOOL, nullable=False)
+    result = Column(Enum(AchievementResult), nullable=True)
     points = Column(Integer, default=0)  # Баллы за достижение
 
     status = Column(Enum(AchievementStatus), default=AchievementStatus.PENDING)

@@ -40,6 +40,9 @@
                         {% if user.course %}
                         <span class="mx-1 text-slate-300">•</span> {{ user.course }} курс
                         {% endif %}
+                        {% if user.study_group %}
+                        <span class="mx-1 text-slate-300">•</span> {{ user.study_group }}
+                        {% endif %}
                     </p>
                 </div>
                 <div class="h-10 w-10 bg-white rounded-full flex items-center justify-center border border-slate-100 shadow-sm">
@@ -324,6 +327,55 @@
     }
     {% endif %}
 </script>
+
+{% if my_docs is defined and my_docs %}
+<div class="max-w-2xl mx-auto mt-6">
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-sm font-semibold text-slate-700">Мои документы</h3>
+            <a href="/sirius.achievements/achievements" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Все →</a>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% for doc in my_docs[:6] %}
+            <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-indigo-200 transition-colors">
+                <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
+                    {% if doc.status.value == 'approved' %}bg-green-50 text-green-600
+                    {% elif doc.status.value == 'revision' %}bg-yellow-50 text-yellow-600
+                    {% elif doc.status.value == 'rejected' %}bg-red-50 text-red-600
+                    {% else %}bg-slate-100 text-slate-400{% endif %}">
+                    {% if doc.file_path.endswith('.pdf') %}
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    {% else %}
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    {% endif %}
+                </div>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-slate-800 truncate">{{ doc.title }}</p>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <span class="text-[10px] text-slate-400">{{ doc.category.value }}</span>
+                        <span class="text-[10px] text-slate-300">•</span>
+                        {% if doc.status.value == 'approved' %}
+                        <span class="text-[10px] font-bold text-green-600">{{ doc.points }} б.</span>
+                        {% elif doc.status.value == 'revision' %}
+                        <span class="text-[10px] font-bold text-yellow-600">На доработке</span>
+                        {% elif doc.status.value == 'rejected' %}
+                        <span class="text-[10px] font-bold text-red-500">Отклонено</span>
+                        {% else %}
+                        <span class="text-[10px] font-bold text-slate-400">На проверке</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% if my_docs|length > 6 %}
+        <div class="mt-3 text-center">
+            <a href="/sirius.achievements/achievements" class="text-xs text-indigo-600 hover:underline">Показать все {{ my_docs|length }} документов</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 {% if user.role.value == 'STUDENT' %}
 <div class="max-w-2xl mx-auto mt-6">

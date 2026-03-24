@@ -30,6 +30,7 @@ class AchievementCategory(str, Enum):
     SCIENCE = "Наука"
     ART = "Искусство"
     VOLUNTEERING = "Волонтёрство"
+    HACKATHON = "Хакатон"
     OTHER = "Другое"
 
 class AchievementLevel(str, Enum):
@@ -45,6 +46,12 @@ class EducationLevel(str, Enum):
     SPECIALIST = "Специалитет"
     MASTER = "Магистратура"
     POSTGRADUATE = "Аспирантура"
+
+
+class AchievementResult(str, Enum):
+    PARTICIPANT = "Участник"
+    PRIZEWINNER = "Призёр"
+    WINNER = "Победитель"
 
 
 class SupportTicketStatus(str, Enum):

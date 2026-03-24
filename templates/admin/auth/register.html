@@ -50,10 +50,10 @@
                        class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                     <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Обучение</label>
-                    <select name="education_level" x-model="eduLevel" @change="course = ''" required
+                    <select name="education_level" x-model="eduLevel" @change="course = ''; selectedGroup = ''" required
                             class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                         <option value="" disabled>Выберите...</option>
                         {% for el in education_levels %}
@@ -68,6 +68,16 @@
                         <option value="" disabled>Курс...</option>
                         <template x-for="i in maxCourses" :key="i">
                             <option :value="i" x-text="i + ' курс'"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Группа</label>
+                    <select name="group" x-model="selectedGroup" :disabled="!eduLevel" required
+                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        <option value="" disabled>Группа...</option>
+                        <template x-for="g in groups" :key="g">
+                            <option :value="g" x-text="g"></option>
                         </template>
                     </select>
                 </div>
@@ -159,6 +169,19 @@
             return {
                 eduLevel: '{{ form_data.education_level if form_data else "" }}',
                 course: '{{ form_data.course if form_data else "" }}',
+                selectedGroup: '{{ form_data.group if form_data and form_data.group else "" }}',
+
+                groupMapping: {
+                    'Колледж': ['К-1', 'К-2'],
+                    'Бакалавриат': ['Б-1', 'Б-2'],
+                    'Специалитет': ['С-1', 'С-2'],
+                    'Магистратура': ['М-1', 'М-2'],
+                    'Аспирантура': ['А-1', 'А-2']
+                },
+
+                get groups() {
+                    return this.eduLevel ? (this.groupMapping[this.eduLevel] || []) : [];
+                },
 
                 get maxCourses() {
                     const mapping = {

@@ -34,6 +34,7 @@ class UserRegister(BaseModel):
 
     education_level: EducationLevel
     course: int = Field(..., ge=1, le=6, description="Номер курса от 1 до 6")
+    group: str = Field(..., min_length=1, max_length=10)
 
     password: str = Field(..., min_length=8, max_length=128)
     password_confirm: str

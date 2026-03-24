@@ -129,6 +129,7 @@ class AuthService:
             email=data.email,
             education_level=data.education_level,
             course=data.course,
+            study_group=data.group,
             hashed_password=hashed_pw,
             role=UserRole.GUEST,
             status=UserStatus.PENDING,

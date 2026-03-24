@@ -10,7 +10,7 @@ from app.security.csrf import validate_csrf
 from app.routers.admin.admin import templates, get_db
 from app.models.achievement import Achievement
 from app.models.user import Users
-from app.models.enums import AchievementStatus, AchievementCategory, AchievementLevel, UserRole
+from app.models.enums import AchievementStatus, AchievementCategory, AchievementLevel, AchievementResult, UserRole
 from app.services.admin.achievement_service import AchievementService
 from app.repositories.admin.achievement_repository import AchievementRepository
 from app.utils.search import escape_like
@@ -113,7 +113,8 @@ async def create(request: Request, db: AsyncSession = Depends(get_db)):
         'request': request,
         'user': user,
         'categories': list(AchievementCategory),
-        'levels': list(AchievementLevel)
+        'levels': list(AchievementLevel),
+        'results': list(AchievementResult)
     })
 
 
@@ -124,6 +125,7 @@ async def store(
         description: str = Form(None),
         category: str = Form(...),
         level: str = Form(...),
+        result: str = Form(None),
         file: UploadFile = File(...),
         service: AchievementService = Depends(get_service)
 ):
@@ -138,7 +140,7 @@ async def store(
 
     try:
         file_path = await service.save_file(file)
-        await service.create({
+        create_data = {
             "user_id": user_id,
             "title": title,
             "description": description,
@@ -147,7 +149,10 @@ async def store(
             "level": level,
             "status": AchievementStatus.PENDING,
             "created_at": func.now()
-        })
+        }
+        if result:
+            create_data["result"] = result
+        await service.create(create_data)
         return RedirectResponse(
             url="/sirius.achievements/achievements?toast_msg=Достижение отправлено на проверку&toast_type=success",
             status_code=302)
@@ -164,7 +169,9 @@ async def store(
 async def revise(
         id: int,
         request: Request,
-        file: UploadFile = File(...),
+        title: str = Form(None),
+        description: str = Form(None),
+        file: UploadFile = File(None),
         service: AchievementService = Depends(get_service)
 ):
     user_id = request.session.get('auth_id')
@@ -180,20 +187,29 @@ async def revise(
             status_code=302)
 
     try:
-        new_file_path = await service.save_file(file)
-
-        old_file_full_path = os.path.join(service.upload_dir, achievement.file_path)
-        if os.path.exists(old_file_full_path):
-            try:
-                os.remove(old_file_full_path)
-            except OSError:
-                pass
-
-        await service.repo.update(id, {
-            "file_path": new_file_path,
+        update_data = {
             "status": AchievementStatus.PENDING,
             "rejection_reason": None
-        })
+        }
+
+        if title and title.strip():
+            update_data["title"] = title.strip()
+        if description is not None:
+            update_data["description"] = description.strip() if description.strip() else None
+
+        if file and file.filename:
+            new_file_path = await service.save_file(file)
+
+            old_file_full_path = os.path.join(service.upload_dir, achievement.file_path)
+            if os.path.exists(old_file_full_path):
+                try:
+                    os.remove(old_file_full_path)
+                except OSError:
+                    pass
+
+            update_data["file_path"] = new_file_path
+
+        await service.repo.update(id, update_data)
 
         return RedirectResponse(
             url=f"/sirius.achievements/achievements?toast_msg={quote('Исправленный документ отправлен на модерацию')}&toast_type=success",

@@ -39,7 +39,7 @@ def _scoped_course(user: Users, requested_course: int | None):
     return requested_course
 
 
-def _apply_student_scope(stmt, user: Users, education_level: str | None, course: int | None):
+def _apply_student_scope(stmt, user: Users, education_level: str | None, course: int | None, group: str | None = None):
     if user.role == UserRole.MODERATOR and user.education_level:
         stmt = stmt.filter(Users.education_level == user.education_level)
     elif education_level and education_level != 'all':
@@ -47,6 +47,9 @@ def _apply_student_scope(stmt, user: Users, education_level: str | None, course:
 
     if course and course != 0:
         stmt = stmt.filter(Users.course == course)
+
+    if group and group != 'all':
+        stmt = stmt.filter(Users.study_group == group)
 
     return stmt
 
@@ -57,6 +60,7 @@ async def index(
         education_level: str = Query(None),
         course: int = Query(None),
         category: str = Query(None),
+        group: str = Query(None),
         db: AsyncSession = Depends(get_db)
 ):
     user_id = request.session.get('auth_id')
@@ -64,6 +68,10 @@ async def index(
 
     education_level = _scoped_education_level(user, education_level)
     course = _scoped_course(user, course)
+    if not user.is_staff:
+        group = group or 'all'
+    else:
+        group = group or 'all'
 
     achievement_filter = (Achievement.status == AchievementStatus.APPROVED)
     if category and category != 'all':
@@ -79,7 +87,7 @@ async def index(
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
     )
 
-    stmt = _apply_student_scope(stmt, user, education_level, course)
+    stmt = _apply_student_scope(stmt, user, education_level, course, group)
 
     stmt = stmt.group_by(Users.id).order_by(desc("total_points"), desc("achievements_count"))
 
@@ -94,6 +102,14 @@ async def index(
             my_points = pts
             break
 
+    group_mapping = {
+        'Колледж': ['К-1', 'К-2'],
+        'Бакалавриат': ['Б-1', 'Б-2'],
+        'Специалитет': ['С-1', 'С-2'],
+        'Магистратура': ['М-1', 'М-2'],
+        'Аспирантура': ['А-1', 'А-2'],
+    }
+
     return templates.TemplateResponse('leaderboard/index.html', {
         'request': request,
         'leaderboard': leaderboard,
@@ -103,8 +119,10 @@ async def index(
         'current_education_level': education_level,
         'current_course': course,
         'current_category': category or 'all',
+        'current_group': group or 'all',
         'categories': list(AchievementCategory),
-        'education_levels': list(EducationLevel)
+        'education_levels': list(EducationLevel),
+        'group_mapping': group_mapping,
     })
 
 

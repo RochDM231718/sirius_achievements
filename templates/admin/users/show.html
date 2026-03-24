@@ -114,6 +114,18 @@
                          <span class="text-slate-500 text-xs">Курс</span>
                          <span class="font-medium text-slate-800">{{ target_user.course ~ ' курс' if target_user.course else 'Не указан' }}</span>
                      </div>
+                     {% if target_user.study_group %}
+                     <div class="flex justify-between items-center pb-2 border-b border-slate-50">
+                         <span class="text-slate-500 text-xs">Группа</span>
+                         <span class="font-medium text-slate-800">{{ target_user.study_group }}</span>
+                     </div>
+                     {% endif %}
+                     {% if target_user.session_gpa %}
+                     <div class="flex justify-between items-center pb-2 border-b border-slate-50">
+                         <span class="text-slate-500 text-xs">Средний балл</span>
+                         <span class="font-medium text-indigo-600">{{ target_user.session_gpa }}</span>
+                     </div>
+                     {% endif %}
                      {% endif %}
                      <div class="flex justify-between items-center pb-2 border-b border-slate-50">
                          <span class="text-slate-500 text-xs">Телефон</span>
@@ -125,6 +137,24 @@
                      </div>
                  </div>
             </div>
+
+            {% if is_admin_viewer and target_user.role.value in ['STUDENT', 'student'] %}
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div class="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                    <h3 class="text-sm font-bold text-slate-700">Средний балл сессии</h3>
+                </div>
+                <form action="/sirius.achievements/users/{{ target_user.id }}/set-gpa" method="POST" class="p-5">
+                    <input type="hidden" name="csrf_token" value="{{ request.session.csrf_token }}">
+                    <div class="flex gap-2">
+                        <input type="text" name="gpa" value="{{ target_user.session_gpa or '' }}" placeholder="4.5"
+                               pattern="[2-5]([.,]\d{1,2})?" title="От 2.0 до 5.0"
+                               class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Сохранить</button>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-1.5">Оценка от 2.0 до 5.0, конвертируется в бонусные баллы рейтинга</p>
+                </form>
+            </div>
+            {% endif %}
         </div>
 
         {% if not is_guest_or_pending or is_admin_viewer %}

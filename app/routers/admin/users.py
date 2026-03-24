@@ -529,3 +529,48 @@ async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/users/{id}/set-gpa", name="admin.users.set_gpa", dependencies=[Depends(validate_csrf)])
+async def set_gpa(
+    id: int,
+    request: Request,
+    gpa: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    current_user = await check_admin_rights(request, db)
+    target_user = await db.get(Users, id)
+    if not target_user:
+        return RedirectResponse(url="/sirius.achievements/users?toast_msg=Пользователь не найден&toast_type=error", status_code=302)
+
+    try:
+        gpa_val = float(gpa.replace(",", "."))
+    except ValueError:
+        return RedirectResponse(
+            url=f"/sirius.achievements/users/{id}?toast_msg=Некорректная оценка&toast_type=error",
+            status_code=302,
+        )
+
+    if gpa_val < 2.0 or gpa_val > 5.0:
+        return RedirectResponse(
+            url=f"/sirius.achievements/users/{id}?toast_msg=Оценка должна быть от 2.0 до 5.0&toast_type=error",
+            status_code=302,
+        )
+
+    # Convert GPA to bonus points: 2.0=0, 3.0=5, 4.0=15, 5.0=30
+    if gpa_val < 3.0:
+        bonus = 0
+    elif gpa_val < 4.0:
+        bonus = int((gpa_val - 3.0) * 15)  # 3.0->0, 3.5->7, 3.9->13
+    elif gpa_val < 4.5:
+        bonus = 15 + int((gpa_val - 4.0) * 20)  # 4.0->15, 4.4->23
+    else:
+        bonus = 25 + int((gpa_val - 4.5) * 10)  # 4.5->25, 5.0->30
+
+    target_user.session_gpa = f"{gpa_val:.1f}"
+    await db.commit()
+
+    return RedirectResponse(
+        url=f"/sirius.achievements/users/{id}?toast_msg=Средний балл {gpa_val:.1f} сохранён (+{bonus} бонус)&toast_type=success",
+        status_code=302,
+    )

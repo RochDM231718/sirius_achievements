@@ -53,6 +53,14 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
     chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
     chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
 
+    # User's uploaded documents
+    docs_query = (
+        select(Achievement)
+        .filter(Achievement.user_id == user.id)
+        .order_by(Achievement.created_at.desc())
+    )
+    my_docs = (await db.execute(docs_query)).scalars().all()
+
     return templates.TemplateResponse(
         "profile/index.html",
         {
@@ -63,6 +71,7 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
             "chart_labels": chart_labels,
             "chart_counts": chart_counts,
             "chart_points": chart_points,
+            "my_docs": my_docs,
         },
     )
 

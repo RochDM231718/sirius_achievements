@@ -20,6 +20,8 @@ class Users(Base):
     education_level = Column(Enum(EducationLevel, name="educationlevel"), nullable=True)
 
     course = Column(Integer, nullable=True)
+    study_group = Column("study_group", String, nullable=True)
+    session_gpa = Column(String, nullable=True)  # e.g. "4.5"
 
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
