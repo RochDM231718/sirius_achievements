@@ -14,10 +14,18 @@
 
     <div class="max-w-4xl mx-auto px-4 py-8">
         <div class="flex items-center justify-between mb-6">
-            <a href="/sirius.achievements/login" class="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700">
+            <a id="back-link" href="/sirius.achievements/dashboard" class="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                Sirius.Achievements
+                Назад
             </a>
+            <script nonce="{{ request.state.csp_nonce }}">
+            document.getElementById('back-link').addEventListener('click', function(e) {
+                if (document.referrer && document.referrer.indexOf(location.hostname) !== -1) {
+                    e.preventDefault();
+                    history.back();
+                }
+            });
+            </script>
             <span class="text-xs text-slate-400">Публичный профиль</span>
         </div>
 
@@ -89,20 +97,28 @@
             </div>
 
             <div class="lg:col-span-2 space-y-6">
-                {% if has_chart_data or cat_stats %}
-                <div class="grid grid-cols-1 {% if cat_stats and has_chart_data %}sm:grid-cols-3{% endif %} gap-6">
-                    {% if has_chart_data %}
-                    <div class="{% if cat_stats %}sm:col-span-2{% endif %} bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                        <h3 class="text-sm font-semibold text-slate-700 mb-3">Динамика достижений</h3>
-                        <canvas id="progressChart" height="200"></canvas>
+                {% if has_chart_data %}
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">Динамика достижений</h3>
+                    <canvas id="progressChart" height="160"></canvas>
+                </div>
+                {% endif %}
+                {% if cat_stats %}
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">По категориям</h3>
+                    <div class="flex flex-col sm:flex-row items-center gap-6">
+                        <div class="w-48 h-48 flex-shrink-0">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            {% for cat, count in cat_stats.items() %}
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-slate-600">{{ cat }}</span>
+                                <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium">{{ count }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
-                    {% endif %}
-                    {% if cat_stats %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                        <h3 class="text-sm font-semibold text-slate-700 mb-3">По категориям</h3>
-                        <canvas id="categoryChart" height="200"></canvas>
-                    </div>
-                    {% endif %}
                 </div>
                 {% endif %}
 
@@ -263,7 +279,7 @@
                 responsive: true,
                 cutout: '60%',
                 plugins: {
-                    legend: { position: 'bottom', labels: { font: font, usePointStyle: true, pointStyle: 'circle', padding: 10, boxWidth: 6 } },
+                    legend: { display: false },
                     tooltip: Object.assign({}, tooltipStyle, {
                         callbacks: {
                             label: function(c) {

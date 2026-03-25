@@ -154,12 +154,12 @@ async def delete(
     document = await _get_document(db, id)
     if not document:
         return RedirectResponse(
-            url="/sirius.achievements/documents?toast_msg=Документ не найден&toast_type=error",
+            url=f"/sirius.achievements/documents?toast_msg={quote('Документ не найден')}&toast_type=error",
             status_code=303,
         )
     if not _can_access_document(user, document):
         return RedirectResponse(
-            url="/sirius.achievements/documents?toast_msg=Недостаточно прав&toast_type=error",
+            url=f"/sirius.achievements/documents?toast_msg={quote('Недостаточно прав')}&toast_type=error",
             status_code=303,
         )
 
@@ -175,7 +175,7 @@ async def delete(
             target_education_level=getattr(getattr(document, "user", None), "education_level", None),
         )
         return RedirectResponse(
-            url="/sirius.achievements/documents?toast_msg=Документ удален&toast_type=success",
+            url=f"/sirius.achievements/documents?toast_msg={quote('Документ удален')}&toast_type=success",
             status_code=303,
         )
     except Exception as exc:

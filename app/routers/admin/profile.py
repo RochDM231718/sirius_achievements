@@ -1,10 +1,13 @@
 import json
+import re
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
+
+_PHONE_RE = re.compile(r'^[\d\s\+\-\(\)]{0,20}$')
 
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole
@@ -130,6 +133,17 @@ async def update_profile(
     current_user = await get_current_user(request, db)
     if not current_user:
         return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+
+    if phone_number and not _PHONE_RE.match(phone_number):
+        return templates.TemplateResponse(
+            "profile/index.html",
+            {
+                "request": request,
+                "user": current_user,
+                "error_msg": "Неверный формат телефона. Допустимы только цифры, +, -, (, ), пробелы.",
+                "active_tab": "profile",
+            },
+        )
 
     update_data = {
         "first_name": first_name,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -300,7 +301,7 @@ async def update_user_role(
 
     if id == current_user.id:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg=Нельзя изменить роль самому себе&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Нельзя изменить роль самому себе')}&toast_type=error",
             status_code=302,
         )
 
@@ -309,7 +310,7 @@ async def update_user_role(
         raise HTTPException(status_code=404, detail="User not found")
     if current_user.role != UserRole.SUPER_ADMIN and not _can_access_target(current_user, target_user):
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg=Недостаточно прав&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Недостаточно прав')}&toast_type=error",
             status_code=302,
         )
 
@@ -320,7 +321,7 @@ async def update_user_role(
 
         if target_level >= current_level or new_role_level >= current_level:
             return RedirectResponse(
-                url=f"/sirius.achievements/users/{id}?toast_msg=У вас недостаточно прав для этого действия&toast_type=error",
+                url=f"/sirius.achievements/users/{id}?toast_msg={quote('У вас недостаточно прав для этого действия')}&toast_type=error",
                 status_code=302,
             )
 
@@ -337,7 +338,7 @@ async def update_user_role(
     await service.repository.update(id, update_data)
 
     return RedirectResponse(
-        url=f"/sirius.achievements/users/{id}?toast_msg=Роль и права обновлены&toast_type=success",
+        url=f"/sirius.achievements/users/{id}?toast_msg={quote('Роль и права обновлены')}&toast_type=success",
         status_code=302,
     )
 
@@ -353,7 +354,7 @@ async def delete_user(
 
     if id == current_user.id:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg=Нельзя удалить самого себя&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Нельзя удалить самого себя')}&toast_type=error",
             status_code=302,
         )
 
@@ -361,7 +362,7 @@ async def delete_user(
     if target_user:
         if current_user.role != UserRole.SUPER_ADMIN and not _can_access_target(current_user, target_user):
             return RedirectResponse(
-                url=f"/sirius.achievements/users/{id}?toast_msg=Недостаточно прав&toast_type=error",
+                url=f"/sirius.achievements/users/{id}?toast_msg={quote('Недостаточно прав')}&toast_type=error",
                 status_code=302,
             )
 
@@ -370,13 +371,13 @@ async def delete_user(
 
         if current_user.role != UserRole.SUPER_ADMIN and target_level >= current_level:
             return RedirectResponse(
-                url=f"/sirius.achievements/users/{id}?toast_msg=Недостаточно прав для удаления этого пользователя&toast_type=error",
+                url=f"/sirius.achievements/users/{id}?toast_msg={quote('Недостаточно прав для удаления этого пользователя')}&toast_type=error",
                 status_code=302,
             )
 
     await service.repository.delete(id)
     return RedirectResponse(
-        url="/sirius.achievements/users?toast_msg=Пользователь удален&toast_type=success",
+        url=f"/sirius.achievements/users?toast_msg={quote('Пользователь удален')}&toast_type=success",
         status_code=302,
     )
 
@@ -550,19 +551,19 @@ async def set_gpa(
     current_user = await check_admin_rights(request, db)
     target_user = await db.get(Users, id)
     if not target_user:
-        return RedirectResponse(url="/sirius.achievements/users?toast_msg=Пользователь не найден&toast_type=error", status_code=302)
+        return RedirectResponse(url=f"/sirius.achievements/users?toast_msg={quote('Пользователь не найден')}&toast_type=error", status_code=302)
 
     try:
         gpa_val = float(gpa.replace(",", "."))
     except ValueError:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg=Некорректная оценка&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Некорректная оценка')}&toast_type=error",
             status_code=302,
         )
 
     if gpa_val < 2.0 or gpa_val > 5.0:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg=Оценка должна быть от 2.0 до 5.0&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Оценка должна быть от 2.0 до 5.0')}&toast_type=error",
             status_code=302,
         )
 
@@ -572,6 +573,6 @@ async def set_gpa(
     await db.commit()
 
     return RedirectResponse(
-        url=f"/sirius.achievements/users/{id}?toast_msg=Средний балл {gpa_val:.1f} сохранён (+{bonus} бонус)&toast_type=success",
+        url=f"/sirius.achievements/users/{id}?toast_msg={quote(f'Средний балл {gpa_val:.1f} сохранён (+{bonus} бонус)')}&toast_type=success",
         status_code=302,
     )

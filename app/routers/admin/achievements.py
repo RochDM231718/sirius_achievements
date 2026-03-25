@@ -184,7 +184,7 @@ async def store(
             create_data["result"] = resolved_result
         await service.create(create_data)
         return RedirectResponse(
-            url="/sirius.achievements/achievements?toast_msg=Достижение отправлено на проверку&toast_type=success",
+            url=f"/sirius.achievements/achievements?toast_msg={quote('Достижение отправлено на проверку')}&toast_type=success",
             status_code=302)
     except ValueError as e:
         return RedirectResponse(url=f"/sirius.achievements/achievements/create?toast_msg={quote(str(e))}&toast_type=error",
@@ -253,7 +253,7 @@ async def revise(
     except Exception as e:
         logger.exception("Achievement revise failed", error=str(e), achievement_id=id, user_id=user_id)
         return RedirectResponse(
-            url="/sirius.achievements/achievements?toast_msg=Произошла ошибка при загрузке&toast_type=error",
+            url=f"/sirius.achievements/achievements?toast_msg={quote('Произошла ошибка при загрузке')}&toast_type=error",
             status_code=302
         )
 
@@ -267,7 +267,7 @@ async def delete(id: int, request: Request, service: AchievementService = Depend
 
     if not achievement:
         return RedirectResponse(
-            url="/sirius.achievements/achievements?toast_msg=Достижение не найдено&toast_type=error",
+            url=f"/sirius.achievements/achievements?toast_msg={quote('Достижение не найдено')}&toast_type=error",
             status_code=302
         )
 
@@ -275,13 +275,13 @@ async def delete(id: int, request: Request, service: AchievementService = Depend
 
     if not is_owner:
         return RedirectResponse(
-            url="/sirius.achievements/achievements?toast_msg=У вас нет прав на удаление этого файла&toast_type=error",
+            url=f"/sirius.achievements/achievements?toast_msg={quote('У вас нет прав на удаление этого файла')}&toast_type=error",
             status_code=302
         )
 
     await service.delete(id, user_id, user_role)
 
     return RedirectResponse(
-        url="/sirius.achievements/achievements?toast_msg=Достижение удалено&toast_type=success",
+        url=f"/sirius.achievements/achievements?toast_msg={quote('Достижение удалено')}&toast_type=success",
         status_code=302
     )

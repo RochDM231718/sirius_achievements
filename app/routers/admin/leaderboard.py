@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, update
 from sqlalchemy.orm import selectinload
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 import csv
 import io
 
@@ -234,7 +234,7 @@ async def end_season(
 ):
     user = await db.get(Users, request.session.get('auth_id'))
     if user.role != UserRole.SUPER_ADMIN:
-        return RedirectResponse(url="/sirius.achievements/leaderboard?toast_msg=Только супер-админ может завершать сезон&toast_type=error", status_code=302)
+        return RedirectResponse(url=f"/sirius.achievements/leaderboard?toast_msg={quote('Только супер-админ может завершать сезон')}&toast_type=error", status_code=302)
 
     achievement_points = func.coalesce(func.sum(Achievement.points), 0)
     total_points_expr = (
@@ -269,7 +269,7 @@ async def end_season(
     )
     await db.commit()
 
-    return RedirectResponse(url="/sirius.achievements/leaderboard?toast_msg=Сезон успешно завершен! Рейтинг обнулен.&toast_type=success", status_code=302)
+    return RedirectResponse(url=f"/sirius.achievements/leaderboard?toast_msg={quote('Сезон успешно завершен! Рейтинг обнулен.')}&toast_type=success", status_code=302)
 
 
 def _period_filter(period: str | None):
