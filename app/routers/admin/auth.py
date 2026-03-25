@@ -568,8 +568,8 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
             rank = idx
             break
 
-    # Chart data
-    chart_query = (
+    # Chart data — unified timeline
+    approved_query = (
         select(
             func.date_trunc("month", Achievement.created_at).label("m"),
             func.count().label("cnt"),
@@ -579,10 +579,39 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
         .group_by("m")
         .order_by("m")
     )
-    chart_rows = (await db.execute(chart_query)).all()
-    chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
-    chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
-    chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+    approved_rows = (await db.execute(approved_query)).all()
+    uploads_query = (
+        select(
+            func.date_trunc("month", Achievement.created_at).label("m"),
+            func.count().label("cnt"),
+        )
+        .filter(Achievement.user_id == id)
+        .group_by("m")
+        .order_by("m")
+    )
+    upload_rows = (await db.execute(uploads_query)).all()
+
+    all_months: dict[str, dict] = {}
+    for r in approved_rows:
+        key = r.m.strftime("%m.%Y")
+        all_months.setdefault(key, {"pts": 0, "uploads": 0, "sort": r.m})
+        all_months[key]["pts"] = int(r.pts)
+    for r in upload_rows:
+        key = r.m.strftime("%m.%Y")
+        all_months.setdefault(key, {"pts": 0, "uploads": 0, "sort": r.m})
+        all_months[key]["uploads"] = r.cnt
+
+    sorted_months = sorted(all_months.items(), key=lambda x: x[1]["sort"])
+    chart_labels = json.dumps([m[0] for m in sorted_months])
+    chart_points = json.dumps([m[1]["pts"] for m in sorted_months])
+    chart_uploads = json.dumps([m[1]["uploads"] for m in sorted_months])
+    cumulative = []
+    running = 0
+    for m in sorted_months:
+        running += m[1]["pts"]
+        cumulative.append(running)
+    chart_cumulative = json.dumps(cumulative)
+    has_chart_data = len(sorted_months) > 0
     gpa_bonus = calculate_gpa_bonus(student.session_gpa)
 
     # Category stats
@@ -602,8 +631,10 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
             "rank": rank,
             "cat_stats": cat_stats,
             "chart_labels": chart_labels,
-            "chart_counts": chart_counts,
             "chart_points": chart_points,
+            "chart_uploads": chart_uploads,
+            "chart_cumulative": chart_cumulative,
+            "has_chart_data": has_chart_data,
             "gpa_bonus": gpa_bonus,
         },
     )

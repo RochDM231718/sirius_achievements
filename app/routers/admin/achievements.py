@@ -21,6 +21,26 @@ import structlog
 
 logger = structlog.get_logger()
 
+
+def _resolve_enum(enum_cls, raw: str | None) -> str | None:
+    """Resolve enum input to the NAME format used by the DB.
+
+    Accepts both Russian values ('Хакатон') and English names ('HACKATHON').
+    Always returns the uppercase NAME (DB format): 'HACKATHON'.
+    """
+    if raw is None:
+        return None
+    # Try by name directly (e.g. 'HACKATHON')
+    key = raw.upper()
+    if key in enum_cls.__members__:
+        return key
+    # Try by value (e.g. 'Хакатон' → HACKATHON)
+    for member in enum_cls:
+        if member.value == raw:
+            return member.name
+    return None
+
+
 router = APIRouter(
     prefix="/sirius.achievements",
     tags=["admin.achievements"],
@@ -138,6 +158,16 @@ async def store(
             status_code=302)
     await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL)
 
+    # Validate and resolve enum values (handles both names and values)
+    resolved_category = _resolve_enum(AchievementCategory, category)
+    resolved_level = _resolve_enum(AchievementLevel, level)
+    resolved_result = _resolve_enum(AchievementResult, result) if result else None
+
+    if not resolved_category or not resolved_level:
+        return RedirectResponse(
+            url=f"/sirius.achievements/achievements/create?toast_msg={quote('Неверная категория или уровень')}&toast_type=error",
+            status_code=302)
+
     try:
         file_path = await service.save_file(file)
         create_data = {
@@ -145,13 +175,13 @@ async def store(
             "title": title,
             "description": description,
             "file_path": file_path,
-            "category": category,
-            "level": level,
+            "category": resolved_category,
+            "level": resolved_level,
             "status": AchievementStatus.PENDING,
             "created_at": func.now()
         }
-        if result:
-            create_data["result"] = result
+        if resolved_result:
+            create_data["result"] = resolved_result
         await service.create(create_data)
         return RedirectResponse(
             url="/sirius.achievements/achievements?toast_msg=Достижение отправлено на проверку&toast_type=success",

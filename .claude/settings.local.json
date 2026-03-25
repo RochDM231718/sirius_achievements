@@ -25,7 +25,8 @@
       "Bash(where gh:*)",
       "Bash(git remote:*)",
       "Bash(git checkout:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python3 -m pytest app/tests/unit/admin/test_points_calculator.py -v)"
     ]
   }
 }

@@ -175,7 +175,10 @@ async def achievements_list(request: Request, page: int = Query(1, ge=1, le=1000
 
     for item in achievements:
         if item.level and item.category:
-            item.projected_points = calculate_points(item.level.value, item.category.value)
+            item.projected_points = calculate_points(
+                item.level.value, item.category.value,
+                item.result.value if item.result else None,
+            )
         else:
             item.projected_points = 0
 
@@ -252,7 +255,10 @@ async def update_achievement_status(
         achievement.points = 0
         notif_message = f"Документ '{achievement.title}' отправлен на доработку. Примечание: {rejection_reason}"
     elif new_status == AchievementStatus.APPROVED:
-        points = calculate_points(achievement.level.value, achievement.category.value)
+        points = calculate_points(
+            achievement.level.value, achievement.category.value,
+            achievement.result.value if achievement.result else None,
+        )
         achievement.points = points
         achievement.rejection_reason = None
         notif_message = f"Документ '{achievement.title}' одобрен. Начислено {points} баллов."
@@ -348,7 +354,10 @@ async def batch_update_achievements(request: Request, db: AsyncSession = Depends
 
         ach.status = new_status
         if new_status == AchievementStatus.APPROVED:
-            points = calculate_points(ach.level.value, ach.category.value)
+            points = calculate_points(
+                ach.level.value, ach.category.value,
+                ach.result.value if ach.result else None,
+            )
             ach.points = points
             ach.rejection_reason = None
             msg = f"Документ '{ach.title}' одобрен. Начислено {points} баллов."

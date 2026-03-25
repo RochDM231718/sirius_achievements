@@ -88,15 +88,32 @@ async def _apply_schema_updates():
         # groups and session GPA
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS study_group VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_gpa VARCHAR",
-        # achievement result (Участник/Призёр/Победитель)
-        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'achievementresult') THEN CREATE TYPE achievementresult AS ENUM ('Участник', 'Призёр', 'Победитель'); END IF; END $$",
-        "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS result VARCHAR",
-        # Add Хакатон to achievementcategory enum if missing
-        "DO $$ BEGIN ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'Хакатон'; EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        # achievement result
+        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'achievementresult') THEN CREATE TYPE achievementresult AS ENUM ('PARTICIPANT', 'PRIZEWINNER', 'WINNER'); END IF; END $$",
+        "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS result achievementresult",
     ]
+
+    # ── Add missing enum values (PostgreSQL 12+ supports ADD VALUE in transactions) ──
+    enum_additions = [
+        "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'HACKATHON'",
+        "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'Хакатон'",
+        "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'PARTICIPANT'",
+        "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'PRIZEWINNER'",
+        "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'WINNER'",
+        "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'Участник'",
+        "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'Призёр'",
+        "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'Победитель'",
+    ]
+
     async with engine.begin() as conn:
+        # Add enum values first (before create_all which might skip existing types)
+        for stmt in enum_additions:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass  # type doesn't exist yet — create_all will handle it
+
         # Fix supportticketstatus enum if values don't match
-        # Check if enum exists with wrong values
         enum_check = await conn.execute(text(
             "SELECT enumlabel FROM pg_enum "
             "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid "
@@ -105,14 +122,12 @@ async def _apply_schema_updates():
         existing_labels = [row[0] for row in enum_check.fetchall()]
         expected_labels = ["open", "in_progress", "closed"]
         if existing_labels and existing_labels != expected_labels:
-            # Recreate enum with correct values
             await conn.execute(text(
                 "ALTER TABLE support_tickets ALTER COLUMN status DROP DEFAULT"
             ))
             await conn.execute(text(
                 "ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20)"
             ))
-            # Normalize existing data to lowercase
             await conn.execute(text(
                 "UPDATE support_tickets SET status = LOWER(status)"
             ))

@@ -64,7 +64,10 @@ async def my_work_achievements(request: Request, db: AsyncSession = Depends(get_
 
     for item in my_achievements:
         if item.level and item.category:
-            item.projected_points = calculate_points(item.level.value, item.category.value)
+            item.projected_points = calculate_points(
+                item.level.value, item.category.value,
+                item.result.value if item.result else None,
+            )
         else:
             item.projected_points = 0
 

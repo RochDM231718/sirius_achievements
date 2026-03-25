@@ -20,6 +20,7 @@ DOC_SIGNATURES = {
     "pdf": SIGNATURES["pdf"],
     "jpg": SIGNATURES["jpg"],
     "png": SIGNATURES["png"],
+    "webp": SIGNATURES["webp"],
     "gif": SIGNATURES["gif"],
     "docx": SIGNATURES["docx"],
     "pptx": SIGNATURES["pptx"],

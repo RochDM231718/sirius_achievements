@@ -38,8 +38,9 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
     resume_service = ResumeService(db)
     check = await resume_service.can_generate(user.id)
 
-    # Progress chart: approved achievements by month
-    chart_query = (
+    # ── Chart: unified timeline with 3 metrics ──
+    # 1) Approved achievements by month (points + count)
+    approved_query = (
         select(
             func.date_trunc("month", Achievement.created_at).label("m"),
             func.count().label("cnt"),
@@ -49,10 +50,45 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
         .group_by("m")
         .order_by("m")
     )
-    chart_rows = (await db.execute(chart_query)).all()
-    chart_labels = json.dumps([r.m.strftime("%m.%Y") for r in chart_rows]) if chart_rows else "[]"
-    chart_counts = json.dumps([r.cnt for r in chart_rows]) if chart_rows else "[]"
-    chart_points = json.dumps([int(r.pts) for r in chart_rows]) if chart_rows else "[]"
+    approved_rows = (await db.execute(approved_query)).all()
+
+    # 2) All uploads by month
+    uploads_query = (
+        select(
+            func.date_trunc("month", Achievement.created_at).label("m"),
+            func.count().label("cnt"),
+        )
+        .filter(Achievement.user_id == user.id)
+        .group_by("m")
+        .order_by("m")
+    )
+    upload_rows = (await db.execute(uploads_query)).all()
+
+    # Merge into single sorted timeline
+    all_months: dict[str, dict] = {}
+    for r in approved_rows:
+        key = r.m.strftime("%m.%Y")
+        all_months.setdefault(key, {"pts": 0, "approved": 0, "uploads": 0, "sort": r.m})
+        all_months[key]["pts"] = int(r.pts)
+        all_months[key]["approved"] = r.cnt
+    for r in upload_rows:
+        key = r.m.strftime("%m.%Y")
+        all_months.setdefault(key, {"pts": 0, "approved": 0, "uploads": 0, "sort": r.m})
+        all_months[key]["uploads"] = r.cnt
+
+    sorted_months = sorted(all_months.items(), key=lambda x: x[1]["sort"])
+    chart_labels = json.dumps([m[0] for m in sorted_months])
+    chart_points = json.dumps([m[1]["pts"] for m in sorted_months])
+    chart_uploads = json.dumps([m[1]["uploads"] for m in sorted_months])
+    # Cumulative points
+    cumulative = []
+    running = 0
+    for m in sorted_months:
+        running += m[1]["pts"]
+        cumulative.append(running)
+    chart_cumulative = json.dumps(cumulative)
+
+    has_chart_data = len(sorted_months) > 0
     gpa_bonus = calculate_gpa_bonus(user.session_gpa)
 
     # User's uploaded documents
@@ -71,8 +107,10 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
             "can_generate": check["allowed"],
             "generate_reason": check.get("reason", ""),
             "chart_labels": chart_labels,
-            "chart_counts": chart_counts,
             "chart_points": chart_points,
+            "chart_uploads": chart_uploads,
+            "chart_cumulative": chart_cumulative,
+            "has_chart_data": has_chart_data,
             "my_docs": my_docs,
             "gpa_bonus": gpa_bonus,
         },

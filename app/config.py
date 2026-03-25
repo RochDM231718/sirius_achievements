@@ -71,6 +71,11 @@ class Settings:
     POINTS_FEDERAL: int = int(os.getenv("POINTS_FEDERAL", "75"))
     POINTS_INTERNATIONAL: int = int(os.getenv("POINTS_INTERNATIONAL", "100"))
 
+    # ── Result multipliers (×100 to avoid floats) ──
+    RESULT_MULTIPLIER_PARTICIPANT: int = int(os.getenv("RESULT_MULTIPLIER_PARTICIPANT", "50"))
+    RESULT_MULTIPLIER_PRIZEWINNER: int = int(os.getenv("RESULT_MULTIPLIER_PRIZEWINNER", "75"))
+    RESULT_MULTIPLIER_WINNER: int = int(os.getenv("RESULT_MULTIPLIER_WINNER", "100"))
+
     # ── Mail ──
     MAIL_HOST: str = os.getenv("MAIL_HOST", "smtp.yandex.ru")
     MAIL_PORT: int = int(os.getenv("MAIL_PORT", "465"))
