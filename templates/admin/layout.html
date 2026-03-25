@@ -19,20 +19,27 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .scroll-smooth-ios { -webkit-overflow-scrolling: touch; }
-        .sidebar-section[data-sidebar-key] { display: none; }
     </style>
     <script nonce="{{ request.state.csp_nonce }}">
-    (function(){
-        var keys = ['sidebar_all','sidebar_mywork','sidebar_incoming'];
-        var css = '';
-        for (var i = 0; i < keys.length; i++) {
-            var v = localStorage.getItem(keys[i]);
-            if (v === null || v === 'true') {
-                css += '.sidebar-section[data-sidebar-key="' + keys[i] + '"]{display:block !important}';
+    window.sidebarSection = function(storageKey, defaultOpen) {
+        return {
+            open: defaultOpen,
+            init() {
+                try {
+                    var stored = localStorage.getItem(storageKey);
+                    if (stored === 'true' || stored === 'false') {
+                        this.open = stored === 'true';
+                    }
+                } catch (error) {}
+            },
+            toggle() {
+                this.open = !this.open;
+                try {
+                    localStorage.setItem(storageKey, this.open ? 'true' : 'false');
+                } catch (error) {}
             }
-        }
-        if (css) { var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s); }
-    })();
+        };
+    };
     </script>
 </head>
 <body class="theme-shell bg-slate-50 text-slate-800 antialiased font-sans overflow-hidden">
@@ -76,52 +83,43 @@
                 <div class="mt-6 mb-2 pt-4 border-t border-slate-100">
                     <p class="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Админ</p>
                 </div>
-                <div x-data="{ open: localStorage.getItem('sidebar_all') !== 'false' }"
-                     x-init="$watch('open', v => localStorage.setItem('sidebar_all', v))">
-                    <button @click="open = !open" class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-slate-50 hover:text-indigo-600 text-slate-700">
+                <div x-data="sidebarSection('sidebar_all', true)" x-init="init()">
+                    <button @click="toggle()" class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-slate-50 hover:text-indigo-600 text-slate-700">
                         <div class="flex items-center">
                             <svg class="w-5 h-5 mr-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
                             <span>Все записи</span>
                         </div>
                         <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
-                    <div x-show="open"
-                         class="pl-10 pr-2 space-y-1 mt-1 sidebar-section"
-                         data-sidebar-key="sidebar_all">
+                    <div x-show="open" class="pl-10 pr-2 space-y-1 mt-1">
                         <a href="/sirius.achievements/users" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if request.url.path.endswith('/users') and '/moderation' not in request.url.path and '/my-work' not in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Все пользователи</a>
                         <a href="/sirius.achievements/documents" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/documents' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Все документы</a>
                         <a href="/sirius.achievements/moderation/support/all" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/support/all' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Все обращения</a>
                     </div>
                 </div>
-                <div x-data="{ open: localStorage.getItem('sidebar_mywork') !== 'false' }"
-                     x-init="$watch('open', v => localStorage.setItem('sidebar_mywork', v))">
-                    <button @click="open = !open" class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-slate-50 hover:text-indigo-600 text-slate-700">
+                <div x-data="sidebarSection('sidebar_mywork', true)" x-init="init()">
+                    <button @click="toggle()" class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-slate-50 hover:text-indigo-600 text-slate-700">
                         <div class="flex items-center">
                             <svg class="w-5 h-5 mr-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
                             <span>Моя работа</span>
                         </div>
                         <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
-                    <div x-show="open"
-                         class="pl-10 pr-2 space-y-1 mt-1 sidebar-section"
-                         data-sidebar-key="sidebar_mywork">
+                    <div x-show="open" class="pl-10 pr-2 space-y-1 mt-1">
                         <a href="/sirius.achievements/my-work/users" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/my-work/users' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Мои пользователи</a>
                         <a href="/sirius.achievements/my-work/achievements" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/my-work/achievements' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Мои документы</a>
                         <a href="/sirius.achievements/moderation/support/chats" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/support/chats' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Мои чаты</a>
                     </div>
                 </div>
-                <div x-data="{ open: localStorage.getItem('sidebar_incoming') !== 'false' }"
-                     x-init="$watch('open', v => localStorage.setItem('sidebar_incoming', v))">
-                    <button @click="open = !open" class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-slate-50 hover:text-indigo-600 text-slate-700">
+                <div x-data="sidebarSection('sidebar_incoming', true)" x-init="init()">
+                    <button @click="toggle()" class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-slate-50 hover:text-indigo-600 text-slate-700">
                         <div class="flex items-center">
                             <svg class="w-5 h-5 mr-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                             <span>Входящие</span>
                         </div>
                         <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
-                    <div x-show="open"
-                         class="pl-10 pr-2 space-y-1 mt-1 sidebar-section"
-                         data-sidebar-key="sidebar_incoming">
+                    <div x-show="open" class="pl-10 pr-2 space-y-1 mt-1">
                         <a href="/sirius.achievements/moderation/users" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/users' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые пользователи</a>
                         <a href="/sirius.achievements/moderation/achievements" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/achievements' in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые документы</a>
                         <a href="/sirius.achievements/moderation/support" class="block px-2 py-1.5 text-sm rounded-md transition-colors {{ 'text-indigo-600 font-medium' if '/moderation/support' in request.url.path and '/all' not in request.url.path and '/chats' not in request.url.path else 'text-slate-500 hover:text-indigo-600' }}">Новые обращения</a>
@@ -198,34 +196,32 @@
             </header>
 
             <main class="flex-1 overflow-y-auto p-4 pb-24 md:pb-8 lg:p-8 bg-slate-50 scroll-smooth-ios w-full">
-                {% if request.query_params.get('toast_msg') %}
-                <div x-data="{ show: false }" x-show="show"
-                     x-init="
-                        var u = new URL(window.location.href);
-                        u.searchParams.delete('toast_msg');
-                        u.searchParams.delete('toast_type');
-                        window.history.replaceState({}, document.title, u.pathname + (u.search || ''));
-                        $nextTick(function() { show = true });
-                        setTimeout(function() { show = false }, 4000);
-                     "
-                     x-transition:enter="transition ease-out duration-200"
-                     x-transition:enter-start="opacity-0 translate-y-2"
-                     x-transition:enter-end="opacity-100 translate-y-0"
-                     x-transition:leave="transition ease-in duration-200"
-                     x-transition:leave-start="opacity-100 translate-y-0"
-                     x-transition:leave-end="opacity-0 -translate-y-2"
-                     class="fixed top-20 right-4 z-50 max-w-sm w-auto bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-3 cursor-pointer"
-                     style="display:none"
-                     @click="show = false">
+                {% set toast = request.state.toast %}
+                {% if toast %}
+                <div id="page-toast"
+                     class="fixed top-20 right-4 z-50 max-w-sm w-auto bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-3 cursor-pointer transition duration-200"
+                     @click="$el.remove()">
                     <div class="flex-shrink-0 mr-3">
-                        {% if request.query_params.get('toast_type') == 'success' %}
+                        {% if toast.type == 'success' %}
                             <div class="h-2 w-2 rounded-full bg-green-500"></div>
                         {% else %}
                             <div class="h-2 w-2 rounded-full bg-red-500"></div>
                         {% endif %}
                     </div>
-                    <p class="text-sm font-medium text-slate-700 flex-1">{{ request.query_params.get('toast_msg') }}</p>
+                    <p class="text-sm font-medium text-slate-700 flex-1">{{ toast.message }}</p>
                 </div>
+                <script nonce="{{ request.state.csp_nonce }}">
+                (function () {
+                    var toast = document.getElementById('page-toast');
+                    if (!toast) return;
+                    setTimeout(function () {
+                        toast.classList.add('opacity-0', '-translate-y-2');
+                        setTimeout(function () {
+                            toast.remove();
+                        }, 200);
+                    }, 4000);
+                })();
+                </script>
                 {% endif %}
 
                 {% block content %}{% endblock %}

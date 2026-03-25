@@ -133,8 +133,10 @@
     });
 
     document.querySelectorAll('[data-file-input]').forEach((input) => {
-        var nameEl = document.getElementById('fileIndicatorName');
-        var removeBtn = document.getElementById('fileRemoveBtn');
+        var form = input.closest('form');
+        var indicator = form ? form.querySelector(input.dataset.fileIndicator) : null;
+        var nameEl = indicator ? indicator.querySelector('span') : null;
+        var removeBtn = indicator ? indicator.querySelector('[data-file-remove]') : null;
         input.addEventListener('change', function() {
             if (nameEl) nameEl.textContent = input.files && input.files[0] ? input.files[0].name : '';
             if (removeBtn) removeBtn.classList.toggle('hidden', !(input.files && input.files[0]));

@@ -4,7 +4,7 @@ import asyncio
 import os
 import secrets
 from contextlib import asynccontextmanager, suppress
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import structlog
 from dotenv import load_dotenv
@@ -172,11 +172,54 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(root_path=os.getenv("ROOT_PATH", ""), lifespan=lifespan)
+FLASH_TOAST_SESSION_KEY = "_toast"
 
 
 class CSRFContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         get_csrf_token(request)
+        response = await call_next(request)
+        return response
+
+
+def _request_wants_html(request: Request) -> bool:
+    if request.method not in {"GET", "HEAD"}:
+        return False
+    if request.url.path.startswith("/static") or request.url.path.startswith("/ws"):
+        return False
+    if request.headers.get("sec-fetch-dest") == "document":
+        return True
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept
+
+
+class FlashToastMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            session = request.session
+        except AssertionError:
+            return await call_next(request)
+
+        request.state.toast = None
+
+        if _request_wants_html(request):
+            toast_msg = request.query_params.get("toast_msg")
+            if toast_msg:
+                session[FLASH_TOAST_SESSION_KEY] = {
+                    "message": toast_msg,
+                    "type": "success" if request.query_params.get("toast_type") == "success" else "error",
+                }
+                filtered_params = [
+                    (key, value)
+                    for key, value in request.query_params.multi_items()
+                    if key not in {"toast_msg", "toast_type"}
+                ]
+                clean_query = urlencode(filtered_params, doseq=True)
+                clean_url = str(request.url.replace(query=clean_query))
+                return RedirectResponse(url=clean_url, status_code=303)
+
+            request.state.toast = session.pop(FLASH_TOAST_SESSION_KEY, None)
+
         response = await call_next(request)
         return response
 
@@ -199,6 +242,7 @@ if not SECRET_KEY or SECRET_KEY == "supersecretkey123":
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(UploadProtectionMiddleware)
 app.add_middleware(CSRFContextMiddleware)
+app.add_middleware(FlashToastMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,

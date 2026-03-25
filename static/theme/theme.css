@@ -104,6 +104,12 @@ html[data-theme="dark"] {
   --theme-shadow: var(--dark-shadow);
 }
 
+html:not(.theme-ready) body,
+html:not(.theme-ready) .theme-auth-card,
+html:not(.theme-ready) .theme-toggle-button {
+  transition: none !important;
+}
+
 html,
 body {
   min-height: 100%;

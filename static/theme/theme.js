@@ -6,6 +6,8 @@
     icons: {
       light: "/static/theme/icons/luntosun.svg",
       dark: "/static/theme/icons/suntolun.svg",
+      lightStatic: "/static/theme/icons/luntosun-static.svg",
+      darkStatic: "/static/theme/icons/suntolun-static.svg",
       lightAlt: "/static/theme/icons/luntosun2.svg",
       darkAlt: "/static/theme/icons/suntolun2.svg"
     },
@@ -136,6 +138,8 @@
       icons: {
         light: raw["icon.light.primary"] || DEFAULT_CONFIG.icons.light,
         dark: raw["icon.dark.primary"] || DEFAULT_CONFIG.icons.dark,
+        lightStatic: raw["icon.light.static"] || DEFAULT_CONFIG.icons.lightStatic,
+        darkStatic: raw["icon.dark.static"] || DEFAULT_CONFIG.icons.darkStatic,
         lightAlt: raw["icon.light.alt"] || DEFAULT_CONFIG.icons.lightAlt,
         darkAlt: raw["icon.dark.alt"] || DEFAULT_CONFIG.icons.darkAlt
       },
@@ -156,7 +160,8 @@
 
   function updateToggleButtons(replayAnimation) {
     const nextTheme = state.theme === "dark" ? "light" : "dark";
-    const currentIcon = state.theme === "dark" ? state.config.icons.dark : state.config.icons.light;
+    const animatedIcon = state.theme === "dark" ? state.config.icons.dark : state.config.icons.light;
+    const staticIcon = state.theme === "dark" ? state.config.icons.darkStatic : state.config.icons.lightStatic;
     const currentTitle = nextTheme === "dark" ? "\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0442\u0435\u043c\u043d\u0443\u044e \u0442\u0435\u043c\u0443" : "\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0441\u0432\u0435\u0442\u043b\u0443\u044e \u0442\u0435\u043c\u0443";
 
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
@@ -166,13 +171,18 @@
     });
 
     document.querySelectorAll("[data-theme-toggle-icon]").forEach((image) => {
-      image.src = replayAnimation ? appendCacheBuster(currentIcon) : currentIcon;
+      const nextSrc = replayAnimation ? appendCacheBuster(animatedIcon) : staticIcon;
+      if (image.dataset.themeIconSrc !== nextSrc) {
+        image.dataset.themeIconSrc = nextSrc;
+        image.src = nextSrc;
+      }
       image.alt = state.theme === "dark" ? "\u0422\u0435\u043c\u043d\u0430\u044f \u0442\u0435\u043c\u0430" : "\u0421\u0432\u0435\u0442\u043b\u0430\u044f \u0442\u0435\u043c\u0430";
     });
   }
 
   function setTheme(theme, options) {
-    const settings = Object.assign({ persist: true, replayAnimation: false }, options);
+    const settings = Object.assign({ persist: true, replayAnimation: false, dispatch: true }, options);
+    const previousTheme = state.theme;
     state.theme = theme === "dark" ? "dark" : "light";
     document.documentElement.dataset.theme = state.theme;
 
@@ -181,7 +191,9 @@
     }
 
     updateToggleButtons(settings.replayAnimation);
-    document.dispatchEvent(new CustomEvent("themechange", { detail: { theme: state.theme } }));
+    if (settings.dispatch && previousTheme !== state.theme) {
+      document.dispatchEvent(new CustomEvent("themechange", { detail: { theme: state.theme } }));
+    }
   }
 
   function bindToggles() {
@@ -214,7 +226,14 @@
     state.config = await loadConfig();
     applyPaletteVariables(state.config);
     bindToggles();
-    setTheme(readTheme(state.config.storageKey), { persist: false, replayAnimation: false });
+    setTheme(readTheme(state.config.storageKey), {
+      persist: false,
+      replayAnimation: false,
+      dispatch: false
+    });
+    requestAnimationFrame(function () {
+      document.documentElement.classList.add("theme-ready");
+    });
   }
 
   if (document.readyState === "loading") {
