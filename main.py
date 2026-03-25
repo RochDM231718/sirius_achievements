@@ -107,9 +107,11 @@ async def _apply_schema_updates():
 
     async with engine.begin() as conn:
         # Add enum values first (before create_all which might skip existing types)
+        # Each runs in a SAVEPOINT so a failure doesn't abort the transaction
         for stmt in enum_additions:
             try:
-                await conn.execute(text(stmt))
+                async with conn.begin_nested():
+                    await conn.execute(text(stmt))
             except Exception:
                 pass  # type doesn't exist yet — create_all will handle it
 
@@ -149,7 +151,8 @@ async def _apply_schema_updates():
         # Then add missing columns to existing tables
         for stmt in alter_statements:
             try:
-                await conn.execute(text(stmt))
+                async with conn.begin_nested():
+                    await conn.execute(text(stmt))
             except Exception:
                 pass  # column/table may already exist
 
