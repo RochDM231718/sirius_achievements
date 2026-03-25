@@ -101,7 +101,7 @@
                             <div class="font-medium text-slate-800">{{ item.title }}</div>
                             {% if item.rejection_reason and item.status.value in ['rejected', 'revision'] %}
                                 <div class="text-[10px] mt-0.5 {% if item.status.value == 'revision' %}text-yellow-700 font-medium{% else %}text-red-500{% endif %} break-words whitespace-normal max-w-xs">
-                                    <span class="font-bold">Комментарий:</span> {{ item.rejection_reason }}
+                                    <span class="font-bold">Комментарий:</span> {{ item.rejection_reason | e }}
                                 </div>
                             {% endif %}
                         </td>

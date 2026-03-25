@@ -619,6 +619,8 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
     for a in achievements:
         cat = a.category.value if a.category else "Другое"
         cat_stats[cat] = cat_stats.get(cat, 0) + 1
+    cat_stats_labels = json.dumps(list(cat_stats.keys()), ensure_ascii=False)
+    cat_stats_values = json.dumps(list(cat_stats.values()))
 
     return templates.TemplateResponse(
         "public/student_profile.html",
@@ -630,6 +632,8 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
             "total_docs": len(achievements),
             "rank": rank,
             "cat_stats": cat_stats,
+            "cat_stats_labels": cat_stats_labels,
+            "cat_stats_values": cat_stats_values,
             "chart_labels": chart_labels,
             "chart_points": chart_points,
             "chart_uploads": chart_uploads,

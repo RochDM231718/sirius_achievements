@@ -139,6 +139,13 @@ async def release_user(id: int, request: Request, db: AsyncSession = Depends(get
 
 
 def _redirect_back(request: Request, msg: str, toast_type: str):
-    referer = request.headers.get("referer", "/sirius.achievements/my-work/users")
+    from urllib.parse import quote, urlparse
+    fallback = "/sirius.achievements/my-work/users"
+    referer = request.headers.get("referer", fallback)
+    parsed = urlparse(referer)
+    if parsed.netloc and parsed.netloc != request.url.hostname:
+        referer = fallback
+    else:
+        referer = parsed.path + ("?" + parsed.query if parsed.query else "")
     sep = "&" if "?" in referer else "?"
-    return RedirectResponse(url=f"{referer}{sep}toast_msg={msg}&toast_type={toast_type}", status_code=302)
+    return RedirectResponse(url=f"{referer}{sep}toast_msg={quote(msg)}&toast_type={toast_type}", status_code=302)

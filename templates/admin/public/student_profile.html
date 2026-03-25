@@ -86,29 +86,26 @@
                 </div>
                 {% endif %}
 
-                {% if cat_stats %}
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                    <h3 class="text-sm font-semibold text-slate-700 mb-3">По категориям</h3>
-                    <div class="space-y-2">
-                        {% for cat, count in cat_stats.items() %}
-                        <div class="flex items-center justify-between text-sm">
-                            <span class="text-slate-600">{{ cat }}</span>
-                            <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-
-                {% if has_chart_data %}
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                    <h3 class="text-sm font-semibold text-slate-700 mb-3">Динамика</h3>
-                    <canvas id="progressChart" height="220"></canvas>
-                </div>
-                {% endif %}
             </div>
 
-            <div class="lg:col-span-2">
+            <div class="lg:col-span-2 space-y-6">
+                {% if has_chart_data or cat_stats %}
+                <div class="grid grid-cols-1 {% if cat_stats and has_chart_data %}sm:grid-cols-3{% endif %} gap-6">
+                    {% if has_chart_data %}
+                    <div class="{% if cat_stats %}sm:col-span-2{% endif %} bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                        <h3 class="text-sm font-semibold text-slate-700 mb-3">Динамика достижений</h3>
+                        <canvas id="progressChart" height="200"></canvas>
+                    </div>
+                    {% endif %}
+                    {% if cat_stats %}
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                        <h3 class="text-sm font-semibold text-slate-700 mb-3">По категориям</h3>
+                        <canvas id="categoryChart" height="200"></canvas>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                     <h3 class="text-sm font-semibold text-slate-700 mb-4">Достижения ({{ total_docs }})</h3>
 
@@ -156,11 +153,21 @@
         <p class="text-center text-xs text-slate-400 mt-8">Sirius.Achievements &copy; 2026</p>
     </div>
 
-    {% if has_chart_data %}
+    {% if has_chart_data or cat_stats %}
     <script nonce="{{ request.state.csp_nonce }}">
     (function() {
-        const font = { family: "'Inter', system-ui, sans-serif", size: 10 };
-        const ctx = document.getElementById('progressChart').getContext('2d');
+        var font = { family: "'Inter', system-ui, sans-serif", size: 10 };
+        var tooltipStyle = {
+            backgroundColor: '#1e293b',
+            titleFont: Object.assign({}, font, { weight: 'bold' }),
+            bodyFont: font,
+            padding: 10,
+            cornerRadius: 8,
+            boxPadding: 4
+        };
+
+        {% if has_chart_data %}
+        var ctx = document.getElementById('progressChart').getContext('2d');
         new Chart(ctx, {
             type: 'line',
             data: {
@@ -219,28 +226,57 @@
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { position: 'bottom', labels: { font: font, usePointStyle: true, pointStyle: 'circle', padding: 12, boxWidth: 6 } },
-                    tooltip: {
-                        backgroundColor: '#1e293b',
-                        titleFont: { ...font, weight: 'bold' },
-                        bodyFont: font,
-                        padding: 10,
-                        cornerRadius: 8,
-                        boxPadding: 4,
+                    tooltip: Object.assign({}, tooltipStyle, {
                         callbacks: {
-                            label: function(ctx) {
-                                if (ctx.datasetIndex === 2) return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + ' шт.';
-                                return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + ' б.';
+                            label: function(c) {
+                                if (c.datasetIndex === 2) return ' ' + c.dataset.label + ': ' + c.parsed.y + ' шт.';
+                                return ' ' + c.dataset.label + ': ' + c.parsed.y + ' б.';
                             }
                         }
-                    }
+                    })
                 },
                 scales: {
-                    y: { beginAtZero: true, position: 'left', grid: { color: '#f1f5f9', drawBorder: false }, ticks: { font: font, color: '#94a3b8' }, title: { display: true, text: 'Баллы', font: { ...font, size: 9 }, color: '#94a3b8' } },
-                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { font: font, color: '#10b981', stepSize: 1 }, title: { display: true, text: 'Документы', font: { ...font, size: 9 }, color: '#10b981' } },
+                    y: { beginAtZero: true, position: 'left', grid: { color: '#f1f5f9', drawBorder: false }, ticks: { font: font, color: '#94a3b8' }, title: { display: true, text: 'Баллы', font: Object.assign({}, font, { size: 9 }), color: '#94a3b8' } },
+                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { font: font, color: '#10b981', stepSize: 1 }, title: { display: true, text: 'Документы', font: Object.assign({}, font, { size: 9 }), color: '#10b981' } },
                     x: { grid: { display: false }, ticks: { font: font, color: '#64748b' } }
                 }
             }
         });
+        {% endif %}
+
+        {% if cat_stats %}
+        var catColors = ['#6d5ef3', '#ea580c', '#0891b2', '#ca8a04', '#db2777', '#059669', '#7c3aed', '#0284c7'];
+        var catCtx = document.getElementById('categoryChart').getContext('2d');
+        new Chart(catCtx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ cat_stats_labels | safe }},
+                datasets: [{
+                    data: {{ cat_stats_values | safe }},
+                    backgroundColor: catColors.slice(0, {{ cat_stats | length }}),
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                cutout: '60%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: font, usePointStyle: true, pointStyle: 'circle', padding: 10, boxWidth: 6 } },
+                    tooltip: Object.assign({}, tooltipStyle, {
+                        callbacks: {
+                            label: function(c) {
+                                var total = c.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                                var pct = total > 0 ? Math.round(c.parsed / total * 100) : 0;
+                                return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
+                            }
+                        }
+                    })
+                }
+            }
+        });
+        {% endif %}
     })();
     </script>
     {% endif %}

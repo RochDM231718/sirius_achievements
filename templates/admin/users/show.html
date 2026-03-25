@@ -263,7 +263,7 @@
                                 <p class="text-xs text-slate-500 mt-0.5 flex items-center">
                                     <span class="mr-2">{{ item.created_at.strftime('%d.%m.%Y') if item.created_at else 'Дата не указана' }}</span>
                                     {% if item.status.value == 'rejected' and item.rejection_reason %}
-                                        <span class="text-red-500 truncate max-w-[200px]" title="{{ item.rejection_reason }}">• {{ item.rejection_reason }}</span>
+                                        <span class="text-red-500 truncate max-w-[200px]" title="{{ item.rejection_reason | e }}">• {{ item.rejection_reason | e }}</span>
                                     {% endif %}
                                 </p>
                             </div>
