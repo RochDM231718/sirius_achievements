@@ -1,7 +1,9 @@
 import json
 import re
+import secrets
+import time
 
-from fastapi import APIRouter, Request, Depends, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Request, Depends, Form, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,16 +11,19 @@ from passlib.context import CryptContext
 
 _PHONE_RE = re.compile(r'^[\d\s\+\-\(\)]{0,20}$')
 
+from app.config import settings
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole
 from app.security.csrf import validate_csrf
 from app.routers.admin.admin import templates, get_db
 from app.services.admin.user_service import UserService
 from app.services.admin.resume_service import ResumeService
+from app.services.auth_service import AuthService
 from app.repositories.admin.user_repository import UserRepository
 from app.routers.admin.deps import get_current_user, require_auth
 from app.schemas.admin.auth import ResetPasswordSchema
 from app.utils.points import calculate_gpa_bonus
+from app.utils.rate_limiter import rate_limiter
 
 router = APIRouter(
     prefix="/sirius.achievements",
@@ -177,10 +182,138 @@ async def update_profile(
     return RedirectResponse(url=url, status_code=302)
 
 
+def _get_auth_service(db: AsyncSession = Depends(get_db)):
+    from app.repositories.admin.user_token_repository import UserTokenRepository
+    from app.services.admin.user_token_service import UserTokenService
+    user_repo = UserRepository(db)
+    token_repo = UserTokenRepository(db)
+    token_service = UserTokenService(token_repo)
+    return AuthService(user_repo, token_service)
+
+
+@router.post("/profile/password/send-code", name="admin.profile.password.send_code", dependencies=[Depends(validate_csrf)])
+async def password_send_code(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    auth_service: AuthService = Depends(_get_auth_service),
+):
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+
+    success, msg, retry_after, _ = await auth_service.forgot_password(user.email, background_tasks)
+
+    if not success:
+        url = request.url_for("admin.profile.index").include_query_params(
+            toast_msg=msg, toast_type="error", active_tab="security",
+        )
+        return RedirectResponse(url=url, status_code=302)
+
+    request.session["pwd_change_user_id"] = user.id
+    request.session["pwd_change_flow_id"] = secrets.token_urlsafe(16)
+    request.session["pwd_change_retry_at"] = int(time.time()) + retry_after
+    request.session.pop("pwd_change_verified", None)
+
+    return RedirectResponse(url=request.url_for("admin.profile.password.verify_page"), status_code=302)
+
+
+@router.get("/profile/password/verify", response_class=HTMLResponse, name="admin.profile.password.verify_page")
+async def password_verify_page(request: Request, db: AsyncSession = Depends(get_db)):
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+    if not request.session.get("pwd_change_flow_id"):
+        return RedirectResponse(url="/sirius.achievements/profile?active_tab=security", status_code=302)
+
+    retry_at = request.session.get("pwd_change_retry_at", 0)
+    seconds_left = max(0, retry_at - int(time.time()))
+
+    return templates.TemplateResponse("profile/verify_password_code.html", {
+        "request": request,
+        "user": user,
+        "email": user.email,
+        "seconds_left": seconds_left,
+    })
+
+
+@router.post("/profile/password/verify", name="admin.profile.password.verify", dependencies=[Depends(validate_csrf)])
+async def password_verify_code(
+    request: Request,
+    code: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    auth_service: AuthService = Depends(_get_auth_service),
+):
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+
+    flow_id = request.session.get("pwd_change_flow_id")
+    if not flow_id:
+        return RedirectResponse(url="/sirius.achievements/profile?active_tab=security", status_code=302)
+
+    retry_at = request.session.get("pwd_change_retry_at", 0)
+    seconds_left = max(0, retry_at - int(time.time()))
+
+    rl_key = f"pwd_change_otp:{flow_id}"
+    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
+        return templates.TemplateResponse("profile/verify_password_code.html", {
+            "request": request, "user": user, "email": user.email,
+            "error_msg": "Слишком много попыток. Запросите новый код.",
+            "seconds_left": seconds_left,
+        })
+
+    try:
+        await auth_service.verify_code_only(user.id, code)
+        await rate_limiter.reset(rl_key)
+        request.session["pwd_change_verified"] = True
+        return RedirectResponse(url=request.url_for("admin.profile.password.reset_page"), status_code=302)
+    except Exception:
+        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
+        remaining = await rate_limiter.remaining(rl_key, settings.OTP_MAX_ATTEMPTS)
+        error_msg = "Неверный код." if remaining > 2 else f"Неверный код. Осталось попыток: {remaining}."
+        return templates.TemplateResponse("profile/verify_password_code.html", {
+            "request": request, "user": user, "email": user.email,
+            "error_msg": error_msg, "seconds_left": seconds_left,
+        })
+
+
+@router.post("/profile/password/resend", name="admin.profile.password.resend", dependencies=[Depends(validate_csrf)])
+async def password_resend_code(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    auth_service: AuthService = Depends(_get_auth_service),
+):
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+
+    success, _, retry_after, _ = await auth_service.forgot_password(user.email, background_tasks)
+    if success:
+        request.session["pwd_change_retry_at"] = int(time.time()) + retry_after
+        request.session["pwd_change_flow_id"] = secrets.token_urlsafe(16)
+        request.session.pop("pwd_change_verified", None)
+
+    return RedirectResponse(url=request.url_for("admin.profile.password.verify_page"), status_code=302)
+
+
+@router.get("/profile/password/reset", response_class=HTMLResponse, name="admin.profile.password.reset_page")
+async def password_reset_page(request: Request, db: AsyncSession = Depends(get_db)):
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+    if not request.session.get("pwd_change_verified"):
+        return RedirectResponse(url="/sirius.achievements/profile?active_tab=security", status_code=302)
+
+    return templates.TemplateResponse("profile/change_password.html", {
+        "request": request, "user": user,
+    })
+
+
 @router.post("/profile/password", name="admin.profile.password", dependencies=[Depends(validate_csrf)])
 async def change_password(
     request: Request,
-    current_password: str = Form(...),
     new_password: str = Form(...),
     confirm_password: str = Form(...),
     db: AsyncSession = Depends(get_db),
@@ -188,6 +321,8 @@ async def change_password(
     user = await get_current_user(request, db)
     if not user:
         return RedirectResponse(url="/sirius.achievements/login", status_code=302)
+    if not request.session.get("pwd_change_verified"):
+        return RedirectResponse(url="/sirius.achievements/profile?active_tab=security", status_code=302)
 
     try:
         ResetPasswordSchema(password=new_password, password_confirm=confirm_password)
@@ -198,32 +333,19 @@ async def change_password(
                 error_messages.append(err.get("msg", str(err)))
         else:
             error_messages.append(str(exc))
-        return templates.TemplateResponse(
-            "profile/index.html",
-            {
-                "request": request,
-                "user": user,
-                "error_msg": "; ".join(error_messages),
-                "active_tab": "security",
-            },
-        )
-
-    if not pwd_context.verify(current_password, user.hashed_password):
-        return templates.TemplateResponse(
-            "profile/index.html",
-            {
-                "request": request,
-                "user": user,
-                "error_msg": "Неверный текущий пароль",
-                "active_tab": "security",
-            },
-        )
+        return templates.TemplateResponse("profile/change_password.html", {
+            "request": request, "user": user,
+            "error_msg": "; ".join(error_messages),
+        })
 
     user.hashed_password = pwd_context.hash(new_password)
     user.session_version = int(user.session_version or 0) + 1
     user.api_access_version = int(user.api_access_version or 0) + 1
     user.api_refresh_version = int(user.api_refresh_version or 0) + 1
     await db.commit()
+
+    request.session.pop("pwd_change_verified", None)
+    request.session.pop("pwd_change_flow_id", None)
     request.session.clear()
 
     url = request.url_for("admin.auth.login_page").include_query_params(

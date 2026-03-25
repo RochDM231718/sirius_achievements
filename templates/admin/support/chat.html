@@ -114,7 +114,17 @@
     }
 
     document.querySelectorAll('[data-attachment-preview]').forEach((img) => {
-        img.addEventListener('click', () => window.open(img.src, '_blank'));
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', function() {
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;cursor:pointer';
+            var bigImg = document.createElement('img');
+            bigImg.src = img.src;
+            bigImg.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain';
+            overlay.appendChild(bigImg);
+            overlay.addEventListener('click', function() { overlay.remove(); });
+            document.body.appendChild(overlay);
+        });
         img.addEventListener('error', () => {
             img.style.display = 'none';
             const fallback = img.parentElement?.querySelector('[data-attachment-fallback]');
