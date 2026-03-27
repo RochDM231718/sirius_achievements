@@ -1,0 +1,250 @@
+﻿from __future__ import annotations
+
+import csv
+import io
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
+from fastapi.responses import Response
+from sqlalchemy import desc, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.infrastructure.database import get_db
+from app.middlewares.api_auth_middleware import auth
+from app.models.achievement import Achievement
+from app.models.enums import AchievementCategory, AchievementStatus, EducationLevel, UserRole, UserStatus
+from app.models.season_result import SeasonResult
+from app.models.user import Users
+from app.utils.points import aggregated_gpa_bonus_expr
+
+from .serializers import serialize_user
+
+router = APIRouter(prefix='/api/v1/leaderboard', tags=['api.v1.leaderboard'])
+
+
+def _scoped_education_level(user: Users, requested_level: str | None):
+    if not user.is_staff:
+        return user.education_level_value or 'all'
+    if user.role == UserRole.MODERATOR and user.education_level:
+        return user.education_level_value
+    return requested_level or 'all'
+
+
+def _scoped_course(user: Users, requested_course: int | None):
+    if not user.is_staff:
+        return user.course if user.course else 0
+    if requested_course is None:
+        return 0
+    return requested_course
+
+
+def _apply_student_scope(stmt, user: Users, education_level: str | None, course: int | None, group: str | None = None):
+    if user.role == UserRole.MODERATOR and user.education_level:
+        stmt = stmt.filter(Users.education_level == user.education_level)
+    elif education_level and education_level != 'all':
+        stmt = stmt.filter(Users.education_level == education_level)
+
+    if course and course != 0:
+        stmt = stmt.filter(Users.course == course)
+
+    if group and group != 'all':
+        stmt = stmt.filter(Users.study_group == group)
+
+    return stmt
+
+
+def _build_query_params(education_level: str | None, course: int | None, category: str | None, group: str | None):
+    params: dict[str, str | int] = {}
+    if education_level and education_level != 'all':
+        params['education_level'] = education_level
+    if course and course != 0:
+        params['course'] = course
+    if category and category != 'all':
+        params['category'] = category
+    if group and group != 'all':
+        params['group'] = group
+    return params
+
+
+async def _build_leaderboard_payload(user: Users, db: AsyncSession, education_level: str | None, course: int | None, category: str | None, group: str | None):
+    achievement_filter = Achievement.status == AchievementStatus.APPROVED
+    if category and category != 'all':
+        achievement_filter = achievement_filter & (Achievement.category == category)
+
+    include_gpa_bonus = not category or category == 'all'
+    achievement_points = func.coalesce(func.sum(Achievement.points), 0)
+    total_points_expr = (
+        achievement_points + aggregated_gpa_bonus_expr(Users.session_gpa, include_bonus=include_gpa_bonus)
+    ).label('total_points')
+
+    stmt = (
+        select(
+            Users,
+            total_points_expr,
+            func.count(Achievement.id).label('achievements_count'),
+        )
+        .outerjoin(Achievement, (Users.id == Achievement.user_id) & achievement_filter)
+        .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
+    )
+    stmt = _apply_student_scope(stmt, user, education_level, course, group)
+    stmt = stmt.group_by(Users.id).order_by(desc('total_points'), desc('achievements_count'))
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    my_rank = 0
+    my_points = 0
+    leaderboard = []
+    for index, (student, points, achievements_count) in enumerate(rows, 1):
+        if student.id == user.id:
+            my_rank = index
+            my_points = int(points or 0)
+        leaderboard.append(
+            {
+                'rank': index,
+                'user': serialize_user(student),
+                'total_points': int(points or 0),
+                'achievements_count': int(achievements_count or 0),
+                'is_me': student.id == user.id,
+            }
+        )
+
+    group_mapping = {
+        EducationLevel.COLLEGE.value: ['К-1', 'К-2'],
+        EducationLevel.BACHELOR.value: ['Б-1', 'Б-2'],
+        EducationLevel.SPECIALIST.value: ['С-1', 'С-2'],
+        EducationLevel.MASTER.value: ['М-1', 'М-2'],
+        EducationLevel.POSTGRADUATE.value: ['А-1', 'А-2'],
+    }
+
+    course_mapping = {
+        EducationLevel.COLLEGE.value: 4,
+        EducationLevel.BACHELOR.value: 4,
+        EducationLevel.SPECIALIST.value: 6,
+        EducationLevel.MASTER.value: 2,
+        EducationLevel.POSTGRADUATE.value: 4,
+    }
+
+    params = _build_query_params(education_level, course, category, group)
+    export_query = urlencode(params)
+
+    return {
+        'leaderboard': leaderboard,
+        'my_rank': my_rank,
+        'my_points': my_points,
+        'current_education_level': education_level,
+        'current_course': course,
+        'current_category': category or 'all',
+        'current_group': group or 'all',
+        'categories': [item.value if hasattr(item, 'value') else str(item) for item in AchievementCategory],
+        'education_levels': [item.value if hasattr(item, 'value') else str(item) for item in EducationLevel],
+        'course_mapping': course_mapping,
+        'group_mapping': group_mapping,
+        'can_export': bool(user.is_staff),
+        'can_end_season': bool(user.role == UserRole.SUPER_ADMIN),
+        'export_url': f"/api/v1/leaderboard/export?{export_query}" if export_query else '/api/v1/leaderboard/export',
+    }
+
+
+@router.get('')
+@router.get('/')
+async def leaderboard(
+    education_level: str | None = Query(None),
+    course: str | None = Query(None),
+    category: str | None = Query(None),
+    group: str | None = Query(None),
+    current_user=Depends(auth),
+    db: AsyncSession = Depends(get_db),
+):
+    course_int = int(course) if course and course.isdigit() else None
+    scoped_education_level = _scoped_education_level(current_user, education_level)
+    scoped_course = _scoped_course(current_user, course_int)
+    scoped_group = group or 'all'
+    return await _build_leaderboard_payload(current_user, db, scoped_education_level, scoped_course, category, scoped_group)
+
+
+@router.get('/export')
+async def export_leaderboard(
+    education_level: str | None = Query(None),
+    course: str | None = Query(None),
+    category: str | None = Query(None),
+    group: str | None = Query(None),
+    current_user=Depends(auth),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.is_staff:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Экспорт доступен только сотрудникам.')
+
+    course_int = int(course) if course and course.isdigit() else None
+    scoped_education_level = _scoped_education_level(current_user, education_level)
+    scoped_course = _scoped_course(current_user, course_int)
+    scoped_group = group or 'all'
+    payload = await _build_leaderboard_payload(current_user, db, scoped_education_level, scoped_course, category, scoped_group)
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(['Место', 'Имя', 'Фамилия', 'Email', 'Уровень обучения', 'Курс', 'Группа', 'Сумма баллов', 'Документов'])
+
+    for row in payload['leaderboard']:
+        user = row['user']
+        writer.writerow([
+            row['rank'],
+            user['first_name'],
+            user['last_name'],
+            user['email'],
+            user.get('education_level') or '',
+            user.get('course') or '',
+            user.get('study_group') or '',
+            row['total_points'],
+            row['achievements_count'],
+        ])
+
+    output.seek(0)
+    return Response(
+        content='\ufeff' + output.getvalue(),
+        media_type='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=leaderboard_export.csv'},
+    )
+
+
+@router.post('/end-season')
+async def end_season(
+    season_name: str = Form(...),
+    current_user=Depends(auth),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Только супер-админ может завершать сезон.')
+
+    achievement_points = func.coalesce(func.sum(Achievement.points), 0)
+    total_points_expr = (
+        achievement_points + aggregated_gpa_bonus_expr(Users.session_gpa)
+    ).label('total_points')
+
+    stmt = (
+        select(Users.id, total_points_expr)
+        .outerjoin(Achievement, (Users.id == Achievement.user_id) & (Achievement.status == AchievementStatus.APPROVED))
+        .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
+        .group_by(Users.id)
+        .order_by(desc('total_points'))
+    )
+    rows = (await db.execute(stmt)).all()
+
+    for rank, (user_id, points) in enumerate(rows, 1):
+        if points and int(points) > 0:
+            db.add(SeasonResult(user_id=user_id, season_name=season_name, points=int(points), rank=rank))
+
+    await db.execute(
+        update(Achievement)
+        .where(Achievement.status == AchievementStatus.APPROVED)
+        .values(status=AchievementStatus.ARCHIVED)
+    )
+    await db.execute(
+        update(Users)
+        .where(Users.role == UserRole.STUDENT)
+        .values(session_gpa=None)
+    )
+    await db.commit()
+
+    return {'success': True}
+

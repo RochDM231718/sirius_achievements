@@ -1,4 +1,5 @@
 import smtplib
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -226,6 +227,17 @@ class AuthService:
         except Exception as exc:
             logger.error("Failed to send email via SMTP", error=str(exc))
 
+    def _maybe_log_dev_mail_code(self, *, flow: str, email: str, code: str):
+        if settings.ENV == "production" or not settings.MAIL_DEV_LOG_CODES:
+            return
+
+        logger.warning(
+            "Development mail code fallback",
+            flow=flow,
+            email=email,
+            code=code,
+        )
+
     async def forgot_password(self, email: str, background_tasks: BackgroundTasks = None):
         email = email.strip().lower()
         user = await self.repository.get_by_email(email)
@@ -239,6 +251,7 @@ class AuthService:
         user_token = await self.user_token_service.create(
             UserTokenCreate(user_id=user.id, type=UserTokenType.RESET_PASSWORD)
         )
+        self._maybe_log_dev_mail_code(flow="reset_password", email=user.email, code=user_token.token)
 
         subject = "Разовый код"
         ctx = {"email": user.email, "code": user_token.token}
@@ -268,6 +281,7 @@ class AuthService:
         user_token = await self.user_token_service.create(
             UserTokenCreate(user_id=user.id, type=UserTokenType.VERIFY_EMAIL)
         )
+        self._maybe_log_dev_mail_code(flow="verify_email", email=user.email, code=user_token.token)
 
         subject = "Подтверждение email"
         ctx = {"first_name": user.first_name, "code": user_token.token}

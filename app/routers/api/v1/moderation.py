@@ -1,0 +1,366 @@
+﻿from __future__ import annotations
+
+from datetime import datetime, timezone
+import math
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.config import settings
+from app.infrastructure.database import get_db
+from app.middlewares.api_auth_middleware import auth
+from app.models.achievement import Achievement
+from app.models.enums import AchievementStatus, UserRole, UserStatus
+from app.models.user import Users
+from app.services.audit_service import log_action
+from app.services.points_calculator import calculate_points
+from app.services.ws_manager import ws_manager
+from app.utils.access import is_in_zone
+from app.utils.notifications import make_notification, serialize_notification
+
+from .serializers import serialize_achievement, serialize_user
+
+router = APIRouter(prefix='/api/v1/moderation', tags=['api.v1.moderation'])
+
+
+class AchievementDecisionPayload(BaseModel):
+    status: str
+    rejection_reason: str | None = None
+
+
+class BatchAchievementPayload(BaseModel):
+    ids: list[int]
+    action: str
+
+
+async def require_moderator(current_user=Depends(auth)):
+    if current_user.role not in {UserRole.MODERATOR, UserRole.SUPER_ADMIN}:
+        raise HTTPException(status_code=403, detail='Access denied')
+    return current_user
+
+
+@router.get('/users')
+async def pending_users(
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Users).filter(Users.status == UserStatus.PENDING)
+    if current_user.role == UserRole.MODERATOR and current_user.education_level:
+        stmt = stmt.filter(Users.education_level == current_user.education_level)
+
+    stmt = stmt.order_by(Users.id.desc())
+    users = (await db.execute(stmt)).scalars().all()
+    return {
+        'users': [serialize_user(user) for user in users],
+        'total_count': len(users),
+    }
+
+
+@router.post('/users/{user_id}/approve')
+async def approve_user(
+    user_id: int,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await db.get(Users, user_id)
+    if not target_user or not is_in_zone(current_user, target_user.education_level):
+        raise HTTPException(status_code=404, detail='User not found in your moderation zone')
+
+    target_user.status = UserStatus.ACTIVE
+    target_user.role = UserRole.STUDENT
+    target_user.reviewed_by_id = None
+    await log_action(db, current_user.id, 'user.approve', 'user', user_id)
+    await db.commit()
+    await db.refresh(target_user)
+    return {'success': True, 'user': serialize_user(target_user)}
+
+
+@router.post('/users/{user_id}/reject')
+async def reject_user(
+    user_id: int,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await db.get(Users, user_id)
+    if not target_user or not is_in_zone(current_user, target_user.education_level):
+        raise HTTPException(status_code=404, detail='User not found in your moderation zone')
+
+    target_user.status = UserStatus.REJECTED
+    target_user.reviewed_by_id = None
+    await log_action(db, current_user.id, 'user.reject', 'user', user_id)
+    await db.commit()
+    await db.refresh(target_user)
+    return {'success': True, 'user': serialize_user(target_user)}
+
+
+@router.post('/users/{user_id}/take')
+async def take_user(
+    user_id: int,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await db.get(Users, user_id)
+    if not target_user or target_user.status != UserStatus.PENDING:
+        raise HTTPException(status_code=404, detail='User not found or already processed')
+    if not is_in_zone(current_user, target_user.education_level):
+        raise HTTPException(status_code=403, detail='Access denied')
+    if target_user.reviewed_by_id and target_user.reviewed_by_id != current_user.id:
+        raise HTTPException(status_code=409, detail='User is already assigned to another moderator')
+
+    target_user.reviewed_by_id = current_user.id
+    await log_action(db, current_user.id, 'user.take', 'user', user_id)
+    await db.commit()
+    await db.refresh(target_user)
+    return {'success': True, 'user': serialize_user(target_user)}
+
+
+@router.post('/users/{user_id}/release')
+async def release_user(
+    user_id: int,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await db.get(Users, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail='User not found')
+    if current_user.role != UserRole.SUPER_ADMIN and target_user.reviewed_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Access denied')
+    if not is_in_zone(current_user, target_user.education_level):
+        raise HTTPException(status_code=403, detail='Access denied')
+
+    target_user.reviewed_by_id = None
+    await log_action(db, current_user.id, 'user.release', 'user', user_id)
+    await db.commit()
+    await db.refresh(target_user)
+    return {'success': True, 'user': serialize_user(target_user)}
+
+
+@router.get('/achievements')
+async def pending_achievements(
+    page: int = Query(default=1, ge=1, le=1000),
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    limit = settings.ITEMS_PER_PAGE
+    offset = (page - 1) * limit
+
+    stmt = (
+        select(Achievement)
+        .join(Users, Achievement.user_id == Users.id)
+        .options(selectinload(Achievement.user))
+        .filter(Achievement.status == AchievementStatus.PENDING)
+    )
+
+    if current_user.role == UserRole.MODERATOR and current_user.education_level:
+        stmt = stmt.filter(Users.education_level == current_user.education_level)
+
+    stmt = stmt.order_by(Achievement.created_at.asc())
+    total_pending = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    achievements = (await db.execute(stmt.offset(offset).limit(limit))).scalars().all()
+
+    for item in achievements:
+        if item.level and item.category:
+            item.projected_points = calculate_points(
+                item.level.value,
+                item.category.value,
+                item.result.value if item.result else None,
+            )
+        else:
+            item.projected_points = 0
+
+    return {
+        'achievements': [serialize_achievement(item) for item in achievements],
+        'stats': {'total_pending': int(total_pending)},
+        'page': page,
+        'total_pages': math.ceil(total_pending / limit) if total_pending > 0 else 1,
+    }
+
+
+@router.post('/achievements/{achievement_id}/take')
+async def take_achievement(
+    achievement_id: int,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Achievement).options(selectinload(Achievement.user)).where(Achievement.id == achievement_id)
+    achievement = (await db.execute(stmt)).scalars().first()
+    if not achievement or achievement.status != AchievementStatus.PENDING:
+        raise HTTPException(status_code=404, detail='Achievement not found or already processed')
+    if not is_in_zone(current_user, achievement.user.education_level):
+        raise HTTPException(status_code=403, detail='Access denied')
+    if achievement.moderator_id and achievement.moderator_id != current_user.id:
+        raise HTTPException(status_code=409, detail='Achievement is already assigned to another moderator')
+
+    achievement.moderator_id = current_user.id
+    await log_action(db, current_user.id, 'achievement.take', 'achievement', achievement_id)
+    await db.commit()
+    await db.refresh(achievement)
+    refreshed = (await db.execute(stmt)).scalars().first()
+    return {'success': True, 'achievement': serialize_achievement(refreshed)}
+
+
+@router.post('/achievements/{achievement_id}/release')
+async def release_achievement(
+    achievement_id: int,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Achievement).options(selectinload(Achievement.user)).where(Achievement.id == achievement_id)
+    achievement = (await db.execute(stmt)).scalars().first()
+    if not achievement:
+        raise HTTPException(status_code=404, detail='Achievement not found')
+    if current_user.role != UserRole.SUPER_ADMIN and achievement.moderator_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Access denied')
+    if not is_in_zone(current_user, achievement.user.education_level):
+        raise HTTPException(status_code=403, detail='Access denied')
+
+    achievement.moderator_id = None
+    await log_action(db, current_user.id, 'achievement.release', 'achievement', achievement_id)
+    await db.commit()
+    await db.refresh(achievement)
+    refreshed = (await db.execute(stmt)).scalars().first()
+    return {'success': True, 'achievement': serialize_achievement(refreshed)}
+
+
+@router.post('/achievements/{achievement_id}')
+async def update_achievement_status(
+    achievement_id: int,
+    payload: AchievementDecisionPayload,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Achievement)
+        .options(selectinload(Achievement.user))
+        .where(Achievement.id == achievement_id)
+        .with_for_update()
+    )
+    achievement = (await db.execute(stmt)).scalars().first()
+
+    if not achievement:
+        raise HTTPException(status_code=404, detail='Achievement not found')
+    if not is_in_zone(current_user, achievement.user.education_level):
+        raise HTTPException(status_code=403, detail='Access denied')
+    if achievement.status != AchievementStatus.PENDING:
+        raise HTTPException(status_code=409, detail='Achievement was already processed by another moderator')
+
+    allowed_statuses = {
+        'approved': AchievementStatus.APPROVED,
+        'rejected': AchievementStatus.REJECTED,
+        'revision': AchievementStatus.REVISION,
+    }
+    new_status = allowed_statuses.get(payload.status)
+    if not new_status:
+        raise HTTPException(status_code=400, detail='Unsupported status')
+
+    achievement.status = new_status
+    achievement.moderator_id = current_user.id
+    notification_message = f"Status for '{achievement.title}' was updated."
+
+    if new_status == AchievementStatus.REJECTED:
+        achievement.rejection_reason = payload.rejection_reason
+        achievement.points = 0
+        notification_message = f"Document '{achievement.title}' was rejected. Reason: {payload.rejection_reason or '-'}"
+    elif new_status == AchievementStatus.REVISION:
+        achievement.rejection_reason = payload.rejection_reason
+        achievement.points = 0
+        notification_message = f"Document '{achievement.title}' was returned for revision. Note: {payload.rejection_reason or '-'}"
+    elif new_status == AchievementStatus.APPROVED:
+        points = calculate_points(
+            achievement.level.value,
+            achievement.category.value,
+            achievement.result.value if achievement.result else None,
+        )
+        achievement.points = points
+        achievement.rejection_reason = None
+        notification_message = f"Document '{achievement.title}' was approved. Added points: {points}."
+
+    notification = make_notification(
+        user_id=achievement.user_id,
+        title='Application status updated',
+        message=notification_message,
+        link='/sirius.achievements/app/achievements',
+    )
+    db.add(notification)
+    await log_action(db, current_user.id, f'achievement.{payload.status}', 'achievement', achievement_id, payload.rejection_reason)
+    await db.commit()
+
+    await ws_manager.send_to_user(
+        achievement.user_id,
+        {'type': 'notification', 'notification': serialize_notification(notification)},
+    )
+
+    refreshed = (await db.execute(select(Achievement).options(selectinload(Achievement.user)).where(Achievement.id == achievement_id))).scalars().first()
+    return {'success': True, 'achievement': serialize_achievement(refreshed)}
+
+
+@router.post('/achievements/batch')
+async def batch_update_achievements(
+    payload: BatchAchievementPayload,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    allowed_actions = {
+        'approved': AchievementStatus.APPROVED,
+        'rejected': AchievementStatus.REJECTED,
+    }
+    new_status = allowed_actions.get(payload.action)
+    if not new_status:
+        raise HTTPException(status_code=400, detail='Unsupported batch action')
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail='No achievement ids were provided')
+
+    processed = 0
+    notifications_to_send: list[tuple[int, object]] = []
+    for achievement_id in payload.ids:
+        stmt = (
+            select(Achievement)
+            .options(selectinload(Achievement.user))
+            .where(Achievement.id == achievement_id)
+            .with_for_update()
+        )
+        achievement = (await db.execute(stmt)).scalars().first()
+        if not achievement or achievement.status != AchievementStatus.PENDING:
+            continue
+        if not is_in_zone(current_user, achievement.user.education_level):
+            continue
+
+        achievement.status = new_status
+        achievement.moderator_id = current_user.id
+        if new_status == AchievementStatus.APPROVED:
+            points = calculate_points(
+                achievement.level.value,
+                achievement.category.value,
+                achievement.result.value if achievement.result else None,
+            )
+            achievement.points = points
+            achievement.rejection_reason = None
+            message = f"Document '{achievement.title}' was approved. Added points: {points}."
+        else:
+            achievement.points = 0
+            achievement.rejection_reason = None
+            message = f"Document '{achievement.title}' was rejected."
+
+        notification = make_notification(
+            user_id=achievement.user_id,
+            title='Application status updated',
+            message=message,
+            link='/sirius.achievements/app/achievements',
+        )
+        db.add(notification)
+        notifications_to_send.append((achievement.user_id, notification))
+        await log_action(db, current_user.id, f'achievement.batch_{payload.action}', 'achievement', achievement_id)
+        processed += 1
+
+    await db.commit()
+
+    for user_id, notification in notifications_to_send:
+        await ws_manager.send_to_user(
+            user_id,
+            {'type': 'notification', 'notification': serialize_notification(notification)},
+        )
+
+    return {'success': True, 'count': processed}

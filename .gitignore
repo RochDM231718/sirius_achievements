@@ -32,4 +32,9 @@ backup.sql
 static/uploads/
 
 # EasyOCR models
-models/
+/models/
+
+# React frontend
+frontend/node_modules/
+frontend/dist/
+static/spa/

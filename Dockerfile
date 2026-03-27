@@ -1,3 +1,12 @@
+FROM node:20-slim AS frontend-build
+
+WORKDIR /frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -20,6 +29,7 @@ RUN pip install --default-timeout=1000 --no-cache-dir torch torchvision torchaud
 RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 
 COPY . .
+COPY --from=frontend-build /static/spa /app/static/spa
 
 ENV HOME=/home/appuser
 

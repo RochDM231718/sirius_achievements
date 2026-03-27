@@ -4,6 +4,7 @@ import asyncio
 import os
 import secrets
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 import structlog
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -22,22 +23,9 @@ from app.infrastructure.database import async_session_maker, engine
 from app.infrastructure.logger import setup_logging
 from app.middlewares.security_headers import SecurityHeadersMiddleware
 from app.middlewares.upload_protection import UploadProtectionMiddleware
-from app.routers.admin.admin import public_router as admin_common_router
 from app.routers.admin.admin import templates
-from app.routers.admin.achievements import router as admin_achievements_router
-from app.routers.admin.auth import router as admin_auth_router
-from app.routers.admin.dashboard import router as admin_dashboard_router
-from app.routers.admin.documents import router as admin_documents_router
-from app.routers.admin.leaderboard import router as admin_leaderboard_router
-from app.routers.admin.moderation import router as admin_moderation_router
-from app.routers.admin.moderation_support import router as admin_moderation_support_router
-from app.routers.admin.notifications import router as admin_notifications_router
-from app.routers.admin.pages import router as admin_pages_router
-from app.routers.admin.profile import router as admin_profile_router
-from app.routers.admin.support import router as admin_support_router
-from app.routers.admin.users import router as admin_users_router
-from app.routers.admin.my_work import router as admin_my_work_router
 from app.routers.api.auth import router as api_auth_router
+from app.routers.api.v1 import router as api_v1_router
 from app.security.csrf import get_csrf_token
 from app.services.admin.support_maintenance import process_support_ticket_maintenance
 
@@ -48,6 +36,7 @@ setup_logging(
     log_level="DEBUG" if settings.DEBUG else "INFO",
 )
 logger = structlog.get_logger()
+SPA_DIR = Path("static/spa")
 
 
 async def _support_maintenance_loop():
@@ -225,6 +214,11 @@ class FlashToastMiddleware(BaseHTTPMiddleware):
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount(
+    "/sirius.achievements/app/assets",
+    StaticFiles(directory="static/spa/assets", check_dir=False),
+    name="spa-assets",
+)
 
 ENV = os.getenv("ENV", "development")
 IS_DEBUG = str(os.getenv("DEBUG", "False")).lower() in ("true", "1", "yes")
@@ -255,21 +249,8 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
-app.include_router(admin_common_router)
-app.include_router(admin_auth_router)
-app.include_router(admin_dashboard_router)
-app.include_router(admin_users_router)
-app.include_router(admin_profile_router)
-app.include_router(admin_achievements_router)
-app.include_router(admin_moderation_router)
-app.include_router(admin_documents_router)
-app.include_router(admin_notifications_router)
-app.include_router(admin_leaderboard_router)
-app.include_router(admin_pages_router)
-app.include_router(admin_support_router)
-app.include_router(admin_moderation_support_router)
-app.include_router(admin_my_work_router)
 app.include_router(api_auth_router)
+app.include_router(api_v1_router)
 
 
 def _origin_allowed(origin: str | None, host_header: str | None) -> bool:
@@ -340,6 +321,7 @@ async def health_check():
 async def ws_notifications(websocket: WebSocket):
     from app.models.enums import UserStatus
     from app.models.user import Users
+    from app.infrastructure.jwt_handler import verify_token
     from app.services.ws_manager import ws_manager
 
     if not _origin_allowed(websocket.headers.get("origin"), websocket.headers.get("host")):
@@ -349,17 +331,29 @@ async def ws_notifications(websocket: WebSocket):
     session = websocket.session or {}
     user_id = session.get("auth_id")
     session_version = session.get("auth_session_version")
+    expected_version_field = "session_version"
+
     if not user_id or session_version is None:
-        await websocket.close(code=4001)
-        return
+        token = websocket.query_params.get("token")
+        payload = verify_token(token) if token else None
+        if not payload or payload.get("type") != "access":
+            await websocket.close(code=4001)
+            return
+        user_id = payload.get("sub")
+        session_version = payload.get("av")
+        expected_version_field = "api_access_version"
+        if not user_id or session_version is None:
+            await websocket.close(code=4001)
+            return
 
     async with async_session_maker() as db:
         user = await db.get(Users, int(user_id))
+        expected_version = getattr(user, expected_version_field, 0) if user else 0
         if (
             not user
             or user.status == UserStatus.REJECTED
             or not user.is_active
-            or int(session_version) != int(user.session_version or 0)
+            or int(session_version) != int(expected_version or 0)
         ):
             await websocket.close(code=4001)
             return
@@ -374,9 +368,34 @@ async def ws_notifications(websocket: WebSocket):
 
 @app.get("/")
 async def root(request: Request):
-    return RedirectResponse(url=request.url_for("admin.auth.login_page"))
+    return RedirectResponse(url="/sirius.achievements/app/login")
 
 
 @app.get("/admin")
 async def admin_root(request: Request):
-    return RedirectResponse(url=request.url_for("admin.dashboard.index"))
+    return RedirectResponse(url="/sirius.achievements/app/dashboard")
+
+
+def _spa_index_response() -> FileResponse | RedirectResponse:
+    index_path = SPA_DIR / "index.html"
+    if not index_path.exists():
+        return RedirectResponse(url="/sirius.achievements/login")
+    return FileResponse(index_path)
+
+
+@app.get("/sirius.achievements/app", include_in_schema=False)
+async def spa_entry():
+    return _spa_index_response()
+
+
+@app.get("/sirius.achievements/app/{path:path}", include_in_schema=False)
+async def spa_catch_all(path: str):
+    if path.startswith("api/") or path.startswith("static/"):
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    return _spa_index_response()
+
+
+@app.get("/sirius.achievements/{path:path}", include_in_schema=False)
+async def legacy_redirect(path: str):
+    """Redirect old Jinja2 URLs to React SPA."""
+    return RedirectResponse(url=f"/sirius.achievements/app/{path}")

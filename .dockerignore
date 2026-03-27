@@ -1,0 +1,10 @@
+.git
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+static/uploads/
+static/spa/
+frontend/node_modules/
+frontend/dist/

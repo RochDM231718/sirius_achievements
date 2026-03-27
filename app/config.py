@@ -82,6 +82,12 @@ class Settings:
     MAIL_USERNAME: str = os.getenv("MAIL_USERNAME", "")
     MAIL_PASSWORD: str = os.getenv("MAIL_PASSWORD", "")
     MAIL_FROM: str = os.getenv("MAIL_FROM", os.getenv("MAIL_USERNAME", ""))
+    MAIL_TIMEOUT: int = int(os.getenv("MAIL_TIMEOUT", "30"))
+    MAIL_USE_SSL: bool = _env_bool("MAIL_USE_SSL", os.getenv("MAIL_PORT", "465") == "465")
+    MAIL_USE_STARTTLS: bool = _env_bool(
+        "MAIL_USE_STARTTLS", os.getenv("MAIL_PORT", "465") not in {"465"}
+    )
+    MAIL_DEV_LOG_CODES: bool = _env_bool("MAIL_DEV_LOG_CODES", False)
 
     # ── Yandex GPT ──
     YANDEX_API_KEY: str = os.getenv("YANDEX_API_KEY", "")
