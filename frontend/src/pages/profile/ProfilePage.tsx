@@ -8,7 +8,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { UserRole } from '@/types/enums'
 import { getErrorMessage } from '@/utils/http'
-import { APP_PREFIX } from '@/utils/constants'
 
 Chart.register(...registerables)
 
@@ -402,7 +401,7 @@ export function ProfilePage() {
       await profileApi.resetPassword(passwordVerifiedFlowId, newPassword, confirmPassword)
       await logout()
       pushToast({ title: 'Пароль изменён', message: 'Войдите снова.', tone: 'success' })
-      navigate(`${APP_PREFIX}/login`)
+      navigate('/login')
     } catch (err) {
       setError(getErrorMessage(err, 'Не удалось изменить пароль.'))
     } finally {
@@ -434,10 +433,10 @@ export function ProfilePage() {
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Настройки профиля</h2>
           {isStudent && (
             <a
-              href={`${APP_PREFIX}/public/${user?.id}`}
+              href={`/students/${user?.id}`}
               onClick={(e) => {
                 e.preventDefault()
-                navigate(`${APP_PREFIX}/public/${user?.id}`)
+                navigate(`/students/${user?.id}`)
               }}
               className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg"
             >
@@ -774,10 +773,10 @@ export function ProfilePage() {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-semibold text-slate-700">Мои документы</h3>
               <a
-                href={`${APP_PREFIX}/achievements`}
+                href={`/achievements`}
                 onClick={(e) => {
                   e.preventDefault()
-                  navigate(`${APP_PREFIX}/achievements`)
+                  navigate('/achievements')
                 }}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
               >
@@ -788,10 +787,10 @@ export function ProfilePage() {
               {docs.slice(0, 6).map((doc) => (
                 <a
                   key={doc.id}
-                  href={`${APP_PREFIX}/achievements`}
+                  href={`/achievements`}
                   onClick={(e) => {
                     e.preventDefault()
-                    navigate(`${APP_PREFIX}/achievements`)
+                    navigate('/achievements')
                   }}
                   className="group block bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all overflow-hidden"
                 >
@@ -832,10 +831,10 @@ export function ProfilePage() {
             {docs.length > 6 && (
               <div className="mt-3 text-center">
                 <a
-                  href={`${APP_PREFIX}/achievements`}
+                  href={`/achievements`}
                   onClick={(e) => {
                     e.preventDefault()
-                    navigate(`${APP_PREFIX}/achievements`)
+                    navigate('/achievements')
                   }}
                   className="text-xs text-indigo-600 hover:underline"
                 >
