@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 
 import { supportApi } from '@/api/support'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Pagination } from '@/components/ui/Pagination'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { SupportListResponse, SupportTicket } from '@/types/support'
@@ -87,6 +88,13 @@ export function ModerationSupportPage() {
     void load()
   }, [params, tab])
 
+  useEffect(() => {
+    const totalPages = data?.total_pages ?? 1
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [data?.total_pages, page])
+
   const switchTab = (nextTab: SupportTab) => {
     setTab(nextTab)
     setPage(1)
@@ -105,8 +113,6 @@ export function ModerationSupportPage() {
       setError(getErrorMessage(takeError, 'Не удалось взять обращение в работу.'))
     }
   }
-
-  const pages = Array.from({ length: data?.total_pages ?? 1 }, (_, i) => i + 1)
   const tickets = data?.tickets ?? []
   const total = data?.total ?? 0
 
@@ -251,13 +257,7 @@ export function ModerationSupportPage() {
             </div>
           </div>
 
-          {(data?.total_pages ?? 1) > 1 ? (
-            <div className="flex justify-center gap-1">
-              {pages.map((p) => (
-                <button key={p} type="button" onClick={() => setPage(p)} className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${p === page ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{p}</button>
-              ))}
-            </div>
-          ) : null}
+          <Pagination currentPage={page} totalPages={data?.total_pages ?? 1} onPageChange={setPage} />
         </>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">

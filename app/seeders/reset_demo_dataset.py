@@ -8,10 +8,12 @@ from pathlib import Path
 from passlib.context import CryptContext
 from sqlalchemy import delete, select
 
-sys.path.insert(0, "/app")
+if "/app" not in sys.path:
+    sys.path.insert(0, "/app")
 
 from app.infrastructure.database import async_session_maker
 from app.models.achievement import Achievement
+from app.models.audit_log import AuditLog
 from app.models.enums import (
     AchievementCategory,
     AchievementLevel,
@@ -31,15 +33,14 @@ from app.models.user_token import UserToken
 
 
 COMMON_PASSWORD = "Sirius123!"
-KEEP_EMAILS = {
-    "super.admin@example.com",
-    "moderator@example.com",
-    "yaroslavroch1@gmail.com",
-    "yaroslavroch2@gmail.com",
-}
-ACTIVE_STUDENTS_COUNT = 82
-PENDING_APPLICATIONS_COUNT = 18
-SUPPORT_TICKETS_COUNT = 32
+SUPER_ADMIN_EMAIL = "super.admin@example.com"
+MODERATOR_EMAIL = "moderator@example.com"
+
+ACTIVE_USERS_PER_LEVEL = 100
+PENDING_APPLICATIONS_COUNT = 10
+PENDING_DOCUMENTS_COUNT = 20
+ACTIVE_SUPPORT_TICKETS_COUNT = 10
+CLOSED_SUPPORT_TICKETS_COUNT = 20
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -66,77 +67,164 @@ GROUPS = {
     EducationLevel.POSTGRADUATE: ["А-1", "А-2"],
 }
 
+LEVEL_SLUGS = {
+    EducationLevel.COLLEGE: "college",
+    EducationLevel.BACHELOR: "bachelor",
+    EducationLevel.SPECIALIST: "specialist",
+    EducationLevel.MASTER: "master",
+    EducationLevel.POSTGRADUATE: "postgraduate",
+}
+
 FIRST_NAMES = [
-    "Алексей", "Мария", "Дмитрий", "Екатерина", "Андрей", "Ольга", "Сергей", "Анна",
-    "Павел", "Наталья", "Игорь", "Татьяна", "Максим", "Юлия", "Роман", "Артём",
-    "Виктория", "Кирилл", "Елена", "Денис", "Алина", "Никита", "Дарья", "Владислав",
-    "Полина", "Глеб", "Вероника", "Тимур", "Карина", "Илья", "Софья", "Арсений",
-    "Валерия", "Матвей", "Диана", "Георгий", "Ксения", "Леонид", "Милана", "Фёдор",
+    "Алексей",
+    "Мария",
+    "Дмитрий",
+    "Екатерина",
+    "Андрей",
+    "Ольга",
+    "Сергей",
+    "Анна",
+    "Павел",
+    "Наталья",
+    "Игорь",
+    "Татьяна",
+    "Максим",
+    "Юлия",
+    "Роман",
+    "Артем",
+    "Виктория",
+    "Кирилл",
+    "Елена",
+    "Денис",
+    "Алина",
+    "Никита",
+    "Дарья",
+    "Владислав",
+    "Полина",
+    "Глеб",
+    "Вероника",
+    "Тимур",
+    "Карина",
+    "Илья",
+    "Софья",
+    "Арсений",
+    "Валерия",
+    "Матвей",
+    "Диана",
+    "Георгий",
+    "Ксения",
+    "Леонид",
+    "Милана",
+    "Федор",
 ]
 
 LAST_NAMES = [
-    "Иванов", "Петрова", "Сидоров", "Козлова", "Новиков", "Морозова", "Волков",
-    "Лебедева", "Соколов", "Кузнецова", "Попов", "Васильева", "Зайцев", "Павлова",
-    "Семёнов", "Белов", "Громова", "Орлов", "Фёдорова", "Щербаков", "Тарасова",
-    "Жуков", "Медведева", "Крылов", "Егорова", "Антонов", "Степанова", "Филиппов",
-    "Комарова", "Захаров", "Данилова", "Борисов", "Гусева", "Титов", "Романова",
-    "Калинин", "Воронова", "Савельев", "Абрамова", "Панов",
+    "Иванов",
+    "Петрова",
+    "Сидоров",
+    "Козлова",
+    "Новиков",
+    "Морозова",
+    "Волков",
+    "Лебедева",
+    "Соколов",
+    "Кузнецова",
+    "Попов",
+    "Васильева",
+    "Зайцев",
+    "Павлова",
+    "Семенов",
+    "Белов",
+    "Громова",
+    "Орлов",
+    "Федорова",
+    "Щербаков",
+    "Тарасова",
+    "Жуков",
+    "Медведева",
+    "Крылов",
+    "Егорова",
+    "Антонов",
+    "Степанова",
+    "Филиппов",
+    "Комарова",
+    "Захаров",
+    "Данилова",
+    "Борисов",
+    "Гусева",
+    "Титов",
+    "Романова",
+    "Калинин",
+    "Воронова",
+    "Савельев",
+    "Абрамова",
+    "Панов",
 ]
 
-SUPPORT_SUBJECTS = [
+DOCUMENT_TEMPLATES = [
+    "Участие в профильной олимпиаде",
+    "Научная конференция факультета",
+    "Творческий конкурс университета",
+    "Волонтерский проект семестра",
+    "Хакатон по цифровым сервисам",
+    "Патриотическая акция кампуса",
+    "Проектная сессия кафедры",
+    "Сертификат дополнительного курса",
+]
+
+ACTIVE_SUPPORT_ISSUES = [
     "Не приходит письмо подтверждения",
-    "Нужна помощь с загрузкой диплома",
-    "Документ завис на проверке",
-    "Не отображаются баллы в рейтинге",
-    "Хочу уточнить статус обращения",
-    "Ошибка при отправке нового документа",
-    "Нужно изменить данные профиля",
-    "Вопрос по начислению баллов",
+    "Не могу загрузить диплом в профиль",
+    "Документ слишком долго висит на проверке",
+    "Баллы не появились в личном кабинете",
+    "Нужно поправить курс и группу в профиле",
+    "Не открывается превью документа",
+    "Случайно загрузил не тот файл",
+    "Не понимаю причину возврата документа",
+    "Не вижу обращение в истории поддержки",
+    "Ошибка при отправке нового обращения",
 ]
 
-DOC_TOPICS = [
-    "Участие в турнире",
-    "Научная конференция",
-    "Творческий конкурс",
-    "Волонтёрский проект",
-    "Хакатон университета",
-    "Олимпиада по профилю",
+CLOSED_SUPPORT_ISSUES = [
+    "Исправление фамилии в профиле",
+    "Пересчет баллов за мероприятие",
+    "Замена файла подтверждения",
+    "Уточнение статуса модерации",
+    "Ошибка отображения GPA",
+    "Смена почты аккаунта",
+    "Закрытие дубля обращения",
+    "Проблема со скачиванием файла",
+    "Уточнение категории документа",
+    "Помощь с подтверждением регистрации",
 ]
-
-POINTS_BY_LEVEL = {
-    AchievementLevel.SCHOOL: 5,
-    AchievementLevel.MUNICIPAL: 10,
-    AchievementLevel.REGIONAL: 20,
-    AchievementLevel.FEDERAL: 35,
-    AchievementLevel.INTERNATIONAL: 50,
-}
-
-POINTS_BY_RESULT = {
-    AchievementResult.PARTICIPANT: 0,
-    AchievementResult.PRIZEWINNER: 10,
-    AchievementResult.WINNER: 20,
-}
 
 SEEDED_CATEGORIES = [
     AchievementCategory.SPORT,
     AchievementCategory.SCIENCE,
     AchievementCategory.ART,
     AchievementCategory.VOLUNTEERING,
+    AchievementCategory.HACKATHON,
     AchievementCategory.OTHER,
 ]
+
+POINTS_BY_LEVEL = {
+    AchievementLevel.SCHOOL: 10,
+    AchievementLevel.MUNICIPAL: 20,
+    AchievementLevel.REGIONAL: 40,
+    AchievementLevel.FEDERAL: 75,
+    AchievementLevel.INTERNATIONAL: 100,
+}
+
+POINTS_BY_RESULT = {
+    AchievementResult.PARTICIPANT: 0,
+    AchievementResult.PRIZEWINNER: 15,
+    AchievementResult.WINNER: 30,
+}
 
 
 def write_demo_png(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(PNG_BYTES)
-
-
-def build_demo_title(index: int, category: AchievementCategory) -> str:
-    return f"{DOC_TOPICS[index % len(DOC_TOPICS)]} #{index + 1} ({category.value})"
-
-
-def calc_points(level: AchievementLevel, result: AchievementResult | None) -> int:
-    return POINTS_BY_LEVEL[level] + POINTS_BY_RESULT.get(result, 0)
 
 
 def db_user_role(role: UserRole) -> str:
@@ -171,6 +259,67 @@ def db_support_status(status: SupportTicketStatus) -> str:
     return status.value
 
 
+def calc_points(level: AchievementLevel, result: AchievementResult) -> int:
+    return POINTS_BY_LEVEL[level] + POINTS_BY_RESULT[result]
+
+
+def build_document_title(user_index: int, doc_index: int, category: AchievementCategory) -> str:
+    topic = DOCUMENT_TEMPLATES[(user_index + doc_index) % len(DOCUMENT_TEMPLATES)]
+    return f"{topic} - {category.value} #{doc_index + 1}"
+
+
+async def ensure_staff_users(db, password_hash: str, now: datetime) -> tuple[Users, Users]:
+    specs = [
+        {
+            "email": SUPER_ADMIN_EMAIL,
+            "first_name": "Super",
+            "last_name": "Admin",
+            "role": UserRole.SUPER_ADMIN,
+        },
+        {
+            "email": MODERATOR_EMAIL,
+            "first_name": "Demo",
+            "last_name": "Moderator",
+            "role": UserRole.MODERATOR,
+        },
+    ]
+
+    created_users: dict[UserRole, Users] = {}
+
+    for spec in specs:
+        result = await db.execute(select(Users).where(Users.email == spec["email"]))
+        user = result.scalars().first()
+
+        if user is None:
+            user = Users(
+                email=spec["email"],
+                created_at=now - timedelta(days=365),
+            )
+
+        user.first_name = spec["first_name"]
+        user.last_name = spec["last_name"]
+        user.hashed_password = password_hash
+        user.role = db_user_role(spec["role"])
+        user.status = db_user_status(UserStatus.ACTIVE)
+        user.education_level = None
+        user.course = None
+        user.study_group = None
+        user.session_gpa = None
+        user.is_active = True
+        user.reviewed_by_id = None
+        user.failed_attempts = 0
+        user.blocked_until = None
+        user.session_version = int(user.session_version or 1) + 1
+        user.api_access_version = int(user.api_access_version or 1) + 1
+        user.api_refresh_version = int(user.api_refresh_version or 1) + 1
+
+        db.add(user)
+        await db.flush()
+        created_users[spec["role"]] = user
+
+    return created_users[UserRole.SUPER_ADMIN], created_users[UserRole.MODERATOR]
+
+
 async def main():
     common_hash = pwd_context.hash(COMMON_PASSWORD)
     now = datetime.now(timezone.utc)
@@ -180,170 +329,125 @@ async def main():
     ACHIEVEMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
     async with async_session_maker() as db:
-        keep_users = (
-            await db.execute(select(Users).where(Users.email.in_(KEEP_EMAILS)).order_by(Users.id))
-        ).scalars().all()
-
-        found_keep = {user.email for user in keep_users}
-        missing = KEEP_EMAILS - found_keep
-        if missing:
-            raise RuntimeError(f"Не найдены обязательные аккаунты: {sorted(missing)}")
-
-        moderator = next(user for user in keep_users if user.email == "moderator@example.com")
-        keep_ids = [user.id for user in keep_users]
+        super_admin, moderator = await ensure_staff_users(db, common_hash, now)
+        staff_ids = [super_admin.id, moderator.id]
 
         await db.execute(delete(UserToken))
-        await db.execute(delete(Notification).where(~Notification.user_id.in_(keep_ids)))
-        await db.execute(delete(SeasonResult).where(~SeasonResult.user_id.in_(keep_ids)))
-        await db.execute(delete(Users).where(~Users.id.in_(keep_ids)))
+        await db.execute(delete(Notification))
+        await db.execute(delete(SeasonResult))
+        await db.execute(delete(SupportMessage))
+        await db.execute(delete(SupportTicket))
+        await db.execute(delete(Achievement))
+        await db.execute(delete(AuditLog))
+        await db.execute(delete(Users).where(~Users.id.in_(staff_ids)))
+        await db.flush()
 
-        for user in keep_users:
-            user.hashed_password = common_hash
-            user.failed_attempts = 0
-            user.blocked_until = None
-            user.session_version = int(user.session_version or 1) + 1
-            user.api_access_version = int(user.api_access_version or 1) + 1
-            user.api_refresh_version = int(user.api_refresh_version or 1) + 1
-
-        active_users = []
+        active_users: list[Users] = []
         levels = list(EducationLevel)
-        for index in range(ACTIVE_STUDENTS_COUNT):
+
+        for level_index, level in enumerate(levels):
+            course_limit = COURSE_LIMITS[level]
+            groups = GROUPS[level]
+            slug = LEVEL_SLUGS[level]
+
+            for index in range(ACTIVE_USERS_PER_LEVEL):
+                global_index = level_index * ACTIVE_USERS_PER_LEVEL + index
+                course = (index % course_limit) + 1
+                group = groups[(index // course_limit) % len(groups)]
+                created_at = now - timedelta(days=180 - (global_index % 120), hours=global_index % 12)
+
+                user = Users(
+                    first_name=FIRST_NAMES[global_index % len(FIRST_NAMES)],
+                    last_name=LAST_NAMES[(global_index * 3) % len(LAST_NAMES)],
+                    email=f"{slug}.student{index + 1:03d}@sirius.local",
+                    education_level=db_education_level(level),
+                    course=course,
+                    study_group=group,
+                    session_gpa=f"{4.0 + (global_index % 11) * 0.1:.1f}",
+                    hashed_password=common_hash,
+                    role=db_user_role(UserRole.STUDENT),
+                    status=db_user_status(UserStatus.ACTIVE),
+                    is_active=True,
+                    created_at=created_at,
+                )
+                active_users.append(user)
+
+        pending_users: list[Users] = []
+        for index in range(PENDING_APPLICATIONS_COUNT):
             level = levels[index % len(levels)]
             course_limit = COURSE_LIMITS[level]
-            course = (index % course_limit) + 1
             group = GROUPS[level][index % len(GROUPS[level])]
-            created_at = now - timedelta(days=120 - (index % 90), hours=index % 12)
+            created_at = now - timedelta(days=index, hours=index * 2)
 
-            user = Users(
-                first_name=FIRST_NAMES[index % len(FIRST_NAMES)],
-                last_name=LAST_NAMES[(index * 3) % len(LAST_NAMES)],
-                email=f"demo.student{index + 1:03d}@sirius.local",
-                education_level=db_education_level(level),
-                course=course,
-                study_group=group,
-                session_gpa=f"{4.1 + (index % 8) * 0.1:.1f}",
-                hashed_password=common_hash,
-                role=db_user_role(UserRole.STUDENT),
-                status=db_user_status(UserStatus.ACTIVE),
-                is_active=True,
-                created_at=created_at,
+            pending_users.append(
+                Users(
+                    first_name=FIRST_NAMES[(index + 9) % len(FIRST_NAMES)],
+                    last_name=LAST_NAMES[(index * 5 + 7) % len(LAST_NAMES)],
+                    email=f"registration.request{index + 1:02d}@sirius.local",
+                    education_level=db_education_level(level),
+                    course=(index % course_limit) + 1,
+                    study_group=group,
+                    hashed_password=common_hash,
+                    role=db_user_role(UserRole.GUEST),
+                    status=db_user_status(UserStatus.PENDING),
+                    is_active=True,
+                    reviewed_by_id=moderator.id if index % 2 == 0 else None,
+                    created_at=created_at,
+                )
             )
-            active_users.append(user)
-
-        pending_users = []
-        for index in range(PENDING_APPLICATIONS_COUNT):
-            level = levels[(index + 2) % len(levels)]
-            course_limit = COURSE_LIMITS[level]
-            course = (index % course_limit) + 1
-            group = GROUPS[level][index % len(GROUPS[level])]
-            created_at = now - timedelta(days=index % 10, hours=index)
-
-            user = Users(
-                first_name=FIRST_NAMES[(index + 7) % len(FIRST_NAMES)],
-                last_name=LAST_NAMES[(index * 5 + 2) % len(LAST_NAMES)],
-                email=f"demo.pending{index + 1:03d}@sirius.local",
-                education_level=db_education_level(level),
-                course=course,
-                study_group=group,
-                hashed_password=common_hash,
-                role=db_user_role(UserRole.GUEST),
-                status=db_user_status(UserStatus.PENDING),
-                is_active=False,
-                reviewed_by_id=moderator.id,
-                created_at=created_at,
-            )
-            pending_users.append(user)
 
         db.add_all(active_users + pending_users)
         await db.flush()
 
-        achievements = []
-        document_counter = 0
-        categories = SEEDED_CATEGORIES
+        achievements: list[Achievement] = []
         achievement_levels = list(AchievementLevel)
-        results = list(AchievementResult)
+        achievement_results = list(AchievementResult)
+        pending_documents_left = PENDING_DOCUMENTS_COUNT
+        document_counter = 0
 
-        for index, user in enumerate(active_users):
-            category = categories[index % len(categories)]
-            level = achievement_levels[index % len(achievement_levels)]
-            result = results[index % len(results)]
-            file_name = f"achievement_{document_counter + 1:04d}.png"
-            file_path = ACHIEVEMENTS_DIR / file_name
-            write_demo_png(file_path)
+        for user_index, user in enumerate(active_users):
+            doc_count = 3 + (user_index % 2)
 
-            achievements.append(
-                Achievement(
-                    user_id=user.id,
-                    title=build_demo_title(document_counter, category),
-                    description=f"Подтверждающий документ для {category.value.lower()} направления.",
-                    file_path=f"uploads/achievements/demo_seed/{file_name}",
-                    category=db_achievement_category(category),
-                    level=db_achievement_level(level),
-                    result=db_achievement_result(result),
-                    points=calc_points(level, result),
-                    status=db_achievement_status(AchievementStatus.APPROVED),
-                    moderator_id=moderator.id,
-                    created_at=now - timedelta(days=90 - (index % 45), hours=index % 6),
-                )
-            )
-            document_counter += 1
+            for doc_index in range(doc_count):
+                category = SEEDED_CATEGORIES[(user_index + doc_index) % len(SEEDED_CATEGORIES)]
+                level = achievement_levels[(user_index + doc_index) % len(achievement_levels)]
+                result = achievement_results[(user_index + doc_index + 1) % len(achievement_results)]
+                status = AchievementStatus.APPROVED
+                rejection_reason = None
+                moderator_id = moderator.id
 
-            if index < 48:
-                extra_status = [
-                    AchievementStatus.PENDING,
-                    AchievementStatus.REVISION,
-                    AchievementStatus.REJECTED,
-                    AchievementStatus.APPROVED,
-                ][index % 4]
-                extra_category = categories[(index + 2) % len(categories)]
-                extra_level = achievement_levels[(index + 1) % len(achievement_levels)]
-                extra_result = results[(index + 1) % len(results)]
-                extra_file_name = f"achievement_{document_counter + 1:04d}.png"
-                extra_file_path = ACHIEVEMENTS_DIR / extra_file_name
-                write_demo_png(extra_file_path)
+                if pending_documents_left > 0 and doc_index == 0:
+                    status = AchievementStatus.PENDING
+                    moderator_id = moderator.id if user_index % 2 == 0 else None
+                    pending_documents_left -= 1
+                elif doc_index == doc_count - 1 and user_index % 17 == 0:
+                    status = AchievementStatus.REVISION
+                    rejection_reason = "Нужно загрузить более читаемый файл и уточнить описание."
+                elif doc_index == doc_count - 1 and user_index % 23 == 0:
+                    status = AchievementStatus.REJECTED
+                    rejection_reason = "Документ не подтверждает указанную активность."
+
+                file_name = f"document_{document_counter + 1:05d}.png"
+                file_path = ACHIEVEMENTS_DIR / file_name
+                write_demo_png(file_path)
 
                 achievements.append(
                     Achievement(
                         user_id=user.id,
-                        title=build_demo_title(document_counter, extra_category),
-                        description="Дополнительное достижение для тестового наполнения.",
-                        file_path=f"uploads/achievements/demo_seed/{extra_file_name}",
-                        category=db_achievement_category(extra_category),
-                        level=db_achievement_level(extra_level),
-                        result=db_achievement_result(extra_result),
-                        points=calc_points(extra_level, extra_result),
-                        status=db_achievement_status(extra_status),
-                        moderator_id=moderator.id if extra_status != AchievementStatus.PENDING or index % 3 == 0 else None,
-                        rejection_reason="Нужна доработка описания." if extra_status == AchievementStatus.REVISION else (
-                            "Документ не подтверждает достижение." if extra_status == AchievementStatus.REJECTED else None
+                        title=build_document_title(user_index, doc_index, category),
+                        description=(
+                            f"Подтверждающий документ для категории {category.value}. "
+                            f"Курс {user.course}, группа {user.study_group}."
                         ),
-                        created_at=now - timedelta(days=40 - (index % 20), hours=index % 9),
-                    )
-                )
-                document_counter += 1
-
-            if index < 18:
-                pending_file_name = f"achievement_{document_counter + 1:04d}.png"
-                pending_file_path = ACHIEVEMENTS_DIR / pending_file_name
-                write_demo_png(pending_file_path)
-
-                pending_category = categories[(index + 3) % len(categories)]
-                pending_level = achievement_levels[(index + 2) % len(achievement_levels)]
-                pending_result = results[(index + 2) % len(results)]
-
-                achievements.append(
-                    Achievement(
-                        user_id=user.id,
-                        title=build_demo_title(document_counter, pending_category),
-                        description="Новый документ в очереди модерации.",
-                        file_path=f"uploads/achievements/demo_seed/{pending_file_name}",
-                        category=db_achievement_category(pending_category),
-                        level=db_achievement_level(pending_level),
-                        result=db_achievement_result(pending_result),
-                        points=calc_points(pending_level, pending_result),
-                        status=db_achievement_status(AchievementStatus.PENDING),
-                        moderator_id=moderator.id if index % 2 == 0 else None,
-                        created_at=now - timedelta(days=index % 7, hours=index % 5),
+                        file_path=f"uploads/achievements/demo_seed/{file_name}",
+                        category=db_achievement_category(category),
+                        level=db_achievement_level(level),
+                        result=db_achievement_result(result),
+                        points=calc_points(level, result) if status == AchievementStatus.APPROVED else 0,
+                        status=db_achievement_status(status),
+                        rejection_reason=rejection_reason,
+                        moderator_id=moderator_id,
+                        created_at=now - timedelta(days=document_counter % 160, hours=(user_index + doc_index) % 12),
                     )
                 )
                 document_counter += 1
@@ -351,44 +455,53 @@ async def main():
         db.add_all(achievements)
         await db.flush()
 
-        tickets = []
-        messages = []
-        for index in range(SUPPORT_TICKETS_COUNT):
-            owner = active_users[(index * 3) % len(active_users)]
-            created_at = now - timedelta(days=index % 14, hours=index)
+        tickets: list[SupportTicket] = []
 
-            if index < 18:
-                status = SupportTicketStatus.OPEN
-                moderator_id = None
-                assigned_at = None
-                closed_at = None
-            elif index < 26:
-                status = SupportTicketStatus.IN_PROGRESS
-                moderator_id = moderator.id
-                assigned_at = created_at + timedelta(hours=2)
-                closed_at = None
-            else:
-                status = SupportTicketStatus.CLOSED
-                moderator_id = moderator.id
-                assigned_at = created_at + timedelta(hours=1)
-                closed_at = created_at + timedelta(days=1)
+        for index in range(ACTIVE_SUPPORT_TICKETS_COUNT):
+            owner = active_users[(index * 11) % len(active_users)]
+            status = SupportTicketStatus.OPEN if index < 5 else SupportTicketStatus.IN_PROGRESS
+            created_at = now - timedelta(days=index % 5, hours=index * 2)
+            assigned_at = created_at + timedelta(hours=1) if status == SupportTicketStatus.IN_PROGRESS else None
 
-            ticket = SupportTicket(
-                user_id=owner.id,
-                moderator_id=moderator_id,
-                subject=f"{SUPPORT_SUBJECTS[index % len(SUPPORT_SUBJECTS)]} #{index + 1}",
-                status=db_support_status(status),
-                created_at=created_at,
-                assigned_at=assigned_at,
-                session_expires_at=(assigned_at + timedelta(days=7)) if assigned_at and status != SupportTicketStatus.CLOSED else None,
-                closed_at=closed_at,
+            tickets.append(
+                SupportTicket(
+                    user_id=owner.id,
+                    moderator_id=moderator.id if status == SupportTicketStatus.IN_PROGRESS else None,
+                    subject=ACTIVE_SUPPORT_ISSUES[index],
+                    status=db_support_status(status),
+                    created_at=created_at,
+                    assigned_at=assigned_at,
+                    session_expires_at=assigned_at + timedelta(days=7) if assigned_at else None,
+                    closed_at=None,
+                )
             )
-            tickets.append(ticket)
+
+        for index in range(CLOSED_SUPPORT_TICKETS_COUNT):
+            owner = active_users[(index * 13 + 7) % len(active_users)]
+            created_at = now - timedelta(days=10 + index, hours=index % 6)
+            assigned_at = created_at + timedelta(hours=2)
+            closed_at = assigned_at + timedelta(hours=6 + index % 12)
+            issue = CLOSED_SUPPORT_ISSUES[index % len(CLOSED_SUPPORT_ISSUES)]
+
+            tickets.append(
+                SupportTicket(
+                    user_id=owner.id,
+                    moderator_id=moderator.id,
+                    subject=f"{issue} #{index + 1}",
+                    status=db_support_status(SupportTicketStatus.CLOSED),
+                    created_at=created_at,
+                    assigned_at=assigned_at,
+                    session_expires_at=assigned_at + timedelta(days=7),
+                    closed_at=closed_at,
+                )
+            )
 
         db.add_all(tickets)
         await db.flush()
 
-        for index, ticket in enumerate(tickets):
+        messages: list[SupportMessage] = []
+
+        for index, ticket in enumerate(tickets[:ACTIVE_SUPPORT_TICKETS_COUNT]):
             student = next(user for user in active_users if user.id == ticket.user_id)
             base_time = ticket.created_at or now
 
@@ -396,54 +509,87 @@ async def main():
                 SupportMessage(
                     ticket_id=ticket.id,
                     sender_id=student.id,
-                    text=f"Здравствуйте! {SUPPORT_SUBJECTS[index % len(SUPPORT_SUBJECTS)].lower()}. Нужна помощь.",
+                    text=f"Здравствуйте. {ticket.subject.lower()}. Нужна помощь с решением проблемы.",
                     is_from_moderator=False,
                     created_at=base_time,
                 )
             )
 
-            if ticket.status in (SupportTicketStatus.IN_PROGRESS, SupportTicketStatus.CLOSED):
+            if index >= 5:
                 messages.append(
                     SupportMessage(
                         ticket_id=ticket.id,
                         sender_id=moderator.id,
-                        text="Принял обращение в работу, проверяю детали.",
+                        text="Обращение взял в работу, сейчас проверяю детали и документы.",
                         is_from_moderator=True,
-                        created_at=base_time + timedelta(hours=2),
+                        created_at=base_time + timedelta(hours=1),
                     )
                 )
                 messages.append(
                     SupportMessage(
                         ticket_id=ticket.id,
                         sender_id=student.id,
-                        text="Спасибо, отправил дополнительную информацию.",
+                        text="Спасибо, отправил дополнительные пояснения в ответ.",
                         is_from_moderator=False,
-                        created_at=base_time + timedelta(hours=4),
+                        created_at=base_time + timedelta(hours=3),
                     )
                 )
 
-            if ticket.status == SupportTicketStatus.CLOSED:
-                messages.append(
-                    SupportMessage(
-                        ticket_id=ticket.id,
-                        sender_id=moderator.id,
-                        text="Проблема решена, обращение закрыто.",
-                        is_from_moderator=True,
-                        created_at=base_time + timedelta(days=1),
-                    )
+        for index, ticket in enumerate(tickets[ACTIVE_SUPPORT_TICKETS_COUNT:]):
+            student = next(user for user in active_users if user.id == ticket.user_id)
+            base_time = ticket.created_at or now
+
+            messages.append(
+                SupportMessage(
+                    ticket_id=ticket.id,
+                    sender_id=student.id,
+                    text=f"Здравствуйте. {ticket.subject.lower()}. Нужна консультация по ситуации.",
+                    is_from_moderator=False,
+                    created_at=base_time,
                 )
+            )
+            messages.append(
+                SupportMessage(
+                    ticket_id=ticket.id,
+                    sender_id=moderator.id,
+                    text="Обращение принято, проверяю историю документа и настройки профиля.",
+                    is_from_moderator=True,
+                    created_at=base_time + timedelta(hours=2),
+                )
+            )
+            messages.append(
+                SupportMessage(
+                    ticket_id=ticket.id,
+                    sender_id=student.id,
+                    text="Дополнительные данные отправлены, можно завершать проверку.",
+                    is_from_moderator=False,
+                    created_at=base_time + timedelta(hours=4),
+                )
+            )
+            messages.append(
+                SupportMessage(
+                    ticket_id=ticket.id,
+                    sender_id=moderator.id,
+                    text="Проблема решена, обращение закрыто. Изменения уже применены в системе.",
+                    is_from_moderator=True,
+                    created_at=(ticket.closed_at or base_time) - timedelta(minutes=10),
+                )
+            )
 
         db.add_all(messages)
         await db.commit()
 
         print("Demo dataset reset complete.")
-        print(f"Preserved users: {len(keep_users)}")
-        print(f"Created active students: {len(active_users)}")
-        print(f"Created pending applications: {len(pending_users)}")
-        print(f"Created achievements: {len(achievements)}")
-        print(f"Created support tickets: {len(tickets)}")
-        print(f"Created support messages: {len(messages)}")
-        print(f"Common password for preserved and new accounts: {COMMON_PASSWORD}")
+        print(f"Active students per direction: {ACTIVE_USERS_PER_LEVEL}")
+        print(f"Total active students: {len(active_users)}")
+        print(f"Pending registration requests: {len(pending_users)}")
+        print(f"Total documents: {len(achievements)}")
+        print(f"Pending moderation documents: {PENDING_DOCUMENTS_COUNT}")
+        print(f"Active support tickets: {ACTIVE_SUPPORT_TICKETS_COUNT}")
+        print(f"Closed support tickets: {CLOSED_SUPPORT_TICKETS_COUNT}")
+        print(f"Super admin: {SUPER_ADMIN_EMAIL} / {COMMON_PASSWORD}")
+        print(f"Moderator: {MODERATOR_EMAIL} / {COMMON_PASSWORD}")
+        print(f"All demo users password: {COMMON_PASSWORD}")
 
 
 if __name__ == "__main__":

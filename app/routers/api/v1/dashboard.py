@@ -19,6 +19,16 @@ from .serializers import serialize_achievement
 router = APIRouter(prefix='/api/v1/dashboard', tags=['api.v1.dashboard'])
 
 
+def _apply_student_stream_scope(stmt, user: Users):
+    if user.education_level is not None:
+        stmt = stmt.filter(Users.education_level == user.education_level)
+    if user.course:
+        stmt = stmt.filter(Users.course == user.course)
+    if user.study_group:
+        stmt = stmt.filter(Users.study_group == user.study_group)
+    return stmt
+
+
 @router.get('/')
 async def dashboard(
     period: str = Query(default='all'),
@@ -181,6 +191,10 @@ async def dashboard(
             & (Achievement.updated_at >= start_date),
         )
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
+    )
+    subquery_points = _apply_student_stream_scope(subquery_points, user)
+    subquery_points = (
+        subquery_points
         .group_by(Users.id)
         .subquery()
     )

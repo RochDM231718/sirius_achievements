@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { authApi } from '@/api/auth'
 import { useToast } from '@/hooks/useToast'
 import { EducationLevel } from '@/types/enums'
+import { getAuthFlowEmail, getAuthFlowRemainingSeconds, hasStoredAuthFlow, saveAuthFlow } from '@/utils/authFlow'
 import { getErrorMessage } from '@/utils/http'
 
 const COURSE_MAPPING: Record<string, number> = {
@@ -22,6 +23,9 @@ const GROUP_MAPPING: Record<string, string[]> = {
   [EducationLevel.POSTGRADUATE]: ['А-1', 'А-2'],
 }
 
+const EYE_CLOSED_PATH =
+  'M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21'
+
 export function RegisterPage() {
   const navigate = useNavigate()
   const { pushToast } = useToast()
@@ -39,6 +43,10 @@ export function RegisterPage() {
     password: '',
     password_confirm: '',
   })
+
+  const hasPendingVerifyFlow = hasStoredAuthFlow('verify_email')
+  const pendingVerifyEmail = getAuthFlowEmail('verify_email')
+  const pendingVerifyTimeLeft = getAuthFlowRemainingSeconds('verify_email')
 
   const groups = useMemo(
     () => (form.education_level ? GROUP_MAPPING[form.education_level] || [] : []),
@@ -84,13 +92,20 @@ export function RegisterPage() {
     setIsSubmitting(true)
 
     try {
+      const email = form.email.trim()
       const { data } = await authApi.register({
         ...form,
+        email,
         education_level: form.education_level as EducationLevel,
         course: Number(form.course),
       })
 
       if (data.flow_token) {
+        saveAuthFlow('verify_email', data.flow_token, {
+          email,
+          resendAvailableAt: Date.now() + (data.retry_after ?? 60) * 1000,
+        })
+
         pushToast({
           title: 'Код отправлен',
           message: 'Подтвердите email, чтобы завершить регистрацию.',
@@ -117,6 +132,27 @@ export function RegisterPage() {
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Создать аккаунт</h1>
         <p className="text-sm text-slate-500 mt-1">Присоединяйтесь к платформе</p>
       </div>
+
+      {hasPendingVerifyFlow ? (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left">
+          <p className="text-sm font-semibold text-slate-800">Подтверждение регистрации уже начато</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {pendingVerifyEmail
+              ? `Код отправлен на ${pendingVerifyEmail}. `
+              : 'Код подтверждения уже отправлен. '}
+            {pendingVerifyTimeLeft > 0
+              ? `Повторная отправка будет доступна через ${pendingVerifyTimeLeft} сек.`
+              : 'Можно сразу перейти к вводу кода.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/verify-email')}
+            className="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            Продолжить ввод кода
+          </button>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-6 bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg text-center">
@@ -281,12 +317,7 @@ export function RegisterPage() {
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={EYE_CLOSED_PATH} />
               </svg>
             </button>
           </div>
@@ -298,7 +329,7 @@ export function RegisterPage() {
             />
           </div>
 
-          <ul className="text-[11px] space-y-1 text-slate-500 grid grid-cols-2 gap-x-2">
+          <ul className="grid grid-cols-2 gap-x-2 text-[11px] text-slate-500">
             <li className={`flex items-center ${hasLength ? 'text-green-600 font-medium' : ''}`}>
               {hasLength ? (
                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -387,12 +418,7 @@ export function RegisterPage() {
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={EYE_CLOSED_PATH} />
               </svg>
             </button>
           </div>
@@ -401,9 +427,9 @@ export function RegisterPage() {
         <button
           type="submit"
           disabled={isSubmitting || strengthScore < 4}
-          className={`w-full text-sm font-medium py-2.5 rounded-lg transition-colors mt-4 shadow-sm ${
+          className={`mt-4 w-full rounded-lg py-2.5 text-sm font-medium shadow-sm transition-colors ${
             isSubmitting || strengthScore < 4
-              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+              ? 'cursor-not-allowed bg-slate-300 text-slate-500'
               : 'bg-indigo-600 text-white hover:bg-indigo-700'
           }`}
         >

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import { achievementsApi } from '@/api/achievements'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/hooks/useToast'
 import { Achievement } from '@/types/achievement'
 import {
@@ -10,6 +11,7 @@ import {
   AchievementResult,
   AchievementStatus,
 } from '@/types/enums'
+import { isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
 
@@ -82,19 +84,8 @@ function resultClass(result?: string | null) {
   }
 }
 
-function isPdf(path?: string | null) {
-  return /\.pdf$/i.test(path ?? '')
-}
-
 function emitPreview(item: Achievement) {
-  window.dispatchEvent(
-    new CustomEvent('open-preview', {
-      detail: {
-        src: `/sirius.achievements/documents/${item.id}/preview`,
-        type: isPdf(item.file_path) ? 'pdf' : 'image',
-      },
-    })
-  )
+  openDocumentPreview(item.id, item.file_path)
 }
 
 function formatFileSize(size: number) {
@@ -334,8 +325,6 @@ export function AchievementsPage() {
       setError(getErrorMessage(deleteError, 'Не удалось удалить документ.'))
     }
   }
-
-  const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1)
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -699,22 +688,7 @@ export function AchievementsPage() {
         )}
       </div>
 
-      {totalPages > 1 ? (
-        <div className="flex justify-center gap-1">
-          {pageNumbers.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setPage(item)}
-              className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
-                item === page ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       {showCreateModal ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">

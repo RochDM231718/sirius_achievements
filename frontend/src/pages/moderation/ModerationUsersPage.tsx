@@ -53,12 +53,12 @@ export function ModerationUsersPage() {
           <p className="text-sm text-slate-500 mt-1">{totalCount} пользователей ожидают подтверждения</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link to="/my-work?tab=users" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
-            Мои пользователи
-          </Link>
-          <Link to="/users" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
-            Все пользователи
+          <Link to="/moderation/users" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
+            Новые пользователи
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+          </Link>
+          <Link to="/users" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
+            Все пользователи
           </Link>
         </div>
       </div>

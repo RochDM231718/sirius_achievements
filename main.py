@@ -376,6 +376,12 @@ async def admin_root(request: Request):
     return RedirectResponse(url="/sirius.achievements/app/dashboard")
 
 
+@app.post("/sirius.achievements/logout", include_in_schema=False, name="admin.auth.logout")
+async def legacy_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/sirius.achievements/app/login", status_code=303)
+
+
 def _spa_index_response() -> FileResponse | RedirectResponse:
     index_path = SPA_DIR / "index.html"
     if not index_path.exists():

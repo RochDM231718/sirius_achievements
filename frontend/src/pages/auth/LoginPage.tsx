@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { clearAllAuthFlows, getAuthFlowEmail, getAuthFlowRemainingSeconds, hasStoredAuthFlow } from '@/utils/authFlow'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { getErrorMessage } from '@/utils/http'
@@ -15,6 +16,17 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const hasPendingVerifyEmail = hasStoredAuthFlow('verify_email')
+  const hasPendingResetPassword = hasStoredAuthFlow('reset_password')
+  const hasPendingVerifiedReset = hasStoredAuthFlow('reset_password_verified')
+  const verifyEmailHint = getAuthFlowEmail('verify_email')
+  const resetEmailHint = getAuthFlowEmail('reset_password') || getAuthFlowEmail('reset_password_verified')
+  const verifyEmailTimeLeft = getAuthFlowRemainingSeconds('verify_email')
+  const resetTimeLeft = getAuthFlowRemainingSeconds('reset_password')
+  const forgotPasswordHref = email.trim()
+    ? `/forgot-password?email=${encodeURIComponent(email.trim())}`
+    : '/forgot-password'
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
@@ -22,6 +34,7 @@ export function LoginPage() {
 
     try {
       await login(email, password)
+      clearAllAuthFlows()
       pushToast({
         title: 'Вход выполнен',
         message: 'Перенаправляем в личный кабинет.',
@@ -41,6 +54,60 @@ export function LoginPage() {
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">С возвращением</h1>
         <p className="text-sm text-slate-500 mt-1">Войдите в свой аккаунт</p>
       </div>
+
+      {hasPendingVerifyEmail ? (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left">
+          <p className="text-sm font-semibold text-slate-800">Подтверждение email уже начато</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {verifyEmailHint ? `Код был отправлен на ${verifyEmailHint}. ` : 'Код подтверждения уже был отправлен. '}
+            {verifyEmailTimeLeft > 0
+              ? `Повторная отправка будет доступна через ${verifyEmailTimeLeft} сек.`
+              : 'Можно сразу продолжить ввод кода.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/verify-email')}
+            className="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            Продолжить подтверждение
+          </button>
+        </div>
+      ) : null}
+
+      {hasPendingVerifiedReset ? (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left">
+          <p className="text-sm font-semibold text-slate-800">Сброс пароля уже подтверждён</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {resetEmailHint ? `Для ${resetEmailHint} можно сразу задать новый пароль.` : 'Можно сразу задать новый пароль.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/reset-password')}
+            className="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            Перейти к новому паролю
+          </button>
+        </div>
+      ) : null}
+
+      {!hasPendingVerifiedReset && hasPendingResetPassword ? (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left">
+          <p className="text-sm font-semibold text-slate-800">Восстановление пароля уже начато</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {resetEmailHint ? `Код был отправлен на ${resetEmailHint}. ` : 'Код для сброса уже был отправлен. '}
+            {resetTimeLeft > 0
+              ? `Повторная отправка будет доступна через ${resetTimeLeft} сек.`
+              : 'Можно сразу продолжить ввод кода.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/verify-code')}
+            className="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            Продолжить восстановление
+          </button>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-6 bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg text-center">
@@ -72,7 +139,7 @@ export function LoginPage() {
               Пароль
             </label>
             <Link
-              to="/forgot-password"
+              to={forgotPasswordHref}
               className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
             >
               Забыли пароль?

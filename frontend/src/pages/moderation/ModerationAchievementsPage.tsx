@@ -1,31 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { documentsApi } from '@/api/documents'
 import { moderationApi } from '@/api/moderation'
+import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Pagination } from '@/components/ui/Pagination'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { Achievement } from '@/types/achievement'
+import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
-
-function isImageFile(path: string) {
-  return /\.(jpg|jpeg|png|webp)$/i.test(path)
-}
-
-function isPdfFile(path: string) {
-  return /\.pdf$/i.test(path)
-}
-
-function emitPreview(item: Achievement) {
-  window.dispatchEvent(
-    new CustomEvent('open-preview', {
-      detail: {
-        src: `/sirius.achievements/documents/${item.id}/preview`,
-        type: isPdfFile(item.file_path) ? 'pdf' : 'image',
-      },
-    })
-  )
-}
 
 export function ModerationAchievementsPage() {
   const { user: currentUser } = useAuth()
@@ -67,11 +52,21 @@ export function ModerationAchievementsPage() {
     }
   }
 
-  const handleDownload = (itemId: number) => {
-    window.open(`/sirius.achievements/documents/${itemId}/download`, '_blank')
+  const handleDownload = async (item: Achievement) => {
+    try {
+      const response = await documentsApi.download(item.id)
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = item.file_path?.split('/').pop() || `${item.title}.bin`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(link.href)
+    } catch (downloadError) {
+      setError(getErrorMessage(downloadError, 'Не удалось скачать документ.'))
+    }
   }
-
-  const pages = Array.from({ length: totalPages }, (_, i) => i + 1)
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -81,12 +76,12 @@ export function ModerationAchievementsPage() {
           <p className="text-sm text-slate-500 mt-1">{totalPending} документов ожидают проверки</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link to="/my-work?tab=achievements" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
-            Мои документы
-          </Link>
-          <Link to="/documents" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
-            Все документы
+          <Link to="/moderation/achievements" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
+            Новые документы
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+          </Link>
+          <Link to="/documents" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
+            Все документы
           </Link>
         </div>
       </div>
@@ -118,10 +113,10 @@ export function ModerationAchievementsPage() {
                       <td className="px-5 py-3">
                         <div
                           className="w-12 h-14 shrink-0 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center cursor-pointer group"
-                          onClick={() => emitPreview(item)}
+                          onClick={() => openDocumentPreview(item.id, item.file_path)}
                         >
                           {item.file_path && isImageFile(item.file_path) ? (
-                            <img src={`/sirius.achievements/documents/${item.id}/preview`} className="w-full h-full object-cover" alt="" />
+                            <DocumentPreviewImage documentId={item.id} alt={item.title} className="w-full h-full object-cover" />
                           ) : item.file_path && isPdfFile(item.file_path) ? (
                             <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                           ) : (
@@ -178,7 +173,7 @@ export function ModerationAchievementsPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex justify-end items-center gap-2">
-                          <button type="button" onClick={() => handleDownload(item.id)} className="text-xs text-slate-500 hover:text-slate-700 transition-colors" title="Скачать">
+                          <button type="button" onClick={() => void handleDownload(item)} className="text-xs text-slate-500 hover:text-slate-700 transition-colors" title="Скачать">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                           </button>
                           {!item.moderator_id ? (
@@ -197,13 +192,7 @@ export function ModerationAchievementsPage() {
             </div>
           </div>
 
-          {totalPages > 1 ? (
-            <div className="flex justify-center gap-1">
-              {pages.map((p) => (
-                <button key={p} type="button" onClick={() => setPage(p)} className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${p === page ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{p}</button>
-              ))}
-            </div>
-          ) : null}
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">

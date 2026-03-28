@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Chart from 'chart.js/auto'
 
 import { publicApi, PublicStudentResponse } from '@/api/public'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/utils/http'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) {
+      return <div className="min-h-screen flex items-center justify-center"><p className="text-red-500">Ошибка загрузки страницы. Попробуйте обновить.</p></div>
+    }
+    return this.props.children
+  }
+}
 
 function buildStaticUrl(path?: string | null) {
   if (!path) return ''
@@ -20,10 +30,9 @@ function formatDate(dateStr?: string | null) {
 
 const CAT_COLORS = ['#6d5ef3', '#ea580c', '#0891b2', '#ca8a04', '#db2777', '#059669', '#7c3aed', '#0284c7']
 
-export function StudentProfilePage() {
+function StudentProfilePageInner() {
   const { id } = useParams<{ id: string }>()
   const studentId = Number(id)
-  const { user } = useAuth()
   const navigate = useNavigate()
   const progressChartRef = useRef<HTMLCanvasElement>(null)
   const categoryChartRef = useRef<HTMLCanvasElement>(null)
@@ -319,5 +328,13 @@ export function StudentProfilePage() {
 
       <p className="text-center text-xs text-slate-400 mt-8">Sirius.Achievements &copy; 2026</p>
     </div>
+  )
+}
+
+export function StudentProfilePage() {
+  return (
+    <ErrorBoundary>
+      <StudentProfilePageInner />
+    </ErrorBoundary>
   )
 }

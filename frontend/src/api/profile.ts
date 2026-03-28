@@ -16,13 +16,11 @@ export interface ProfileResponse {
 
 export const profileApi = {
   get() {
-    return client.get<ProfileResponse>('/profile')
+    return client.get<ProfileResponse>('/profile/')
   },
 
   update(formData: FormData) {
-    return client.put<{ success: boolean; user: User }>('/profile', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    return client.put<{ success: boolean; user: User }>('/profile/', formData)
   },
 
   sendPasswordCode() {

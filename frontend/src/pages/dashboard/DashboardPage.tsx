@@ -206,7 +206,7 @@ export function DashboardPage() {
   ]
   const studentCards = [
     { label: 'Баллы за период', value: `${stats?.my_points ?? 0}`, accent: true },
-    { label: 'Место в лиге', value: (stats?.my_rank ?? 0) > 0 ? `#${stats?.my_rank}` : '-' },
+    { label: 'Место в потоке', value: (stats?.my_rank ?? 0) > 0 ? `#${stats?.my_rank}` : '-' },
     { label: 'Загружено документов', value: `${stats?.my_docs ?? 0}` },
     { label: 'На проверке', value: `${stats?.pending_achievements ?? 0}` },
   ]
@@ -291,3 +291,4 @@ export function DashboardPage() {
     </div>
   )
 }
+

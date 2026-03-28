@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { moderationApi } from '@/api/moderation'
 import { usersApi } from '@/api/users'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Pagination } from '@/components/ui/Pagination'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { User } from '@/types/user'
@@ -133,8 +134,6 @@ export function UsersPage() {
     }
   }
 
-  const pages = Array.from({ length: totalPages }, (_, index) => index + 1)
-
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
@@ -146,8 +145,9 @@ export function UsersPage() {
           <Link to="/moderation/users" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
             Новые пользователи
           </Link>
-          <Link to="/my-work?tab=users" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
-            Мои пользователи
+          <Link to="/users" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
+            Все пользователи
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
           </Link>
         </div>
       </div>
@@ -280,7 +280,7 @@ export function UsersPage() {
         )}
       </div>
 
-      {totalPages > 1 ? <div className="flex justify-center gap-1">{pages.map((item) => <button key={item} type="button" onClick={() => setPage(item)} className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${item === page ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{item}</button>)}</div> : null}
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   )
 }

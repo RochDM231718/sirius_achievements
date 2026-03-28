@@ -82,6 +82,7 @@ def get_user_service(db: AsyncSession = Depends(get_db)):
     return UserService(UserRepository(db))
 
 
+@router.get('')
 @router.get('/')
 async def profile(current_user=Depends(auth), db: AsyncSession = Depends(get_db)):
     user = current_user
@@ -146,23 +147,32 @@ async def profile(current_user=Depends(auth), db: AsyncSession = Depends(get_db)
     }
 
 
+@router.put('')
 @router.put('/')
 async def update_profile(
     request: Request,
-    first_name: str = Form(...),
-    last_name: str = Form(...),
+    first_name: str | None = Form(default=None),
+    last_name: str | None = Form(default=None),
     phone_number: str | None = Form(default=None),
     avatar: UploadFile | None = File(default=None),
     current_user=Depends(auth),
     service: UserService = Depends(get_user_service),
 ):
-    if phone_number and not _PHONE_RE.match(phone_number):
+    normalized_first_name = (first_name or current_user.first_name or '').strip() or current_user.first_name
+    normalized_last_name = (last_name or current_user.last_name or '').strip() or current_user.last_name
+    normalized_phone = phone_number.strip() if isinstance(phone_number, str) else phone_number
+    normalized_phone = normalized_phone or None
+
+    if not normalized_first_name or not normalized_last_name:
+        raise HTTPException(status_code=400, detail='Имя и фамилия обязательны.')
+
+    if normalized_phone and not _PHONE_RE.match(normalized_phone):
         raise HTTPException(status_code=400, detail='Неверный формат телефона.')
 
     update_data: dict[str, str | None] = {
-        'first_name': first_name,
-        'last_name': last_name,
-        'phone_number': phone_number,
+        'first_name': normalized_first_name,
+        'last_name': normalized_last_name,
+        'phone_number': normalized_phone,
     }
 
     if avatar and avatar.filename:

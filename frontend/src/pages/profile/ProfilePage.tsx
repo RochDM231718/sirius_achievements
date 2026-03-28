@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { Chart, registerables } from 'chart.js'
 import { profileApi, type ProfileResponse } from '@/api/profile'
 import { usersApi } from '@/api/users'
+import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { UserRole } from '@/types/enums'
+import { isImageFile, isPdfFile } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
 
 Chart.register(...registerables)
@@ -16,6 +18,8 @@ function buildStaticUrl(path?: string | null) {
   if (path.startsWith('http') || path.startsWith('/')) return path
   return `/static/${path.replace(/^\/+/, '')}`
 }
+
+type CropperWindow = Window & { Cropper?: unknown }
 
 function docStatusBadge(status: string, points?: number) {
   switch (status) {
@@ -46,16 +50,9 @@ function docStatusBadge(status: string, points?: number) {
   }
 }
 
-function isImageFile(path?: string | null) {
-  return /\.(jpg|jpeg|png|webp|gif)$/i.test(path ?? '')
-}
-function isPdfFile(path?: string | null) {
-  return /\.pdf$/i.test(path ?? '')
-}
-
 export function ProfilePage() {
   const navigate = useNavigate()
-  const { user, refreshProfile, logout } = useAuth()
+  const { user, refreshProfile, logout, setCurrentUser } = useAuth()
   const { pushToast } = useToast()
 
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
@@ -74,8 +71,15 @@ export function ProfilePage() {
   const imageToCropRef = useRef<HTMLImageElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cropperRef = useRef<any>(null)
+  const avatarBlobUrlRef = useRef<string | null>(null)
+  const cropSourceUrlRef = useRef<string | null>(null)
   const [showCropModal, setShowCropModal] = useState(false)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
+  const [cropSourceUrl, setCropSourceUrl] = useState<string | null>(null)
+  const [isCropperLibraryReady, setIsCropperLibraryReady] = useState(
+    () => typeof window !== 'undefined' && Boolean((window as CropperWindow).Cropper),
+  )
+  const [isCropperReady, setIsCropperReady] = useState(false)
   const [croppedFile, setCroppedFile] = useState<File | null>(null)
 
   // AI Resume
@@ -103,6 +107,27 @@ export function ProfilePage() {
 
   const isStudent = user?.role === UserRole.STUDENT
 
+  const revokeAvatarBlobUrl = useCallback(() => {
+    if (avatarBlobUrlRef.current) {
+      URL.revokeObjectURL(avatarBlobUrlRef.current)
+      avatarBlobUrlRef.current = null
+    }
+  }, [])
+
+  const revokeCropSourceUrl = useCallback(() => {
+    if (cropSourceUrlRef.current) {
+      URL.revokeObjectURL(cropSourceUrlRef.current)
+      cropSourceUrlRef.current = null
+    }
+  }, [])
+
+  const closeCropModal = useCallback(() => {
+    setShowCropModal(false)
+    setCropSourceUrl(null)
+    setIsCropperReady(false)
+    revokeCropSourceUrl()
+  }, [revokeCropSourceUrl])
+
   const load = useCallback(async () => {
     setIsLoading(true)
     setError(null)
@@ -112,6 +137,7 @@ export function ProfilePage() {
       setFirstName(data.user.first_name)
       setLastName(data.user.last_name)
       setPhoneNumber(data.user.phone_number ?? '')
+      revokeAvatarBlobUrl()
       setAvatarPreviewUrl(data.user.avatar_path ? buildStaticUrl(data.user.avatar_path) + '?t=' + Date.now() : null)
       setResumeText(data.user.resume_text ?? '')
       setCanGenerate(data.can_generate)
@@ -121,11 +147,63 @@ export function ProfilePage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [revokeAvatarBlobUrl])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    return () => {
+      revokeAvatarBlobUrl()
+      revokeCropSourceUrl()
+    }
+  }, [revokeAvatarBlobUrl, revokeCropSourceUrl])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if ((window as CropperWindow).Cropper) {
+      setIsCropperLibraryReady(true)
+      return
+    }
+
+    const linkSelector = 'link[data-cropper-style="true"]'
+    if (!document.querySelector(linkSelector)) {
+      const style = document.createElement('link')
+      style.rel = 'stylesheet'
+      style.href = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css'
+      style.setAttribute('data-cropper-style', 'true')
+      document.head.appendChild(style)
+    }
+
+    let disposed = false
+    const existingScript = document.querySelector('script[data-cropper-script="true"]') as HTMLScriptElement | null
+    const handleLoad = () => {
+      if (!disposed && (window as CropperWindow).Cropper) {
+        setIsCropperLibraryReady(true)
+      }
+    }
+
+    if (existingScript) {
+      existingScript.addEventListener('load', handleLoad, { once: true })
+      return () => {
+        disposed = true
+        existingScript.removeEventListener('load', handleLoad)
+      }
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js'
+    script.async = true
+    script.setAttribute('data-cropper-script', 'true')
+    script.addEventListener('load', handleLoad, { once: true })
+    document.body.appendChild(script)
+
+    return () => {
+      disposed = true
+      script.removeEventListener('load', handleLoad)
+    }
+  }, [])
 
   // Chart init
   useEffect(() => {
@@ -242,25 +320,48 @@ export function ProfilePage() {
 
   // Cropper init when modal opens
   useEffect(() => {
-    if (!showCropModal || !imageToCropRef.current) return
+    if (!showCropModal || !imageToCropRef.current || !cropSourceUrl) return
+    if (!isCropperLibraryReady) {
+      setIsCropperReady(false)
+      return
+    }
     // @ts-expect-error Cropper loaded from CDN
     const CropperClass = window.Cropper
-    if (!CropperClass) return
-    const inst = new CropperClass(imageToCropRef.current, {
-      aspectRatio: 1,
-      viewMode: 1,
-      dragMode: 'move',
-      guides: false,
-      center: false,
-      highlight: false,
-      background: false,
-    })
-    cropperRef.current = inst
-    return () => {
-      inst.destroy()
-      cropperRef.current = null
+    if (!CropperClass) {
+      setIsCropperReady(false)
+      return
     }
-  }, [showCropModal])
+    const image = imageToCropRef.current
+    let inst: any = null
+    const initCropper = () => {
+      inst?.destroy()
+      inst = new CropperClass(image, {
+        aspectRatio: 1,
+        viewMode: 1,
+        dragMode: 'move',
+        guides: false,
+        center: false,
+        highlight: false,
+        background: false,
+        ready: () => setIsCropperReady(true),
+      })
+      cropperRef.current = inst
+    }
+
+    setIsCropperReady(false)
+    if (image.complete && image.naturalWidth > 0) {
+      initCropper()
+    } else {
+      image.addEventListener('load', initCropper, { once: true })
+    }
+
+    return () => {
+      image.removeEventListener('load', initCropper)
+      inst?.destroy()
+      cropperRef.current = null
+      setIsCropperReady(false)
+    }
+  }, [cropSourceUrl, isCropperLibraryReady, showCropModal])
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -277,7 +378,10 @@ export function ProfilePage() {
       return
     }
     const url = URL.createObjectURL(file)
-    if (imageToCropRef.current) imageToCropRef.current.src = url
+    revokeCropSourceUrl()
+    cropSourceUrlRef.current = url
+    setCropSourceUrl(url)
+    setIsCropperReady(false)
     setShowCropModal(true)
     e.target.value = ''
   }
@@ -285,11 +389,15 @@ export function ProfilePage() {
   const handleCropSave = () => {
     const cropper = cropperRef.current
     if (!cropper) return
-    cropper.getCroppedCanvas({ maxWidth: 800, maxHeight: 800 }).toBlob((blob: Blob) => {
+    cropper.getCroppedCanvas({ maxWidth: 800, maxHeight: 800 }).toBlob((blob: Blob | null) => {
+      if (!blob) return
       const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' })
+      const previewUrl = URL.createObjectURL(blob)
+      revokeAvatarBlobUrl()
+      avatarBlobUrlRef.current = previewUrl
       setCroppedFile(file)
-      setAvatarPreviewUrl(URL.createObjectURL(blob))
-      setShowCropModal(false)
+      setAvatarPreviewUrl(previewUrl)
+      closeCropModal()
     }, 'image/jpeg')
   }
 
@@ -303,7 +411,11 @@ export function ProfilePage() {
       formData.append('last_name', lastName)
       formData.append('phone_number', phoneNumber)
       if (croppedFile) formData.append('avatar', croppedFile)
-      await profileApi.update(formData)
+      const { data } = await profileApi.update(formData)
+      setCurrentUser(data.user)
+      setProfile((current) => (current ? { ...current, user: data.user } : current))
+      revokeAvatarBlobUrl()
+      setAvatarPreviewUrl(data.user.avatar_path ? buildStaticUrl(data.user.avatar_path) + '?t=' + Date.now() : null)
       await refreshProfile()
       setCroppedFile(null)
       pushToast({ title: 'Профиль обновлён', tone: 'success' })
@@ -423,10 +535,6 @@ export function ProfilePage() {
 
   return (
     <>
-      {/* Cropper.js CSS/JS loaded from CDN */}
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js" />
-
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
@@ -796,11 +904,10 @@ export function ProfilePage() {
                 >
                   <div className="h-28 w-full bg-slate-100 flex items-center justify-center overflow-hidden relative">
                     {isImageFile(doc.file_path) ? (
-                      <img
-                        src={`/sirius.achievements/documents/${doc.id}/preview`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      <DocumentPreviewImage
+                        documentId={doc.id}
                         alt={doc.title}
-                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     ) : isPdfFile(doc.file_path) ? (
                       <div className="flex flex-col items-center gap-1">
@@ -875,21 +982,26 @@ export function ProfilePage() {
           <div className="flex items-center justify-center min-h-screen p-4 text-center">
             <div
               className="fixed inset-0 bg-slate-900 bg-opacity-70 backdrop-blur-sm transition-opacity"
-              onClick={() => setShowCropModal(false)}
+              onClick={closeCropModal}
             />
             <div className="relative bg-white rounded-xl text-left overflow-hidden shadow-sm transform transition-all w-full max-w-lg flex flex-col">
               <div className="p-5 border-b border-slate-100 flex justify-between items-center">
                 <h3 className="text-sm font-bold text-slate-800">Фото профиля</h3>
               </div>
               <div className="p-4 bg-slate-50">
-                <div className="w-full h-64 bg-slate-200 rounded-lg overflow-hidden">
-                  <img ref={imageToCropRef} src="" className="max-w-full h-full object-contain" alt="" />
+                <div className="relative w-full h-64 bg-slate-200 rounded-lg overflow-hidden">
+                  {!isCropperLibraryReady && (
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+                      Загрузка редактора...
+                    </div>
+                  )}
+                  <img ref={imageToCropRef} src={cropSourceUrl ?? ''} className="max-w-full h-full object-contain" alt="" />
                 </div>
               </div>
               <div className="p-4 border-t border-slate-100 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowCropModal(false)}
+                  onClick={closeCropModal}
                   className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Отмена
@@ -897,7 +1009,8 @@ export function ProfilePage() {
                 <button
                   type="button"
                   onClick={handleCropSave}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                  disabled={!isCropperReady}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                 >
                   Сохранить
                 </button>

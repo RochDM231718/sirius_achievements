@@ -11,16 +11,18 @@ interface HeaderProps {
   user: User | null
 }
 
-function buildStaticPath(path?: string | null) {
+function buildStaticPath(path?: string | null, version?: string | null) {
   if (!path) {
     return null
   }
 
+  const suffix = version ? `${path.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}` : ''
+
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
-    return path
+    return `${path}${suffix}`
   }
 
-  return `/static/${path}`
+  return `/static/${path}${suffix}`
 }
 
 export function Header({ user }: HeaderProps) {
@@ -32,7 +34,7 @@ export function Header({ user }: HeaderProps) {
   const notificationRef = useRef<HTMLDivElement | null>(null)
   const profileRef = useRef<HTMLDivElement | null>(null)
 
-  const avatarUrl = buildStaticPath(user?.avatar_path)
+  const avatarUrl = buildStaticPath(user?.avatar_path, user?.updated_at)
   const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : 'User'
   const avatarFallback = fullName.charAt(0).toUpperCase() || 'U'
 

@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 
+import { documentsApi } from '@/api/documents'
 import { Header } from '@/components/layout/Header'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useAuth } from '@/hooks/useAuth'
 
 type PreviewState = {
   show: boolean
   src: string
   type: 'image' | 'pdf'
+  documentId: number | null
+  isLoading: boolean
+  error: string | null
 }
 
 type DeleteState = {
@@ -21,13 +26,29 @@ type DeleteState = {
 
 export function AppLayout() {
   const { user } = useAuth()
-  const [preview, setPreview] = useState<PreviewState>({ show: false, src: '', type: 'image' })
+  const [preview, setPreview] = useState<PreviewState>({
+    show: false,
+    src: '',
+    type: 'image',
+    documentId: null,
+    isLoading: false,
+    error: null,
+  })
   const [deleteState, setDeleteState] = useState<DeleteState>({
     open: false,
     title: '',
     desc: '',
     onConfirm: null,
   })
+  const previewObjectUrlRef = useRef<string | null>(null)
+  const previewRequestIdRef = useRef(0)
+
+  const revokePreviewObjectUrl = () => {
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current)
+      previewObjectUrlRef.current = null
+    }
+  }
 
   useEffect(() => {
     const previousClassName = document.body.className
@@ -39,13 +60,64 @@ export function AppLayout() {
   }, [])
 
   useEffect(() => {
+    const loadDocumentPreview = async (documentId: number, type: 'image' | 'pdf') => {
+      const requestId = ++previewRequestIdRef.current
+
+      try {
+        const response = await documentsApi.preview(documentId)
+        const blob = response.data instanceof Blob ? response.data : new Blob([response.data])
+        const objectUrl = URL.createObjectURL(blob)
+
+        if (requestId !== previewRequestIdRef.current) {
+          URL.revokeObjectURL(objectUrl)
+          return
+        }
+
+        revokePreviewObjectUrl()
+        previewObjectUrlRef.current = objectUrl
+
+        setPreview({
+          show: true,
+          src: objectUrl,
+          type,
+          documentId,
+          isLoading: false,
+          error: null,
+        })
+      } catch {
+        if (requestId !== previewRequestIdRef.current) {
+          return
+        }
+
+        setPreview((current) => ({
+          ...current,
+          src: '',
+          isLoading: false,
+          error: 'Не удалось загрузить документ.',
+        }))
+      }
+    }
+
     const openPreview = (event: Event) => {
-      const detail = (event as CustomEvent<{ src?: string; type?: 'image' | 'pdf' }>).detail
+      const detail = (event as CustomEvent<{ src?: string; type?: 'image' | 'pdf'; documentId?: number }>).detail
+      const type = detail?.type === 'pdf' ? 'pdf' : 'image'
+      const documentId = typeof detail?.documentId === 'number' ? detail.documentId : null
+
+      previewRequestIdRef.current += 1
+      revokePreviewObjectUrl()
+
       setPreview({
         show: true,
         src: detail?.src ?? '',
-        type: detail?.type === 'pdf' ? 'pdf' : 'image',
+        type,
+        documentId,
+        isLoading: Boolean(documentId && !detail?.src),
+        error: null,
       })
+
+      if (documentId && !detail?.src) {
+        void loadDocumentPreview(documentId, type)
+      }
     }
 
     const confirmDelete = (event: Event) => {
@@ -67,6 +139,8 @@ export function AppLayout() {
     window.addEventListener('confirm-delete', confirmDelete as EventListener)
 
     return () => {
+      previewRequestIdRef.current += 1
+      revokePreviewObjectUrl()
       window.removeEventListener('open-preview', openPreview as EventListener)
       window.removeEventListener('confirm-delete', confirmDelete as EventListener)
     }
@@ -78,6 +152,19 @@ export function AppLayout() {
     }
 
     setDeleteState({ open: false, title: '', desc: '', onConfirm: null })
+  }
+
+  const closePreview = () => {
+    previewRequestIdRef.current += 1
+    revokePreviewObjectUrl()
+    setPreview({
+      show: false,
+      src: '',
+      type: 'image',
+      documentId: null,
+      isLoading: false,
+      error: null,
+    })
   }
 
   return (
@@ -100,7 +187,7 @@ export function AppLayout() {
               <h3 className="text-sm font-bold text-slate-800">Просмотр документа</h3>
               <button
                 type="button"
-                onClick={() => setPreview({ show: false, src: '', type: 'image' })}
+                onClick={closePreview}
                 className="text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -109,7 +196,15 @@ export function AppLayout() {
               </button>
             </div>
             <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-hidden p-2 md:p-6">
-              {preview.type === 'image' ? (
+              {preview.isLoading ? (
+                <div className="w-full max-w-sm">
+                  <LoadingSpinner />
+                </div>
+              ) : preview.error ? (
+                <div className="rounded-xl border border-red-100 bg-white px-6 py-5 text-sm text-red-600 shadow-sm">
+                  {preview.error}
+                </div>
+              ) : preview.type === 'image' ? (
                 <img src={preview.src} className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
               ) : (
                 <iframe src={preview.src} className="w-full h-full border-none rounded-lg bg-white shadow-sm" />
