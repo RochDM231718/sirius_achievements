@@ -55,7 +55,9 @@ export function ModerationUsersPage() {
         <div className="flex items-center gap-3">
           <Link to="/moderation/users" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
             Новые пользователи
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
           </Link>
           <Link to="/users" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
             Все пользователи
@@ -133,7 +135,10 @@ export function ModerationUsersPage() {
                     </td>
                     <td className="px-5 py-3 text-right">
                       {!u.reviewed_by_id ? (
-                        <button type="button" onClick={() => void handleTake(u)} className="text-xs text-indigo-600 font-bold hover:underline">Взять в работу</button>
+                        <div className="flex items-center justify-end gap-3">
+                          <Link to={`/users/${u.id}?from=moderation`} className="text-xs text-slate-500 font-bold hover:underline">Профиль</Link>
+                          <button type="button" onClick={() => void handleTake(u)} className="text-xs text-indigo-600 font-bold hover:underline">Взять в работу</button>
+                        </div>
                       ) : u.reviewed_by_id === currentUser?.id ? (
                         <Link to="/my-work?tab=users" className="text-xs text-indigo-600 font-bold hover:underline">Моя работа</Link>
                       ) : (
@@ -149,7 +154,9 @@ export function ModerationUsersPage() {
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+            <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+            </svg>
           </div>
           <p className="text-sm text-slate-500">Нет новых заявок на регистрацию</p>
         </div>

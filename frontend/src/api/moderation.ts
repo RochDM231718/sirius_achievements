@@ -2,6 +2,11 @@ import client from './client'
 import { User } from '@/types/user'
 import { Achievement, ModerationAchievementsResponse } from '@/types/achievement'
 
+export interface AchievementMetadataPayload {
+  title: string
+  description?: string
+}
+
 export const moderationApi = {
   getUsers() {
     return client.get<{ users: User[]; total_count: number }>('/moderation/users')
@@ -24,6 +29,10 @@ export const moderationApi = {
       status,
       rejection_reason: rejectionReason,
     })
+  },
+
+  updateAchievementMetadata(id: number, payload: AchievementMetadataPayload) {
+    return client.patch<{ success: boolean; achievement: Achievement }>(`/moderation/achievements/${id}/metadata`, payload)
   },
 
   batchUpdateAchievements(ids: number[], action: string) {

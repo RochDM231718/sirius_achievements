@@ -38,6 +38,10 @@ export function MyWorkPage() {
   const [decisionTarget, setDecisionTarget] = useState<Achievement | null>(null)
   const [decisionReason, setDecisionReason] = useState('')
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false)
+  const [editTarget, setEditTarget] = useState<Achievement | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
 
   const tab = normalizeTab(searchParams.get('tab'))
 
@@ -63,6 +67,20 @@ export function MyWorkPage() {
     setDecisionTarget(null)
     setDecisionReason('')
     setIsSubmittingDecision(false)
+  }
+
+  const openEditModal = (item: Achievement) => {
+    setEditTarget(item)
+    setEditTitle(item.title)
+    setEditDescription(item.description ?? '')
+    setIsSubmittingEdit(false)
+  }
+
+  const closeEditModal = () => {
+    setEditTarget(null)
+    setEditTitle('')
+    setEditDescription('')
+    setIsSubmittingEdit(false)
   }
 
   const handleApproveUser = async (user: User) => {
@@ -126,6 +144,40 @@ export function MyWorkPage() {
       await load()
     } catch (approveError) {
       setError(getErrorMessage(approveError, 'Не удалось одобрить документ.'))
+    }
+  }
+
+  const handleSaveAchievementMetadata = async () => {
+    if (!editTarget) {
+      return
+    }
+
+    const normalizedTitle = editTitle.trim()
+    const normalizedDescription = editDescription.trim()
+
+    if (!normalizedTitle) {
+      setError('Укажите название документа.')
+      return
+    }
+
+    setIsSubmittingEdit(true)
+    setError(null)
+
+    try {
+      await moderationApi.updateAchievementMetadata(editTarget.id, {
+        title: normalizedTitle,
+        description: normalizedDescription || undefined,
+      })
+      pushToast({
+        title: 'Данные документа обновлены',
+        message: normalizedTitle,
+        tone: 'success',
+      })
+      closeEditModal()
+      await load()
+    } catch (editError) {
+      setError(getErrorMessage(editError, 'Не удалось обновить название или описание документа.'))
+      setIsSubmittingEdit(false)
     }
   }
 
@@ -442,6 +494,17 @@ export function MyWorkPage() {
 
                   <button
                     type="button"
+                    onClick={() => openEditModal(item)}
+                    className="w-full bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 9.586-9.586z"></path>
+                    </svg>
+                    <span>Редактировать</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => {
                       setDecisionTarget(item)
                       setDecisionReason(item.rejection_reason ?? '')
@@ -488,6 +551,80 @@ export function MyWorkPage() {
           </Link>
         </div>
       )}
+
+      {editTarget ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          onClick={closeEditModal}
+        >
+          <div
+            className="bg-white rounded-xl shadow-lg w-full max-w-lg flex flex-col overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Редактирование документа</h3>
+                <p className="text-xs text-slate-400 mt-1">Исправьте название или описание перед одобрением</p>
+              </div>
+              <button type="button" onClick={closeEditModal} className="text-slate-400 hover:text-slate-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-50 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Название <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  disabled={isSubmittingEdit}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  placeholder="Название документа"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Описание
+                </label>
+                <textarea
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                  rows={4}
+                  disabled={isSubmittingEdit}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
+                  placeholder="Короткое описание документа"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={isSubmittingEdit}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Отмена
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleSaveAchievementMetadata()}
+                disabled={isSubmittingEdit}
+                className="w-full px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSubmittingEdit ? 'Сохранение...' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {decisionTarget ? (
         <div

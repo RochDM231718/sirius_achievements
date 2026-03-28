@@ -31,6 +31,11 @@ class AchievementDecisionPayload(BaseModel):
     rejection_reason: str | None = None
 
 
+class AchievementMetadataPayload(BaseModel):
+    title: str
+    description: str | None = None
+
+
 class BatchAchievementPayload(BaseModel):
     ids: list[int]
     action: str
@@ -219,6 +224,54 @@ async def release_achievement(
 
     achievement.moderator_id = None
     await log_action(db, current_user.id, 'achievement.release', 'achievement', achievement_id)
+    await db.commit()
+    await db.refresh(achievement)
+    refreshed = (await db.execute(stmt)).scalars().first()
+    return {'success': True, 'achievement': serialize_achievement(refreshed)}
+
+
+@router.patch('/achievements/{achievement_id}/metadata')
+async def update_achievement_metadata(
+    achievement_id: int,
+    payload: AchievementMetadataPayload,
+    current_user=Depends(require_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Achievement)
+        .options(selectinload(Achievement.user))
+        .where(Achievement.id == achievement_id)
+        .with_for_update()
+    )
+    achievement = (await db.execute(stmt)).scalars().first()
+
+    if not achievement:
+        raise HTTPException(status_code=404, detail='Achievement not found')
+    if not is_in_zone(current_user, achievement.user.education_level):
+        raise HTTPException(status_code=403, detail='Access denied')
+    if achievement.status != AchievementStatus.PENDING:
+        raise HTTPException(status_code=409, detail='Only pending achievements can be edited')
+    if current_user.role != UserRole.SUPER_ADMIN and achievement.moderator_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Take the document into work before editing it')
+
+    clean_title = payload.title.strip()
+    clean_description = (payload.description or '').strip()
+
+    if not clean_title:
+        raise HTTPException(status_code=400, detail='Title is required')
+
+    previous_title = achievement.title
+    achievement.title = clean_title
+    achievement.description = clean_description or None
+
+    await log_action(
+        db,
+        current_user.id,
+        'achievement.edit_metadata',
+        'achievement',
+        achievement_id,
+        f'{previous_title} -> {achievement.title}',
+    )
     await db.commit()
     await db.refresh(achievement)
     refreshed = (await db.execute(stmt)).scalars().first()

@@ -50,6 +50,62 @@ export function AppLayout() {
     }
   }
 
+  const openPreviewInNewTab = () => {
+    if (!preview.src) {
+      return
+    }
+
+    const openedWindow = window.open(preview.src, '_blank', 'noopener,noreferrer')
+    if (openedWindow) {
+      return
+    }
+
+    const link = document.createElement('a')
+    link.href = preview.src
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
+
+  const downloadPreviewDocument = async () => {
+    if (!preview.src) {
+      return
+    }
+
+    if (preview.documentId) {
+      try {
+        const response = await documentsApi.download(preview.documentId)
+        const blob = response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' })
+        const href = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = href
+        link.download = `document-${preview.documentId}.${preview.type === 'pdf' ? 'pdf' : 'bin'}`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(href)
+        return
+      } catch {
+        setPreview((current) => ({
+          ...current,
+          error: 'Не удалось скачать документ.',
+        }))
+        return
+      }
+    }
+
+    const link = document.createElement('a')
+    link.href = preview.src
+    link.download = `document.${preview.type === 'pdf' ? 'pdf' : 'bin'}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
+
   useEffect(() => {
     const previousClassName = document.body.className
     document.body.className = 'theme-shell bg-slate-50 text-slate-800 antialiased font-sans overflow-hidden'
@@ -195,6 +251,27 @@ export function AppLayout() {
                 </svg>
               </button>
             </div>
+            {preview.type === 'pdf' ? (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={openPreviewInNewTab}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors"
+                >
+                  Открыть PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void downloadPreviewDocument()}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
+                >
+                  Скачать файл
+                </button>
+                <p className="text-[11px] text-slate-500">
+                  На телефонах PDF иногда не встраивается в окно, но откроется по кнопке.
+                </p>
+              </div>
+            ) : null}
             <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-hidden p-2 md:p-6">
               {preview.isLoading ? (
                 <div className="w-full max-w-sm">
@@ -207,7 +284,27 @@ export function AppLayout() {
               ) : preview.type === 'image' ? (
                 <img src={preview.src} className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
               ) : (
-                <iframe src={preview.src} className="w-full h-full border-none rounded-lg bg-white shadow-sm" />
+                <object data={preview.src} type="application/pdf" className="w-full h-full rounded-lg bg-white shadow-sm">
+                  <div className="max-w-md rounded-xl border border-slate-200 bg-white px-6 py-5 text-center shadow-sm">
+                    <p className="text-sm font-medium text-slate-700">Встроенный просмотр PDF не поддерживается на этом устройстве.</p>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={openPreviewInNewTab}
+                        className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-colors"
+                      >
+                        Открыть PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void downloadPreviewDocument()}
+                        className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors"
+                      >
+                        Скачать
+                      </button>
+                    </div>
+                  </div>
+                </object>
               )}
             </div>
           </div>
