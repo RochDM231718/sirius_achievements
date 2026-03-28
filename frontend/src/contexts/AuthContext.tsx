@@ -57,7 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
       try {
         if (token) {
-          await refreshProfile()
+          try {
+            await refreshProfile()
+          } catch {
+            const { data } = await authApi.session()
+            applyAuth(data)
+          }
         } else {
           const { data } = await authApi.session()
           applyAuth(data)

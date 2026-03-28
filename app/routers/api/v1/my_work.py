@@ -23,6 +23,7 @@ async def require_moderator(current_user=Depends(auth)):
     return current_user
 
 
+@router.get('')
 @router.get('/')
 async def my_work_overview(
     current_user=Depends(require_moderator),

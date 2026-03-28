@@ -25,6 +25,7 @@ class Settings:
 
     # ── Session ──
     SESSION_MAX_AGE: int = int(os.getenv("SESSION_MAX_AGE", "86400"))
+    TRUSTED_PROXY_IPS: str = os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1,::1,172.16.0.0/12")
 
     # ── File upload limits (bytes) ──
     MAX_AVATAR_SIZE: int = int(os.getenv("MAX_AVATAR_SIZE", str(2 * 1024 * 1024)))
@@ -51,6 +52,9 @@ class Settings:
 
     OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     OTP_LOCKOUT_TTL: int = int(os.getenv("OTP_LOCKOUT_TTL", "900"))
+
+    REGISTER_MAX_ATTEMPTS: int = int(os.getenv("REGISTER_MAX_ATTEMPTS", "5"))
+    REGISTER_LOCKOUT_TTL: int = int(os.getenv("REGISTER_LOCKOUT_TTL", "3600"))
 
     UPLOAD_MAX_PER_HOUR: int = int(os.getenv("UPLOAD_MAX_PER_HOUR", "20"))
     UPLOAD_RATE_TTL: int = int(os.getenv("UPLOAD_RATE_TTL", "3600"))

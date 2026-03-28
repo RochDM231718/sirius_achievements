@@ -29,6 +29,7 @@ def _apply_student_stream_scope(stmt, user: Users):
     return stmt
 
 
+@router.get('')
 @router.get('/')
 async def dashboard(
     period: str = Query(default='all'),

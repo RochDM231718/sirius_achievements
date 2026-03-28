@@ -1,5 +1,7 @@
+import io
 import os
 import uuid
+import zipfile
 import aiofiles
 from fastapi import UploadFile
 
@@ -14,6 +16,13 @@ SIGNATURES = {
     "pptx": (b'\x50\x4B\x03\x04',),
     "xlsx": (b'\x50\x4B\x03\x04',),
     "doc": (b'\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1',),  # OLE2 (legacy DOC/XLS/PPT)
+}
+
+# Required internal files to validate OOXML ZIP-based formats
+_OOXML_MARKERS = {
+    "docx": "word/document.xml",
+    "pptx": "ppt/presentation.xml",
+    "xlsx": "xl/workbook.xml",
 }
 
 DOC_SIGNATURES = {
@@ -41,7 +50,7 @@ class FileValidator:
         header = await file.read(16)
         await file.seek(0)
 
-        detected_ext = self._detect_extension(header, file.filename)
+        detected_ext = self._detect_extension(header, file.filename, file.file)
         if not detected_ext:
             formats = ", ".join(ext.upper() for ext in self.allowed)
             raise ValueError(f"Недопустимый формат файла. Допустимы: {formats}.")
@@ -64,13 +73,25 @@ class FileValidator:
         relative_dir = save_dir.replace("static/", "", 1) if save_dir.startswith("static/") else save_dir
         return f"{relative_dir}/{unique_name}"
 
-    def _detect_extension(self, header: bytes, filename: str | None = None) -> str | None:
+    def _detect_extension(self, header: bytes, filename: str | None = None, file_obj=None) -> str | None:
         # ZIP-based formats (docx/pptx/xlsx) share the same magic bytes,
-        # so we disambiguate by the original file extension.
+        # so we disambiguate by the original file extension AND validate internal structure.
         zip_sig = b'\x50\x4B\x03\x04'
         if header.startswith(zip_sig) and filename:
             ext_from_name = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
             if ext_from_name in self.allowed and zip_sig in self.allowed[ext_from_name]:
+                # Validate OOXML internal structure to prevent arbitrary ZIP uploads
+                marker = _OOXML_MARKERS.get(ext_from_name)
+                if marker and file_obj is not None:
+                    try:
+                        file_obj.seek(0)
+                        with zipfile.ZipFile(io.BytesIO(file_obj.read()), 'r') as zf:
+                            names = zf.namelist()
+                            if marker not in names or "[Content_Types].xml" not in names:
+                                return None
+                        file_obj.seek(0)
+                    except (zipfile.BadZipFile, Exception):
+                        return None
                 return ext_from_name
 
         for ext, sigs in self.allowed.items():

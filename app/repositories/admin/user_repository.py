@@ -37,7 +37,8 @@ class UserRepository(CrudRepository):
             if 'email' in filters and filters['email']:
                 stmt = stmt.filter(self.model.email == filters['email'])
 
-        if hasattr(self.model, sort_by):
+        _ALLOWED_SORT = {"id", "first_name", "last_name", "email", "role", "status", "created_at", "updated_at", "education_level", "course"}
+        if sort_by in _ALLOWED_SORT and hasattr(self.model, sort_by):
             sort_attr = getattr(self.model, sort_by)
             if sort_order == 'asc':
                 stmt = stmt.order_by(asc(sort_attr))

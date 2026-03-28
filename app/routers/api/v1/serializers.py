@@ -134,6 +134,19 @@ def serialize_support_ticket(ticket, *, include_messages: bool = False):
     return payload
 
 
+def serialize_user_public(user):
+    """Public profile serializer — no email, phone, or internal fields."""
+    return {
+        'id': user.id,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'avatar_path': user.avatar_path,
+        'education_level': _enum_value(user.education_level),
+        'course': user.course,
+        'study_group': user.study_group,
+    }
+
+
 def serialize_notification(notification):
     return {
         'id': notification.id,

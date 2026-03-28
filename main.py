@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -23,7 +23,6 @@ from app.infrastructure.database import async_session_maker, engine
 from app.infrastructure.logger import setup_logging
 from app.middlewares.security_headers import SecurityHeadersMiddleware
 from app.middlewares.upload_protection import UploadProtectionMiddleware
-from app.routers.admin.admin import templates
 from app.routers.api.auth import router as api_auth_router
 from app.routers.api.v1 import router as api_v1_router
 from app.security.csrf import get_csrf_token
@@ -168,6 +167,14 @@ class CSRFContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         get_csrf_token(request)
         response = await call_next(request)
+        response.set_cookie(
+            "XSRF-TOKEN",
+            request.session.get("csrf_token", ""),
+            secure=ENV == "production",
+            httponly=False,
+            samesite="lax",
+            path="/",
+        )
         return response
 
 
@@ -246,8 +253,9 @@ app.add_middleware(
 )
 
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+TRUSTED_PROXY_IPS = [host.strip() for host in settings.TRUSTED_PROXY_IPS.split(",") if host.strip()]
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=TRUSTED_PROXY_IPS)
 
 app.include_router(api_auth_router)
 app.include_router(api_v1_router)
@@ -274,6 +282,117 @@ def _origin_allowed(origin: str | None, host_header: str | None) -> bool:
     return False
 
 
+def _extract_ws_token_and_subprotocol(websocket: WebSocket) -> tuple[str | None, str | None]:
+    requested_subprotocols = [item for item in websocket.scope.get("subprotocols", []) if item]
+    if requested_subprotocols:
+        return requested_subprotocols[-1], requested_subprotocols[-1]
+
+    header_value = websocket.headers.get("sec-websocket-protocol")
+    if header_value:
+        parts = [item.strip() for item in header_value.split(",") if item.strip()]
+        if parts:
+            return parts[-1], parts[-1]
+
+    token = websocket.query_params.get("token")
+    return token, None
+
+
+def _error_page(status_code: int, title: str, message: str) -> HTMLResponse:
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <style>
+      :root {{
+        color-scheme: dark;
+        --bg: #120f1d;
+        --card: rgba(28, 23, 43, 0.92);
+        --text: #f5f7fb;
+        --muted: #b8bed3;
+        --accent: #9c7bff;
+        --border: rgba(156, 123, 255, 0.22);
+      }}
+
+      * {{
+        box-sizing: border-box;
+      }}
+
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        font-family: Inter, Segoe UI, sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(156, 123, 255, 0.22), transparent 35%),
+          linear-gradient(180deg, #171226 0%, var(--bg) 100%);
+        color: var(--text);
+      }}
+
+      main {{
+        width: min(100%, 560px);
+        padding: 32px;
+        border-radius: 24px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 24px 60px rgba(6, 5, 10, 0.35);
+      }}
+
+      .code {{
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(156, 123, 255, 0.14);
+        color: #d7cbff;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }}
+
+      h1 {{
+        margin: 18px 0 12px;
+        font-size: clamp(28px, 6vw, 42px);
+        line-height: 1.05;
+      }}
+
+      p {{
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.6;
+      }}
+
+      a {{
+        display: inline-flex;
+        margin-top: 24px;
+        padding: 12px 18px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #8c6fff, #b59cff);
+        color: #120f1d;
+        text-decoration: none;
+        font-weight: 700;
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="code">{status_code}</span>
+      <h1>{title}</h1>
+      <p>{message}</p>
+      <a href="/sirius.achievements/app/login">Вернуться ко входу</a>
+    </main>
+  </body>
+</html>""",
+        status_code=status_code,
+    )
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if 300 <= exc.status_code < 400:
@@ -281,28 +400,16 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         if location:
             return RedirectResponse(url=location, status_code=exc.status_code)
     if exc.status_code == 404:
-        return templates.TemplateResponse("errors/404.html", {"request": request, "user": None}, status_code=404)
+        return _error_page(404, "Страница не найдена", "Такого адреса больше нет или он был перенесен.")
     if exc.status_code == 403:
-        return templates.TemplateResponse(
-            "errors/403.html",
-            {"request": request, "user": None, "detail": exc.detail},
-            status_code=403,
-        )
-    return templates.TemplateResponse(
-        "errors/500.html",
-        {"request": request, "user": None, "error": exc.detail},
-        status_code=exc.status_code,
-    )
+        return _error_page(403, "Доступ запрещен", "У вас нет прав для просмотра этой страницы.")
+    return _error_page(exc.status_code, "Ошибка", "Не удалось обработать запрос. Попробуйте еще раз.")
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("global_error", error=str(exc), exc_info=True)
-    return templates.TemplateResponse(
-        "errors/500.html",
-        {"request": request, "user": None, "error": "Внутренняя ошибка сервера"},
-        status_code=500,
-    )
+    return _error_page(500, "Внутренняя ошибка сервера", "Мы уже получили информацию об ошибке и разберемся с ней.")
 
 
 @app.get("/health", include_in_schema=False)
@@ -334,7 +441,7 @@ async def ws_notifications(websocket: WebSocket):
     expected_version_field = "session_version"
 
     if not user_id or session_version is None:
-        token = websocket.query_params.get("token")
+        token, selected_subprotocol = _extract_ws_token_and_subprotocol(websocket)
         payload = verify_token(token) if token else None
         if not payload or payload.get("type") != "access":
             await websocket.close(code=4001)
@@ -358,7 +465,10 @@ async def ws_notifications(websocket: WebSocket):
             await websocket.close(code=4001)
             return
 
-    await ws_manager.connect(int(user_id), websocket)
+    if "selected_subprotocol" not in locals():
+        _token, selected_subprotocol = _extract_ws_token_and_subprotocol(websocket)
+
+    await ws_manager.connect(int(user_id), websocket, subprotocol=selected_subprotocol)
     try:
         while True:
             await websocket.receive_text()

@@ -10,7 +10,7 @@ from app.models.enums import AchievementStatus, UserRole, UserStatus
 from app.models.user import Users
 from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 
-from .serializers import serialize_achievement, serialize_user
+from .serializers import serialize_achievement, serialize_user_public
 
 router = APIRouter(prefix='/api/v1/public', tags=['api.v1.public'])
 
@@ -110,7 +110,7 @@ async def public_student_profile(student_id: int, db: AsyncSession = Depends(get
         achievements_payload.append(item)
 
     return {
-        'student': serialize_user(student),
+        'student': serialize_user_public(student),
         'achievements': achievements_payload,
         'total_points': total_points,
         'total_docs': len(achievements),

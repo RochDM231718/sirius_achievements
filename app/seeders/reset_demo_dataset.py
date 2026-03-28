@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from passlib.context import CryptContext
+from app.utils.password import hash_password
 from sqlalchemy import delete, select
 
 if "/app" not in sys.path:
@@ -42,7 +42,6 @@ PENDING_DOCUMENTS_COUNT = 20
 ACTIVE_SUPPORT_TICKETS_COUNT = 10
 CLOSED_SUPPORT_TICKETS_COUNT = 20
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ACHIEVEMENTS_DIR = Path("/app/static/uploads/achievements/demo_seed")
 
@@ -321,7 +320,7 @@ async def ensure_staff_users(db, password_hash: str, now: datetime) -> tuple[Use
 
 
 async def main():
-    common_hash = pwd_context.hash(COMMON_PASSWORD)
+    common_hash = hash_password(COMMON_PASSWORD)
     now = datetime.now(timezone.utc)
 
     if ACHIEVEMENTS_DIR.exists():

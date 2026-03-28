@@ -4,14 +4,14 @@ import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
-from jose import JWTError, jwt
+import jwt as pyjwt
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.infrastructure.database import get_db
-from app.infrastructure.jwt_handler import ALGORITHM, SECRET_KEY
+from app.infrastructure.jwt_handler import ALGORITHM, SECRET_KEY, JWTError
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus
@@ -52,13 +52,13 @@ def _create_flow_token(user_id: int, purpose: str, ttl_minutes: int = 30) -> str
         'type': 'flow',
         'exp': datetime.now(UTC) + timedelta(minutes=ttl_minutes),
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def _parse_flow_token(token: str, expected_purpose: str) -> int:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError as exc:
+        payload = pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except pyjwt.exceptions.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Недействительный flow token') from exc
 
     if payload.get('type') != 'flow' or payload.get('purpose') != expected_purpose:
@@ -180,7 +180,7 @@ async def update_profile(
             path = await service.save_avatar(current_user.id, avatar)
             update_data['avatar_path'] = path
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail='Не удалось обновить аватар. Проверьте формат и размер файла.') from exc
 
     updated_user = await service.repository.update(current_user.id, update_data)
     request.session['auth_name'] = f'{updated_user.first_name} {updated_user.last_name}'
@@ -218,7 +218,8 @@ async def verify_password_code(
         raise HTTPException(status_code=403, detail='Access denied')
 
     rl_key = f'profile_pwd_otp:{user_id}'
-    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
+    attempt_count = int(await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL))
+    if attempt_count > settings.OTP_MAX_ATTEMPTS:
         raise HTTPException(status_code=429, detail='Слишком много попыток. Запросите новый код.')
 
     try:
@@ -229,8 +230,7 @@ async def verify_password_code(
             'flow_id': _create_flow_token(user_id, 'profile_password_change_verified', ttl_minutes=30),
         }
     except Exception as exc:
-        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail='Неверный код подтверждения') from exc
 
 
 @router.post('/password/resend')
@@ -273,4 +273,4 @@ async def reset_password(
         request.session.clear()
         return {'success': True}
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail='Ошибка смены пароля. Проверьте данные.') from exc

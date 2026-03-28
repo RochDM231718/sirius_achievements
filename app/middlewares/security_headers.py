@@ -30,7 +30,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["X-Frame-Options"] = "DENY"
             csp = (
                 "default-src 'self'; "
-                f"script-src 'self' 'unsafe-eval' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; "
+                f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; "
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
                 "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
                 "img-src 'self' data: blob:; "

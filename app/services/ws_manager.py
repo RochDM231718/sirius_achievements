@@ -8,8 +8,8 @@ class ConnectionManager:
     def __init__(self):
         self._connections: dict[int, list[WebSocket]] = {}
 
-    async def connect(self, user_id: int, ws: WebSocket):
-        await ws.accept()
+    async def connect(self, user_id: int, ws: WebSocket, subprotocol: str | None = None):
+        await ws.accept(subprotocol=subprotocol)
         self._connections.setdefault(user_id, []).append(ws)
         logger.debug("ws_connect", user_id=user_id)
 

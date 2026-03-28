@@ -112,7 +112,8 @@ class SupportTicketRepository(CrudRepository):
             else:
                 stmt = stmt.filter(Users.education_level == education_level)
 
-        if hasattr(SupportTicket, sort_by):
+        _ALLOWED_SORT = {"created_at", "updated_at", "status", "subject", "id"}
+        if sort_by in _ALLOWED_SORT and hasattr(SupportTicket, sort_by):
             sort_attr = getattr(SupportTicket, sort_by)
             stmt = stmt.order_by(asc(sort_attr) if sort_order == 'asc' else desc(sort_attr))
         else:

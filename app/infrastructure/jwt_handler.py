@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, UTC
-from jose import jwt, JWTError
 from typing import Optional, Dict
 from dotenv import load_dotenv
 import os
+
+import jwt as pyjwt
 
 load_dotenv()
 
@@ -20,25 +21,29 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("API_ACCESS_TOKEN_EXPIRE_MINUTES", 6
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("API_REFRESH_TOKEN_EXPIRE_DAYS", 7))
 
 
+class JWTError(Exception):
+    """Raised when JWT encoding/decoding fails."""
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire, "type": "access"})
 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return pyjwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(UTC) + (expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
     to_encode.update({"exp": expire, "type": "refresh"})
-    return jwt.encode(to_encode, REFRESH_SECRET_KEY, algorithm=ALGORITHM)
+    return pyjwt.encode(to_encode, REFRESH_SECRET_KEY, algorithm=ALGORITHM)
 
 
 def verify_token(token: str, refresh: bool = False) -> Optional[Dict]:
     try:
         secret = REFRESH_SECRET_KEY if refresh else SECRET_KEY
-        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
+        payload = pyjwt.decode(token, secret, algorithms=[ALGORITHM])
         return payload
-    except JWTError:
+    except pyjwt.exceptions.PyJWTError:
         return None

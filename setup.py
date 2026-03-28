@@ -2,7 +2,7 @@ import asyncio
 import secrets
 import string
 import os
-from passlib.context import CryptContext
+from app.utils.password import hash_password
 from sqlalchemy import select, text
 from app.infrastructure.database import engine, Base, async_session_maker
 
@@ -12,8 +12,6 @@ from app.models.notification import Notification
 from app.models.support_ticket import SupportTicket
 from app.models.support_message import SupportMessage
 from app.models.enums import UserRole, UserStatus
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def generate_secure_password(length: int = 16) -> str:
@@ -54,7 +52,7 @@ async def init_db_and_create_admin():
                 first_name="Super",
                 last_name="Admin",
                 email=email,
-                hashed_password=pwd_context.hash(password),
+                hashed_password=hash_password(password),
                 role=UserRole.SUPER_ADMIN,
                 status=UserStatus.ACTIVE,
                 is_active=True

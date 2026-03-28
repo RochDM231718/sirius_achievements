@@ -73,6 +73,7 @@ async def _notify_support_user(db: AsyncSession, user_id: int, title: str, messa
     )
 
 
+@router.get('')
 @router.get('/')
 async def moderation_support_queue(
     page: int = Query(default=1, ge=1, le=1000),
@@ -226,7 +227,7 @@ async def take_ticket(
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'taken'})
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail='Не удалось принять обращение в работу.') from exc
 
     updated_ticket = await ticket_repo.find_with_messages(ticket_id)
     return {'success': True, 'ticket': serialize_support_ticket(updated_ticket, include_messages=True)}
@@ -267,7 +268,7 @@ async def send_moderator_message(
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'moderator_reply'})
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail='Не удалось отправить сообщение.') from exc
 
     updated_ticket = await ticket_repo.find_with_messages(ticket_id)
     return {
@@ -301,7 +302,7 @@ async def close_ticket(
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'closed'})
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail='Не удалось закрыть обращение.') from exc
 
     updated_ticket = await ticket_repo.find_with_messages(ticket_id)
     return {'success': True, 'ticket': serialize_support_ticket(updated_ticket, include_messages=True)}
@@ -333,7 +334,7 @@ async def reopen_ticket(
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'reopened'})
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail='Не удалось переоткрыть обращение.') from exc
 
     updated_ticket = await ticket_repo.find_with_messages(ticket_id)
     return {'success': True, 'ticket': serialize_support_ticket(updated_ticket, include_messages=True)}

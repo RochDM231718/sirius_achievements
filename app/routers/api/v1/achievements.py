@@ -126,9 +126,9 @@ async def create_achievement(
     service: AchievementService = Depends(get_service),
 ):
     rl_key = f'upload_rl:{current_user.id}'
-    if await rate_limiter.is_limited(rl_key, settings.UPLOAD_MAX_PER_HOUR, settings.UPLOAD_RATE_TTL):
+    upload_count = int(await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL))
+    if upload_count > settings.UPLOAD_MAX_PER_HOUR:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Слишком много загрузок. Попробуйте позже.')
-    await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL)
 
     resolved_category = _resolve_enum(AchievementCategory, category)
     resolved_level = _resolve_enum(AchievementLevel, level)
@@ -154,7 +154,7 @@ async def create_achievement(
         achievement = await service.create(create_data)
         return {'achievement': serialize_achievement(achievement)}
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Не удалось загрузить документ. Проверьте файл и повторите попытку.') from exc
 
 
 @router.put('/{achievement_id}/revise')
@@ -197,7 +197,7 @@ async def revise_achievement(
         updated = await service.repo.find(achievement_id)
         return {'achievement': serialize_achievement(updated)}
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Не удалось обновить документ. Проверьте данные и повторите попытку.') from exc
 
 
 @router.delete('/{achievement_id}')
@@ -214,4 +214,4 @@ async def delete_achievement(
         await service.delete(achievement_id, current_user.id, current_user.role)
         return {'success': True}
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Удаление документа недоступно.') from exc

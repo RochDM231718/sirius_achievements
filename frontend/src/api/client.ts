@@ -6,6 +6,17 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+function getCookieValue(name: string): string | null {
+  const cookies = document.cookie ? document.cookie.split('; ') : []
+  for (const cookie of cookies) {
+    const [cookieName, ...rest] = cookie.split('=')
+    if (cookieName === name) {
+      return decodeURIComponent(rest.join('='))
+    }
+  }
+  return null
+}
+
 let isRefreshing = false
 let failedQueue: Array<{
   resolve: (token: string) => void
@@ -24,6 +35,12 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+
+  const csrfToken = getCookieValue('XSRF-TOKEN')
+  const method = (config.method ?? 'get').toLowerCase()
+  if (csrfToken && config.headers && (method !== 'get' && method !== 'head' && method !== 'options' || config.url?.includes('/auth/session'))) {
+    config.headers['X-CSRF-Token'] = csrfToken
   }
 
   if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {

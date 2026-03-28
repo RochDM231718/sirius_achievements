@@ -78,7 +78,7 @@ export const authApi = {
   },
 
   session() {
-    return client.get<LoginResponse>('/auth/session')
+    return client.post<LoginResponse>('/auth/session')
   },
 
   logout() {

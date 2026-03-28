@@ -214,6 +214,7 @@ async def _get_target_user_or_404(db: AsyncSession, user_id: int):
     return target_user
 
 
+@router.get('')
 @router.get('/')
 async def list_users(
     page: int = Query(default=1, ge=1, le=1000),

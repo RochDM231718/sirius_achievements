@@ -2,11 +2,9 @@ import secrets
 import string
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from passlib.context import CryptContext
 from app.models.user import Users
 from app.models.enums import UserRole, UserStatus
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from app.utils.password import hash_password
 
 
 def _generate_password(length: int = 16) -> str:
@@ -36,7 +34,7 @@ class UsersTableSeeder:
 
         admin = Users(
             email="super.admin@example.com",
-            hashed_password=pwd_context.hash(admin_pw),
+            hashed_password=hash_password(admin_pw),
             first_name="Super",
             last_name="Admin",
             role=UserRole.SUPER_ADMIN.value,
@@ -47,7 +45,7 @@ class UsersTableSeeder:
 
         moderator = Users(
             email="moderator@example.com",
-            hashed_password=pwd_context.hash(moderator_pw),
+            hashed_password=hash_password(moderator_pw),
             first_name="Moderator",
             last_name="User",
             role=UserRole.MODERATOR.value,
@@ -58,7 +56,7 @@ class UsersTableSeeder:
 
         student = Users(
             email="student@example.com",
-            hashed_password=pwd_context.hash(student_pw),
+            hashed_password=hash_password(student_pw),
             first_name="Student",
             last_name="User",
             role=UserRole.STUDENT.value,

@@ -44,13 +44,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     void refreshNotifications()
 
-    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
-    if (!token) {
-      return
-    }
-
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/notifications?token=${encodeURIComponent(token)}`)
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
+    const socket = token
+      ? new WebSocket(`${protocol}://${window.location.host}/ws/notifications`, token)
+      : new WebSocket(`${protocol}://${window.location.host}/ws/notifications`)
     socket.onmessage = () => {
       void refreshNotifications()
     }

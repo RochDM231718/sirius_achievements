@@ -65,6 +65,7 @@ def _file_response(relative_path: str, inline: bool) -> FileResponse:
     return response
 
 
+@router.get('')
 @router.get('/')
 async def list_documents(
     query: str = '',
@@ -174,7 +175,7 @@ async def delete_document(
             target_education_level=getattr(getattr(document, 'user', None), 'education_level', None),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        raise HTTPException(status_code=403, detail='Удаление документа недоступно.') from exc
 
     return {'success': True}
 
