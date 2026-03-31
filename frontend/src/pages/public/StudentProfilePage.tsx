@@ -28,19 +28,36 @@ function formatDate(dateStr?: string | null) {
   return new Date(dateStr).toLocaleDateString('ru-RU')
 }
 
-const CAT_COLORS = ['#6d5ef3', '#ea580c', '#0891b2', '#ca8a04', '#db2777', '#059669', '#7c3aed', '#0284c7']
+
+function isPdf(url?: string | null) {
+  return /\.pdf$/i.test(url ?? '')
+}
+
+const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
+const RADAR_COLORS = [
+  { border: '#6366f1', bg: 'rgba(99,102,241,0.18)' },
+  { border: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },
+  { border: '#ec4899', bg: 'rgba(236,72,153,0.18)' },
+  { border: '#10b981', bg: 'rgba(16,185,129,0.18)' },
+  { border: '#f59e0b', bg: 'rgba(245,158,11,0.18)' },
+  { border: '#ef4444', bg: 'rgba(239,68,68,0.18)' },
+  { border: '#8b5cf6', bg: 'rgba(139,92,246,0.18)' },
+  { border: '#64748b', bg: 'rgba(100,116,139,0.18)' },
+]
 
 function StudentProfilePageInner() {
   const { id } = useParams<{ id: string }>()
   const studentId = Number(id)
   const navigate = useNavigate()
   const progressChartRef = useRef<HTMLCanvasElement>(null)
-  const categoryChartRef = useRef<HTMLCanvasElement>(null)
+  const radarChartRef = useRef<HTMLCanvasElement>(null)
   const progressInstanceRef = useRef<Chart | null>(null)
-  const categoryInstanceRef = useRef<Chart | null>(null)
+  const radarInstanceRef = useRef<Chart | null>(null)
   const [data, setData] = useState<PublicStudentResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const load = async () => {
@@ -139,40 +156,78 @@ function StudentProfilePageInner() {
       })
     }
 
-    // Category doughnut chart
-    if (categoryChartRef.current && data.category_breakdown?.length) {
-      categoryInstanceRef.current?.destroy()
-      const font = { family: "'Inter', system-ui, sans-serif", size: 10 }
-      categoryInstanceRef.current = new Chart(categoryChartRef.current, {
-        type: 'doughnut',
-        data: {
-          labels: data.category_breakdown.map((c) => c.category),
-          datasets: [{
-            data: data.category_breakdown.map((c) => c.count),
-            backgroundColor: CAT_COLORS.slice(0, data.category_breakdown.length),
-            borderWidth: 2,
-            borderColor: '#fff',
-            hoverOffset: 6,
-          }],
-        },
-        options: {
-          responsive: true,
-          cutout: '60%',
-          plugins: {
-            legend: { display: false },
-            tooltip: { backgroundColor: '#1e293b', titleFont: { ...font, weight: 'bold' }, bodyFont: font, padding: 10, cornerRadius: 8, boxPadding: 4 },
-          },
-        },
-      })
-    }
-
     return () => {
       progressInstanceRef.current?.destroy()
       progressInstanceRef.current = null
-      categoryInstanceRef.current?.destroy()
-      categoryInstanceRef.current = null
     }
   }, [data])
+
+  // Radar chart — rebuild when data or hiddenCats changes
+  useEffect(() => {
+    if (!radarChartRef.current || !data?.achievements?.length) return
+    const pointsMap: Record<string, number> = {}
+    for (const cat of RADAR_CATS) pointsMap[cat] = 0
+    for (const a of data.achievements) {
+      if (a.category && a.category in pointsMap) {
+        pointsMap[a.category] = (pointsMap[a.category] ?? 0) + (a.points ?? 0)
+      }
+    }
+    if (!RADAR_CATS.some((c) => (pointsMap[c] ?? 0) > 0)) return
+    const maxVal = Math.max(...RADAR_CATS.map((c) => pointsMap[c] ?? 0))
+    const font = { family: "'Inter', system-ui, sans-serif", size: 10 }
+
+    radarInstanceRef.current?.destroy()
+    radarInstanceRef.current = new Chart(radarChartRef.current, {
+      type: 'radar',
+      data: {
+        labels: RADAR_CATS,
+        datasets: RADAR_CATS.map((cat, i) => {
+          const val = pointsMap[cat] ?? 0
+          const color = RADAR_COLORS[i]
+          return {
+            label: cat,
+            data: RADAR_CATS.map((c) => (c === cat ? val : 0)),
+            borderColor: val > 0 ? color.border : 'transparent',
+            backgroundColor: val > 0 ? color.bg : 'transparent',
+            borderWidth: 2,
+            pointBackgroundColor: val > 0 ? color.border : 'transparent',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: val > 0 ? 4 : 0,
+            hidden: hiddenCats.has(cat),
+          }
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: { ...font, weight: 'bold' as const },
+            bodyFont: font,
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: { label: (ctx) => ctx.parsed.r > 0 ? ` ${ctx.dataset.label}: ${ctx.parsed.r} б.` : '' },
+          },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { font, color: '#94a3b8', backdropColor: 'transparent', stepSize: Math.max(1, Math.ceil(maxVal / 4)) },
+            pointLabels: { font: { ...font, size: 11 }, color: '#475569' },
+            grid: { color: '#e2e8f0' },
+            angleLines: { color: '#e2e8f0' },
+          },
+        },
+      },
+    })
+    return () => {
+      radarInstanceRef.current?.destroy()
+      radarInstanceRef.current = null
+    }
+  }, [data, hiddenCats])
 
   const handleBack = () => {
     if (document.referrer && document.referrer.indexOf(location.hostname) !== -1) {
@@ -218,7 +273,7 @@ function StudentProfilePageInner() {
             </p>
           </div>
 
-          <div className="flex gap-4 sm:gap-6 text-center">
+          <div className="flex flex-wrap gap-4 sm:gap-6 text-center justify-center sm:justify-end">
             <div>
               <div className="text-2xl font-bold text-indigo-600">{data.total_points}</div>
               <div className="text-[11px] text-slate-500 uppercase tracking-wider">Баллов</div>
@@ -270,36 +325,74 @@ function StudentProfilePageInner() {
             </div>
           ) : null}
 
-          {catStats.length ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">По категориям</h3>
-              <div className="flex flex-col sm:flex-row items-center gap-6">
-                <div className="w-48 h-48 flex-shrink-0">
-                  <canvas ref={categoryChartRef} />
+          {data.achievements?.length ? (() => {
+            const pointsMap: Record<string, number> = {}
+            for (const cat of RADAR_CATS) pointsMap[cat] = 0
+            for (const a of data.achievements) {
+              if (a.category && a.category in pointsMap) {
+                pointsMap[a.category] = (pointsMap[a.category] ?? 0) + (a.points ?? 0)
+              }
+            }
+            const activeCats = RADAR_CATS.filter((c) => pointsMap[c] > 0)
+            if (!activeCats.length) return null
+            return (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
+                <div className="h-64">
+                  <canvas ref={radarChartRef} />
                 </div>
-                <div className="flex-1 space-y-2">
-                  {catStats.map((item) => (
-                    <div key={item.category} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">{item.category}</span>
-                      <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium">{item.count}</span>
-                    </div>
-                  ))}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {activeCats.map((cat) => {
+                    const idx = RADAR_CATS.indexOf(cat)
+                    const color = RADAR_COLORS[idx]
+                    const isHidden = hiddenCats.has(cat)
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setHiddenCats((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(cat)) next.delete(cat)
+                          else next.add(cat)
+                          return next
+                        })}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
+                        {cat}
+                        <span className="text-[10px] font-semibold ml-0.5" style={{ color: isHidden ? '#94a3b8' : color.border }}>
+                          {pointsMap[cat]} б.
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-            </div>
-          ) : null}
+            )
+          })() : null}
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Достижения ({data.total_docs})</h3>
             {data.achievements.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {data.achievements.map((a) => (
-                  <div key={a.id} className="group block bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all overflow-hidden">
+                  <div
+                    key={a.id}
+                    className={`group bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all overflow-hidden ${a.preview_url ? 'cursor-pointer' : ''}`}
+                    onClick={() => a.preview_url && setPreviewUrl(a.preview_url)}
+                  >
                     <div className="p-3 sm:p-4">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm font-semibold text-slate-800 min-h-[2.5rem]" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{a.title}</p>
-                        <div className="inline-flex items-center rounded-full bg-green-500 text-white text-[10px] font-bold px-2 py-1 shadow-sm shrink-0">
-                          +{a.points || 0}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {a.preview_url && (
+                            <span className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-600 text-[9px] font-medium px-1.5 py-0.5">
+                              {isPdf(a.preview_url) ? 'PDF' : 'Фото'}
+                            </span>
+                          )}
+                          <div className="inline-flex items-center rounded-full bg-green-500 text-white text-[10px] font-bold px-2 py-1 shadow-sm">
+                            +{a.points || 0}
+                          </div>
                         </div>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -327,6 +420,53 @@ function StudentProfilePageInner() {
       ) : null}
 
       <p className="text-center text-xs text-slate-400 mt-8">Sirius.Achievements &copy; 2026</p>
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <span className="text-sm font-semibold text-slate-700">Просмотр документа</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors"
+                >
+                  Открыть в новой вкладке
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewUrl(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-50 flex items-center justify-center min-h-[400px]">
+              {isPdf(previewUrl) ? (
+                <iframe
+                  src={previewUrl}
+                  className="w-full h-full min-h-[500px] border-0 bg-white"
+                  title="PDF"
+                  allow="fullscreen"
+                />
+              ) : (
+                <img src={previewUrl} alt="Документ" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

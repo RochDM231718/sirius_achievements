@@ -30,6 +30,20 @@ from .serializers import serialize_achievement, serialize_user
 router = APIRouter(prefix='/api/v1/profile', tags=['api.v1.profile'])
 
 _PHONE_RE = re.compile(r'^[\d\s\+\-\(\)]{0,20}$')
+_EMOJI_RE = re.compile(
+    '[\U0001F600-\U0001F64F'
+    '\U0001F300-\U0001F5FF'
+    '\U0001F680-\U0001F6FF'
+    '\U0001F700-\U0001F77F'
+    '\U0001F780-\U0001F7FF'
+    '\U0001F800-\U0001F8FF'
+    '\U0001F900-\U0001F9FF'
+    '\U0001FA00-\U0001FA6F'
+    '\U0001FA70-\U0001FAFF'
+    '\U00002702-\U000027B0'
+    '\U000024C2-\U0001F251]+',
+    flags=re.UNICODE,
+)
 
 
 class FlowTokenPayload(BaseModel):
@@ -158,8 +172,8 @@ async def update_profile(
     current_user=Depends(auth),
     service: UserService = Depends(get_user_service),
 ):
-    normalized_first_name = (first_name or current_user.first_name or '').strip() or current_user.first_name
-    normalized_last_name = (last_name or current_user.last_name or '').strip() or current_user.last_name
+    normalized_first_name = _EMOJI_RE.sub('', (first_name or current_user.first_name or '')).strip() or current_user.first_name
+    normalized_last_name = _EMOJI_RE.sub('', (last_name or current_user.last_name or '')).strip() or current_user.last_name
     normalized_phone = phone_number.strip() if isinstance(phone_number, str) else phone_number
     normalized_phone = normalized_phone or None
 

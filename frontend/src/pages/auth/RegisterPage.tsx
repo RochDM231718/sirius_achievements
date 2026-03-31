@@ -7,6 +7,10 @@ import { EducationLevel } from '@/types/enums'
 import { getAuthFlowEmail, getAuthFlowRemainingSeconds, hasStoredAuthFlow, saveAuthFlow } from '@/utils/authFlow'
 import { getErrorMessage } from '@/utils/http'
 
+function stripEmoji(value: string): string {
+  return value.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s{2,}/g, ' ')
+}
+
 const COURSE_MAPPING: Record<string, number> = {
   [EducationLevel.COLLEGE]: 4,
   [EducationLevel.BACHELOR]: 4,
@@ -68,7 +72,8 @@ export function RegisterPage() {
     strengthScore <= 1 ? 'bg-red-500' : strengthScore <= 3 ? 'bg-yellow-500' : 'bg-green-500'
 
   const handleChange = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
-    setForm((current) => ({ ...current, [key]: value }))
+    const sanitized = (key === 'first_name' || key === 'last_name') ? stripEmoji(value as string) as (typeof form)[K] : value
+    setForm((current) => ({ ...current, [key]: sanitized }))
   }
 
   const handleEducationChange = (value: string) => {

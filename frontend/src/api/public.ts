@@ -3,7 +3,7 @@ import { Achievement } from '@/types/achievement'
 import { User } from '@/types/user'
 
 export interface PublicStudentAchievement extends Achievement {
-  preview_url: string
+  preview_url: string | null
 }
 
 export interface PublicStudentResponse {

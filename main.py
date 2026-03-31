@@ -85,6 +85,8 @@ async def _apply_schema_updates():
     enum_additions = [
         "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'HACKATHON'",
         "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'Хакатон'",
+        "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'PATRIOTISM'",
+        "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'PROJECTS'",
         "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'PARTICIPANT'",
         "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'PRIZEWINNER'",
         "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'WINNER'",

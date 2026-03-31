@@ -13,6 +13,10 @@ import { getErrorMessage } from '@/utils/http'
 
 Chart.register(...registerables)
 
+function stripEmoji(value: string): string {
+  return value.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s{2,}/g, ' ')
+}
+
 function buildStaticUrl(path?: string | null) {
   if (!path) return ''
   if (path.startsWith('http') || path.startsWith('/')) return path
@@ -101,9 +105,12 @@ export function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
 
-  // Chart
+  // Charts
   const chartRef = useRef<HTMLCanvasElement>(null)
   const chartInstanceRef = useRef<Chart | null>(null)
+  const radarChartRef = useRef<HTMLCanvasElement>(null)
+  const radarInstanceRef = useRef<Chart | null>(null)
+  const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set())
 
   const isStudent = user?.role === UserRole.STUDENT
 
@@ -271,7 +278,7 @@ export function ProfilePage() {
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { font, usePointStyle: true, pointStyle: 'circle', padding: 16, boxWidth: 6 },
+            labels: { font, usePointStyle: true, pointStyle: 'circle', padding: 20, boxWidth: 8, boxHeight: 8 },
           },
           tooltip: {
             backgroundColor: '#1e293b',
@@ -317,6 +324,94 @@ export function ProfilePage() {
       chartInstanceRef.current = null
     }
   }, [profile, isStudent])
+
+  // Radar chart by category (approved docs) — one dataset per category, toggle support
+  const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
+  const RADAR_COLORS = [
+    { border: '#6366f1', bg: 'rgba(99,102,241,0.18)' },   // Спорт — indigo
+    { border: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },   // Наука — blue
+    { border: '#ec4899', bg: 'rgba(236,72,153,0.18)' },   // Искусство — pink
+    { border: '#10b981', bg: 'rgba(16,185,129,0.18)' },   // Волонтёрство — emerald
+    { border: '#f59e0b', bg: 'rgba(245,158,11,0.18)' },   // Хакатон — amber
+    { border: '#ef4444', bg: 'rgba(239,68,68,0.18)' },    // Патриотизм — red
+    { border: '#8b5cf6', bg: 'rgba(139,92,246,0.18)' },   // Проекты — violet
+    { border: '#64748b', bg: 'rgba(100,116,139,0.18)' },  // Другое — slate
+  ]
+
+  useEffect(() => {
+    if (!profile || !isStudent || !radarChartRef.current) return
+    const pointsMap: Record<string, number> = {}
+    for (const cat of RADAR_CATS) pointsMap[cat] = 0
+    for (const doc of profile.my_docs) {
+      if (doc.status === 'approved' && doc.category && doc.category in pointsMap) {
+        pointsMap[doc.category] = (pointsMap[doc.category] ?? 0) + (doc.points ?? 0)
+      }
+    }
+    const hasData = RADAR_CATS.some((c) => (pointsMap[c] ?? 0) > 0)
+    if (!hasData) return
+
+    const font = { family: "'Inter', system-ui, sans-serif", size: 10 }
+    const maxVal = Math.max(...RADAR_CATS.map((c) => pointsMap[c] ?? 0))
+
+    radarInstanceRef.current?.destroy()
+    radarInstanceRef.current = new Chart(radarChartRef.current, {
+      type: 'radar',
+      data: {
+        labels: RADAR_CATS,
+        datasets: RADAR_CATS.map((cat, i) => {
+          const val = pointsMap[cat] ?? 0
+          const color = RADAR_COLORS[i]
+          // Sparse data: put actual value at this index, 0 elsewhere so each dataset draws one "spoke"
+          const data = RADAR_CATS.map((c) => (c === cat ? val : 0))
+          return {
+            label: cat,
+            data,
+            borderColor: val > 0 ? color.border : 'transparent',
+            backgroundColor: val > 0 ? color.bg : 'transparent',
+            borderWidth: 2,
+            pointBackgroundColor: val > 0 ? color.border : 'transparent',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: val > 0 ? 4 : 0,
+            hidden: hiddenCats.has(cat),
+          }
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: { ...font, weight: 'bold' as const },
+            bodyFont: font,
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.r
+                return v > 0 ? ` ${ctx.dataset.label}: ${v} б.` : ''
+              },
+            },
+          },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { font, color: '#94a3b8', backdropColor: 'transparent', stepSize: Math.max(1, Math.ceil(maxVal / 4)) },
+            pointLabels: { font: { ...font, size: 11 }, color: '#475569' },
+            grid: { color: '#e2e8f0' },
+            angleLines: { color: '#e2e8f0' },
+          },
+        },
+      },
+    })
+    return () => {
+      radarInstanceRef.current?.destroy()
+      radarInstanceRef.current = null
+    }
+  }, [profile, isStudent, hiddenCats])
 
   // Cropper init when modal opens
   useEffect(() => {
@@ -537,7 +632,7 @@ export function ProfilePage() {
     <>
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Настройки профиля</h2>
           {isStudent && (
             <a
@@ -665,7 +760,7 @@ export function ProfilePage() {
                     <input
                       type="text"
                       value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
+                      onChange={(e) => setFirstName(stripEmoji(e.target.value))}
                       required
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     />
@@ -675,7 +770,7 @@ export function ProfilePage() {
                     <input
                       type="text"
                       value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                      onChange={(e) => setLastName(stripEmoji(e.target.value))}
                       required
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     />
@@ -799,11 +894,11 @@ export function ProfilePage() {
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                       />
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                       <button
                         type="submit"
                         disabled={isVerifyingCode}
-                        className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
                       >
                         {isVerifyingCode ? 'Проверяем...' : 'Подтвердить'}
                       </button>
@@ -811,7 +906,7 @@ export function ProfilePage() {
                         type="button"
                         onClick={() => void handleResendPasswordCode()}
                         disabled={isSendingCode || resendCooldown > 0}
-                        className="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        className="w-full sm:w-auto bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
                       >
                         {resendCooldown > 0 ? `Повторно (${resendCooldown}с)` : 'Отправить повторно'}
                       </button>
@@ -975,6 +1070,56 @@ export function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ===== RADAR CHART (students only) ===== */}
+      {activeTab === 'profile' && isStudent && profile.my_docs.some((d) => d.status === 'approved') && (() => {
+        const pointsMap: Record<string, number> = {}
+        for (const cat of RADAR_CATS) pointsMap[cat] = 0
+        for (const doc of profile.my_docs) {
+          if (doc.status === 'approved' && doc.category && doc.category in pointsMap) {
+            pointsMap[doc.category] = (pointsMap[doc.category] ?? 0) + (doc.points ?? 0)
+          }
+        }
+        const activeCats = RADAR_CATS.filter((c) => (pointsMap[c] ?? 0) > 0)
+        return (
+          <div className="max-w-2xl mx-auto mt-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
+              <div className="h-64 sm:h-72">
+                <canvas ref={radarChartRef} />
+              </div>
+              {activeCats.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {activeCats.map((cat, _i) => {
+                    const idx = RADAR_CATS.indexOf(cat)
+                    const color = RADAR_COLORS[idx]
+                    const isHidden = hiddenCats.has(cat)
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setHiddenCats((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(cat)) next.delete(cat)
+                          else next.add(cat)
+                          return next
+                        })}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
+                        {cat}
+                        <span className="text-[10px] font-semibold ml-0.5" style={{ color: isHidden ? '#94a3b8' : color.border }}>
+                          {pointsMap[cat]} б.
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ===== CROP MODAL ===== */}
       {showCropModal && (

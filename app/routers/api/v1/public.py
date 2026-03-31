@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,7 @@ from app.infrastructure.database import get_db
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole, UserStatus
 from app.models.user import Users
+from app.utils.media_paths import guess_media_type, resolve_static_path
 from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 
 from .serializers import serialize_achievement, serialize_user_public
@@ -106,7 +108,10 @@ async def public_student_profile(student_id: int, db: AsyncSession = Depends(get
     achievements_payload = []
     for achievement in achievements:
         item = serialize_achievement(achievement)
-        item['preview_url'] = f'/sirius.achievements/students/{student_id}/documents/{achievement.id}/preview'
+        item['preview_url'] = (
+            f'/api/v1/public/students/{student_id}/documents/{achievement.id}/preview'
+            if achievement.file_path else None
+        )
         achievements_payload.append(item)
 
     return {
@@ -127,3 +132,32 @@ async def public_student_profile(student_id: int, db: AsyncSession = Depends(get
         ],
         'public_url': f'/sirius.achievements/app/students/{student_id}',
     }
+
+
+@router.get('/students/{student_id}/documents/{document_id}/preview')
+async def public_document_preview(student_id: int, document_id: int, db: AsyncSession = Depends(get_db)):
+    """Serve approved achievement documents publicly (no auth required)."""
+    student = await db.get(Users, student_id)
+    if not student or student.role != UserRole.STUDENT or student.status != UserStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Student not found.')
+
+    achievement = await db.get(Achievement, document_id)
+    if (
+        not achievement
+        or achievement.user_id != student_id
+        or achievement.status != AchievementStatus.APPROVED
+        or not achievement.file_path
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Document not found.')
+
+    try:
+        full_path = resolve_static_path(achievement.file_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail='Invalid file path') from exc
+
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(status_code=404, detail='File not found.')
+
+    response = FileResponse(path=full_path, media_type=guess_media_type(full_path))
+    response.headers['Content-Disposition'] = f'inline; filename="{full_path.name}"'
+    return response
