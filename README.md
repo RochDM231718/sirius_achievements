@@ -78,8 +78,9 @@
 | Компонент | Технология |
 |-----------|-----------|
 | Контейнеризация | Docker, Docker Compose |
-| Тестирование | pytest, pytest-asyncio |
+| Тестирование | pytest, pytest-asyncio, Jenkins |
 | Базовый образ | python:3.11-slim |
+| CI\CD | Jenkins |
 
 ---
 
