@@ -31,6 +31,8 @@ class AchievementCategory(str, Enum):
     ART = "Искусство"
     VOLUNTEERING = "Волонтёрство"
     HACKATHON = "Хакатон"
+    PATRIOTISM = "Патриотизм"
+    PROJECTS = "Проекты"
     OTHER = "Другое"
 
 class AchievementLevel(str, Enum):

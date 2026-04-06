@@ -253,7 +253,7 @@ def test_verify_code_only_consumes_scoped_reset_token(auth_service):
 def test_reset_password_final_revokes_all_versions(auth_service, monkeypatch):
     user = _make_user(session_version=2, api_access_version=3, api_refresh_version=4)
     auth_service.repository.find = AsyncMock(return_value=user)
-    monkeypatch.setattr("app.services.auth_service.pwd_context.hash", lambda value: "new-hash")
+    monkeypatch.setattr("app.services.auth_service.hash_password", lambda value: "new-hash")
 
     result = asyncio.run(auth_service.reset_password_final(user.id, "StrongPass123!"))
 

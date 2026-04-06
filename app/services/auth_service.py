@@ -1,11 +1,11 @@
 import smtplib
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import structlog
 from fastapi import BackgroundTasks
 from jinja2 import Environment, FileSystemLoader
-from passlib.context import CryptContext
 from sqlalchemy import func, select
 
 from app.config import settings
@@ -15,10 +15,10 @@ from app.models.user import Users
 from app.schemas.admin.auth import UserRegister
 from app.schemas.admin.user_tokens import UserTokenCreate
 from app.services.admin.user_token_service import UserTokenService
+from app.utils.password import hash_password, verify_password as _verify_password
 from app.utils.rate_limiter import rate_limiter
 
 logger = structlog.get_logger()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _email_env = Environment(loader=FileSystemLoader("templates"), autoescape=True)
 
 
@@ -87,14 +87,14 @@ class AuthService:
         email = email.strip().lower()
         rl_key = f"login_attempts:{ip}:{email}"
 
-        if await rate_limiter.is_limited(rl_key, settings.LOGIN_MAX_ATTEMPTS, settings.LOGIN_LOCKOUT_TTL):
+        attempt_count = int(await rate_limiter.increment(rl_key, settings.LOGIN_LOCKOUT_TTL))
+        if attempt_count > settings.LOGIN_MAX_ATTEMPTS:
             raise UserBlockedException("Слишком много попыток. Повторите через 15 мин.")
 
         user = await self.repository.get_by_email(email)
         if not user:
-            pwd_context.hash(password)
+            hash_password(password)
             logger.warning("Login failed: user not found", email=email)
-            await self._record_failed_attempt(rl_key)
             return None
 
         if user.status == UserStatus.REJECTED:
@@ -103,16 +103,12 @@ class AuthService:
 
         if not self.verify_password(password, user.hashed_password):
             logger.warning("Login failed: wrong password", email=email)
-            await self._record_failed_attempt(rl_key)
             return None
 
         await rate_limiter.reset(rl_key)
 
         logger.info("User logged in", user_id=user.id, email=user.email)
         return user
-
-    async def _record_failed_attempt(self, key: str):
-        await rate_limiter.increment(key, settings.LOGIN_LOCKOUT_TTL)
 
     async def register_user(self, data: UserRegister) -> Users:
         data.email = data.email.strip().lower()
@@ -121,7 +117,7 @@ class AuthService:
         if result.scalars().first():
             raise Exception("Пользователь с таким email уже существует")
 
-        hashed_pw = pwd_context.hash(data.password)
+        hashed_pw = hash_password(data.password)
 
         new_user = Users(
             first_name=data.first_name,
@@ -185,7 +181,7 @@ class AuthService:
         }
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        return pwd_context.verify(plain_password, hashed_password)
+        return _verify_password(plain_password, hashed_password)
 
     @staticmethod
     def _sanitize_email(email: str) -> str:
@@ -226,11 +222,23 @@ class AuthService:
         except Exception as exc:
             logger.error("Failed to send email via SMTP", error=str(exc))
 
+    def _maybe_log_dev_mail_code(self, *, flow: str, email: str, code: str):
+        if settings.ENV == "production" or not settings.MAIL_DEV_LOG_CODES:
+            return
+
+        logger.warning(
+            "Development mail code fallback",
+            flow=flow,
+            email=email,
+            code=code,
+        )
+
     async def forgot_password(self, email: str, background_tasks: BackgroundTasks = None):
+        _GENERIC_MSG = "Если аккаунт существует, код будет отправлен"
         email = email.strip().lower()
         user = await self.repository.get_by_email(email)
         if not user:
-            return True, "Код отправлен (если аккаунт существует)", 60, None
+            return True, _GENERIC_MSG, 60, None
 
         retry_after = await self.user_token_service.get_time_until_next_retry(user.id)
         if retry_after > 0:
@@ -239,6 +247,7 @@ class AuthService:
         user_token = await self.user_token_service.create(
             UserTokenCreate(user_id=user.id, type=UserTokenType.RESET_PASSWORD)
         )
+        self._maybe_log_dev_mail_code(flow="reset_password", email=user.email, code=user_token.token)
 
         subject = "Разовый код"
         ctx = {"email": user.email, "code": user_token.token}
@@ -256,7 +265,7 @@ class AuthService:
         else:
             self._send_mail_task(user.email, subject, text_content, html_content)
 
-        return True, "Код успешно отправлен", 60, user.id
+        return True, _GENERIC_MSG, 60, user.id
 
     async def send_email_verification(self, user: Users, background_tasks: BackgroundTasks = None):
         retry_after = await self.user_token_service.get_time_until_next_retry_by_type(
@@ -268,6 +277,7 @@ class AuthService:
         user_token = await self.user_token_service.create(
             UserTokenCreate(user_id=user.id, type=UserTokenType.VERIFY_EMAIL)
         )
+        self._maybe_log_dev_mail_code(flow="verify_email", email=user.email, code=user_token.token)
 
         subject = "Подтверждение email"
         ctx = {"first_name": user.first_name, "code": user_token.token}
@@ -321,7 +331,7 @@ class AuthService:
         if not user:
             raise Exception("Пользователь не найден")
 
-        user.hashed_password = pwd_context.hash(new_password)
+        user.hashed_password = hash_password(new_password)
         user.session_version = self._next_version(user.session_version)
         user.api_access_version = self._next_version(user.api_access_version)
         user.api_refresh_version = self._next_version(user.api_refresh_version)

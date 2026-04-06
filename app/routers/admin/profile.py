@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Request, Depends, Form, UploadFi
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.context import CryptContext
+from app.utils.password import hash_password
 
 _PHONE_RE = re.compile(r'^[\d\s\+\-\(\)]{0,20}$')
 
@@ -30,7 +30,6 @@ router = APIRouter(
     tags=["admin.profile"],
     dependencies=[Depends(require_auth)],
 )
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def get_service(db: AsyncSession = Depends(get_db)):
@@ -256,7 +255,8 @@ async def password_verify_code(
     seconds_left = max(0, retry_at - int(time.time()))
 
     rl_key = f"pwd_change_otp:{flow_id}"
-    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
+    attempt_count = int(await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL))
+    if attempt_count > settings.OTP_MAX_ATTEMPTS:
         return templates.TemplateResponse("profile/verify_password_code.html", {
             "request": request, "user": user, "email": user.email,
             "error_msg": "Слишком много попыток. Запросите новый код.",
@@ -269,8 +269,7 @@ async def password_verify_code(
         request.session["pwd_change_verified"] = True
         return RedirectResponse(url=request.url_for("admin.profile.password.reset_page"), status_code=302)
     except Exception:
-        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
-        remaining = await rate_limiter.remaining(rl_key, settings.OTP_MAX_ATTEMPTS)
+        remaining = max(0, settings.OTP_MAX_ATTEMPTS - attempt_count)
         error_msg = "Неверный код." if remaining > 2 else f"Неверный код. Осталось попыток: {remaining}."
         return templates.TemplateResponse("profile/verify_password_code.html", {
             "request": request, "user": user, "email": user.email,
@@ -338,7 +337,7 @@ async def change_password(
             "error_msg": "; ".join(error_messages),
         })
 
-    user.hashed_password = pwd_context.hash(new_password)
+    user.hashed_password = hash_password(new_password)
     user.session_version = int(user.session_version or 0) + 1
     user.api_access_version = int(user.api_access_version or 0) + 1
     user.api_refresh_version = int(user.api_refresh_version or 0) + 1

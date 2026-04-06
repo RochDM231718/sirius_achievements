@@ -1,0 +1,54 @@
+﻿import client from './client'
+import { User } from '@/types/user'
+
+export interface LeaderboardRow {
+  rank: number
+  user: User
+  total_points: number
+  achievements_count: number
+  is_me: boolean
+}
+
+export interface LeaderboardResponse {
+  leaderboard: LeaderboardRow[]
+  my_rank: number
+  my_points: number
+  current_education_level: string
+  current_course: number
+  current_category: string
+  current_group: string
+  categories: string[]
+  education_levels: string[]
+  course_mapping: Record<string, number>
+  group_mapping: Record<string, string[]>
+  can_export: boolean
+  can_end_season: boolean
+  export_url: string
+}
+
+export interface LeaderboardParams {
+  education_level?: string
+  course?: number | string
+  category?: string
+  group?: string
+}
+
+export const leaderboardApi = {
+  get(params: LeaderboardParams) {
+    return client.get<LeaderboardResponse>('/leaderboard', { params })
+  },
+
+  exportCsv(params: LeaderboardParams) {
+    return client.get('/leaderboard/export', { params, responseType: 'blob' })
+  },
+
+  endSeason(seasonName: string) {
+    const formData = new FormData()
+    formData.append('season_name', seasonName)
+    return client.post<{ success: boolean }>('/leaderboard/end-season', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+}
+
+

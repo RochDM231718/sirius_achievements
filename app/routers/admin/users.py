@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import math
@@ -170,15 +170,15 @@ async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db
     if not current_user:
         return RedirectResponse(url="/sirius.achievements/login", status_code=302)
 
-    # Студент пытается открыть чужой профиль → публичный профиль
+    # РЎС‚СѓРґРµРЅС‚ РїС‹С‚Р°РµС‚СЃСЏ РѕС‚РєСЂС‹С‚СЊ С‡СѓР¶РѕР№ РїСЂРѕС„РёР»СЊ в†’ РїСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ
     if not current_user.is_staff and current_user.id != id:
-        return RedirectResponse(url=f"/sirius.achievements/students/{id}", status_code=302)
+        return RedirectResponse(url=f"/sirius.achievements/app/students/{id}", status_code=302)
 
-    # Студент открывает свой профиль → страница настроек
+    # РЎС‚СѓРґРµРЅС‚ РѕС‚РєСЂС‹РІР°РµС‚ СЃРІРѕР№ РїСЂРѕС„РёР»СЊ в†’ СЃС‚СЂР°РЅРёС†Р° РЅР°СЃС‚СЂРѕРµРє
     if not current_user.is_staff and current_user.id == id:
         return RedirectResponse(url="/sirius.achievements/profile", status_code=302)
 
-    # Дальше только стафф
+    # Р”Р°Р»СЊС€Рµ С‚РѕР»СЊРєРѕ СЃС‚Р°С„С„
     current_user = await check_admin_rights(request, db)
 
     target_user_obj = await db.get(Users, id)
@@ -266,15 +266,15 @@ async def show_user(id: int, request: Request, db: AsyncSession = Depends(get_db
 async def generate_user_resume(id: int, request: Request, db: AsyncSession = Depends(get_db)):
     current_user = await get_current_user(request, db)
     if not current_user:
-        return JSONResponse({"error": "Нет прав"}, status_code=403)
+        return JSONResponse({"error": "РќРµС‚ РїСЂР°РІ"}, status_code=403)
 
     target_user = await db.get(Users, id)
     if not target_user:
-        return JSONResponse({"error": "Пользователь не найден"}, status_code=404)
+        return JSONResponse({"error": "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ"}, status_code=404)
 
     if current_user.id != id:
         if not current_user.is_staff or not _can_access_target(current_user, target_user):
-            return JSONResponse({"error": "Нет прав"}, status_code=403)
+            return JSONResponse({"error": "РќРµС‚ РїСЂР°РІ"}, status_code=403)
 
     service = ResumeService(db)
     check = await service.can_generate(id)
@@ -301,7 +301,7 @@ async def update_user_role(
 
     if id == current_user.id:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Нельзя изменить роль самому себе')}&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('РќРµР»СЊР·СЏ РёР·РјРµРЅРёС‚СЊ СЂРѕР»СЊ СЃР°РјРѕРјСѓ СЃРµР±Рµ')}&toast_type=error",
             status_code=302,
         )
 
@@ -310,7 +310,7 @@ async def update_user_role(
         raise HTTPException(status_code=404, detail="User not found")
     if current_user.role != UserRole.SUPER_ADMIN and not _can_access_target(current_user, target_user):
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Недостаточно прав')}&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ')}&toast_type=error",
             status_code=302,
         )
 
@@ -321,7 +321,7 @@ async def update_user_role(
 
         if target_level >= current_level or new_role_level >= current_level:
             return RedirectResponse(
-                url=f"/sirius.achievements/users/{id}?toast_msg={quote('У вас недостаточно прав для этого действия')}&toast_type=error",
+                url=f"/sirius.achievements/users/{id}?toast_msg={quote('РЈ РІР°СЃ РЅРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ СЌС‚РѕРіРѕ РґРµР№СЃС‚РІРёСЏ')}&toast_type=error",
                 status_code=302,
             )
 
@@ -338,7 +338,7 @@ async def update_user_role(
     await service.repository.update(id, update_data)
 
     return RedirectResponse(
-        url=f"/sirius.achievements/users/{id}?toast_msg={quote('Роль и права обновлены')}&toast_type=success",
+        url=f"/sirius.achievements/users/{id}?toast_msg={quote('Р РѕР»СЊ Рё РїСЂР°РІР° РѕР±РЅРѕРІР»РµРЅС‹')}&toast_type=success",
         status_code=302,
     )
 
@@ -354,7 +354,7 @@ async def delete_user(
 
     if id == current_user.id:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Нельзя удалить самого себя')}&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ СЃР°РјРѕРіРѕ СЃРµР±СЏ')}&toast_type=error",
             status_code=302,
         )
 
@@ -362,7 +362,7 @@ async def delete_user(
     if target_user:
         if current_user.role != UserRole.SUPER_ADMIN and not _can_access_target(current_user, target_user):
             return RedirectResponse(
-                url=f"/sirius.achievements/users/{id}?toast_msg={quote('Недостаточно прав')}&toast_type=error",
+                url=f"/sirius.achievements/users/{id}?toast_msg={quote('РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ')}&toast_type=error",
                 status_code=302,
             )
 
@@ -371,13 +371,13 @@ async def delete_user(
 
         if current_user.role != UserRole.SUPER_ADMIN and target_level >= current_level:
             return RedirectResponse(
-                url=f"/sirius.achievements/users/{id}?toast_msg={quote('Недостаточно прав для удаления этого пользователя')}&toast_type=error",
+                url=f"/sirius.achievements/users/{id}?toast_msg={quote('РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ СѓРґР°Р»РµРЅРёСЏ СЌС‚РѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ')}&toast_type=error",
                 status_code=302,
             )
 
     await service.repository.delete(id)
     return RedirectResponse(
-        url=f"/sirius.achievements/users?toast_msg={quote('Пользователь удален')}&toast_type=success",
+        url=f"/sirius.achievements/users?toast_msg={quote('РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ СѓРґР°Р»РµРЅ')}&toast_type=success",
         status_code=302,
     )
 
@@ -386,15 +386,15 @@ async def delete_user(
 async def api_generate_resume(id: int, request: Request, db: AsyncSession = Depends(get_db)):
     current_user = await get_current_user(request, db)
     if not current_user:
-        return JSONResponse({"error": "Нет прав"}, status_code=403)
+        return JSONResponse({"error": "РќРµС‚ РїСЂР°РІ"}, status_code=403)
 
     target_user = await db.get(Users, id)
     if not target_user:
-        return JSONResponse({"error": "Пользователь не найден"}, status_code=404)
+        return JSONResponse({"error": "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ"}, status_code=404)
 
     if current_user.id != id:
         if not current_user.is_staff or not _can_access_target(current_user, target_user):
-            return JSONResponse({"error": "Нет прав"}, status_code=403)
+            return JSONResponse({"error": "РќРµС‚ РїСЂР°РІ"}, status_code=403)
 
     service = ResumeService(db)
     result = await service.generate_resume(id, force_regenerate=True, bypass_check=current_user.is_staff)
@@ -453,19 +453,19 @@ async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(
     # Title
     page.insert_text((50, y), "Sirius.Achievements", fontsize=18, fontname="helv", color=(0.3, 0.27, 0.95))
     y += 30
-    page.insert_text((50, y), "Отчёт по студенту", fontsize=14, fontname="helv", color=(0.2, 0.2, 0.2))
+    page.insert_text((50, y), "РћС‚С‡С‘С‚ РїРѕ СЃС‚СѓРґРµРЅС‚Сѓ", fontsize=14, fontname="helv", color=(0.2, 0.2, 0.2))
     y += 35
 
     # User info
-    page.insert_text((50, y), f"ФИО: {target_user.first_name} {target_user.last_name}", fontsize=11, fontname="helv")
+    page.insert_text((50, y), f"Р¤РРћ: {target_user.first_name} {target_user.last_name}", fontsize=11, fontname="helv")
     y += 18
     page.insert_text((50, y), f"Email: {target_user.email}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
     y += 18
-    edu = target_user.education_level.value if target_user.education_level else "Не указано"
-    course = f", {target_user.course} курс" if target_user.course else ""
-    page.insert_text((50, y), f"Образование: {edu}{course}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
+    edu = target_user.education_level.value if target_user.education_level else "РќРµ СѓРєР°Р·Р°РЅРѕ"
+    course = f", {target_user.course} РєСѓСЂСЃ" if target_user.course else ""
+    page.insert_text((50, y), f"РћР±СЂР°Р·РѕРІР°РЅРёРµ: {edu}{course}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
     y += 18
-    page.insert_text((50, y), f"Баллов: {total_points}  |  Документов: {len(achievements)}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
+    page.insert_text((50, y), f"Р‘Р°Р»Р»РѕРІ: {total_points}  |  Р”РѕРєСѓРјРµРЅС‚РѕРІ: {len(achievements)}", fontsize=10, fontname="helv", color=(0.4, 0.4, 0.4))
     y += 30
 
     # Divider
@@ -473,16 +473,16 @@ async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(
     y += 20
 
     # Achievements table header
-    page.insert_text((50, y), "Одобренные достижения", fontsize=12, fontname="helv", color=(0.2, 0.2, 0.2))
+    page.insert_text((50, y), "РћРґРѕР±СЂРµРЅРЅС‹Рµ РґРѕСЃС‚РёР¶РµРЅРёСЏ", fontsize=12, fontname="helv", color=(0.2, 0.2, 0.2))
     y += 22
 
     if achievements:
         # Table header
         page.insert_text((50, y), "#", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
-        page.insert_text((70, y), "Название", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
-        page.insert_text((300, y), "Категория", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
-        page.insert_text((420, y), "Уровень", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
-        page.insert_text((510, y), "Баллы", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((70, y), "РќР°Р·РІР°РЅРёРµ", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((300, y), "РљР°С‚РµРіРѕСЂРёСЏ", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((420, y), "РЈСЂРѕРІРµРЅСЊ", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
+        page.insert_text((510, y), "Р‘Р°Р»Р»С‹", fontsize=9, fontname="helv", color=(0.5, 0.5, 0.5))
         y += 5
         page.draw_line((50, y), (545, y), color=(0.9, 0.9, 0.9), width=0.3)
         y += 12
@@ -491,9 +491,9 @@ async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(
             if y > 780:
                 page = doc.new_page(width=595, height=842)
                 y = 50
-            title = (a.title or "—")[:35]
-            cat = a.category.value if a.category else "—"
-            lvl = a.level.value if a.level else "—"
+            title = (a.title or "вЂ”")[:35]
+            cat = a.category.value if a.category else "вЂ”"
+            lvl = a.level.value if a.level else "вЂ”"
             page.insert_text((50, y), str(i), fontsize=9, fontname="helv")
             page.insert_text((70, y), title, fontsize=9, fontname="helv")
             page.insert_text((300, y), cat, fontsize=9, fontname="helv")
@@ -501,7 +501,7 @@ async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(
             page.insert_text((510, y), str(a.points or 0), fontsize=9, fontname="helv")
             y += 16
     else:
-        page.insert_text((50, y), "Нет одобренных достижений", fontsize=10, fontname="helv", color=(0.6, 0.6, 0.6))
+        page.insert_text((50, y), "РќРµС‚ РѕРґРѕР±СЂРµРЅРЅС‹С… РґРѕСЃС‚РёР¶РµРЅРёР№", fontsize=10, fontname="helv", color=(0.6, 0.6, 0.6))
         y += 20
 
     # Resume
@@ -512,7 +512,7 @@ async def export_user_pdf(id: int, request: Request, db: AsyncSession = Depends(
             y = 50
         page.draw_line((50, y), (545, y), color=(0.85, 0.85, 0.85), width=0.5)
         y += 20
-        page.insert_text((50, y), "AI-сводка профиля", fontsize=12, fontname="helv", color=(0.2, 0.2, 0.2))
+        page.insert_text((50, y), "AI-СЃРІРѕРґРєР° РїСЂРѕС„РёР»СЏ", fontsize=12, fontname="helv", color=(0.2, 0.2, 0.2))
         y += 20
         # Wrap resume text
         for line in target_user.resume_text.split("\n"):
@@ -551,19 +551,19 @@ async def set_gpa(
     current_user = await check_admin_rights(request, db)
     target_user = await db.get(Users, id)
     if not target_user:
-        return RedirectResponse(url=f"/sirius.achievements/users?toast_msg={quote('Пользователь не найден')}&toast_type=error", status_code=302)
+        return RedirectResponse(url=f"/sirius.achievements/users?toast_msg={quote('РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ')}&toast_type=error", status_code=302)
 
     try:
         gpa_val = float(gpa.replace(",", "."))
     except ValueError:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Некорректная оценка')}&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('РќРµРєРѕСЂСЂРµРєС‚РЅР°СЏ РѕС†РµРЅРєР°')}&toast_type=error",
             status_code=302,
         )
 
     if gpa_val < 2.0 or gpa_val > 5.0:
         return RedirectResponse(
-            url=f"/sirius.achievements/users/{id}?toast_msg={quote('Оценка должна быть от 2.0 до 5.0')}&toast_type=error",
+            url=f"/sirius.achievements/users/{id}?toast_msg={quote('РћС†РµРЅРєР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РѕС‚ 2.0 РґРѕ 5.0')}&toast_type=error",
             status_code=302,
         )
 
@@ -573,6 +573,7 @@ async def set_gpa(
     await db.commit()
 
     return RedirectResponse(
-        url=f"/sirius.achievements/users/{id}?toast_msg={quote(f'Средний балл {gpa_val:.1f} сохранён (+{bonus} бонус)')}&toast_type=success",
+        url=f"/sirius.achievements/users/{id}?toast_msg={quote(f'РЎСЂРµРґРЅРёР№ Р±Р°Р»Р» {gpa_val:.1f} СЃРѕС…СЂР°РЅС‘РЅ (+{bonus} Р±РѕРЅСѓСЃ)')}&toast_type=success",
         status_code=302,
     )
+

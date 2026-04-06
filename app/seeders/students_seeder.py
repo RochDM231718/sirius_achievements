@@ -5,7 +5,6 @@ import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +19,7 @@ from app.models.enums import (
 )
 from app.models.user import Users
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from app.utils.password import hash_password
 
 # ── Данные для генерации ──
 
@@ -169,7 +168,7 @@ class StudentsSeeder:
             return
 
         print("   Seeding 100 students with achievements...")
-        hashed = pwd_context.hash("Password123!")
+        hashed = hash_password("Password123!")
 
         upload_dir = "static/uploads/achievements"
         now = datetime.now(timezone.utc)

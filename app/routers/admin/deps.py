@@ -2,11 +2,19 @@ from fastapi import Request, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.user import Users
-from app.models.enums import UserStatus
+from app.models.enums import UserRole, UserStatus
 from app.infrastructure.database import async_session_maker
 import structlog
 
 logger = structlog.get_logger()
+
+_STAFF_ROLES = {UserRole.MODERATOR, UserRole.SUPER_ADMIN}
+
+
+def _redirect_to_login(request: Request):
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    raise HTTPException(status_code=302, headers={"Location": "/sirius.achievements/login"})
 
 
 async def get_current_user(request: Request, db: AsyncSession):
@@ -37,13 +45,13 @@ async def get_current_user(request: Request, db: AsyncSession):
 
 
 async def require_auth(request: Request):
-    """Guard dependency: redirects unauthenticated users to login."""
+    """Guard dependency: redirects unauthenticated users to login.
+    Also verifies the user has a staff role (MODERATOR or SUPER_ADMIN).
+    """
     auth_id = request.session.get("auth_id")
     auth_session_version = request.session.get("auth_session_version")
     if not auth_id or auth_session_version is None:
-        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        raise HTTPException(status_code=302, headers={"Location": "/sirius.achievements/login"})
+        _redirect_to_login(request)
 
     async with async_session_maker() as db:
         query = select(Users).where(Users.id == auth_id)
@@ -57,6 +65,7 @@ async def require_auth(request: Request):
             or int(auth_session_version) != int(user.session_version or 0)
         ):
             request.session.clear()
-            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-                raise HTTPException(status_code=401, detail="Unauthorized")
-            raise HTTPException(status_code=302, headers={"Location": "/sirius.achievements/login"})
+            _redirect_to_login(request)
+
+        if user.role not in _STAFF_ROLES:
+            raise HTTPException(status_code=403, detail="Недостаточно прав")

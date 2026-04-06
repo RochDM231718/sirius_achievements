@@ -1,0 +1,353 @@
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+
+import { leaderboardApi, type LeaderboardResponse, type LeaderboardRow } from '@/api/leaderboard'
+import { useAuth } from '@/hooks/useAuth'
+import { useToast } from '@/hooks/useToast'
+import { getErrorMessage } from '@/utils/http'
+
+function leagueDescription(data: LeaderboardResponse | null, isStaff: boolean) {
+  if (!data) return ''
+  if (data.current_category && data.current_category !== 'all') {
+    return `Рейтинг по направлению: ${data.current_category}`
+  }
+  if (data.current_education_level === 'all' && data.current_course === 0) {
+    return 'Глобальный рейтинг (Все студенты)'
+  }
+
+  const scope = `${data.current_education_level !== 'all' ? data.current_education_level : 'Все уровни'}, ${data.current_course !== 0 ? `${data.current_course} курс` : 'Все курсы'}${data.current_group !== 'all' ? `, группа ${data.current_group}` : ''}`
+  return `${isStaff ? 'Лига' : 'Ваша лига'}: ${scope}`
+}
+
+function buildUserLink(row: LeaderboardRow, isStaff: boolean) {
+  return isStaff ? `/users/${row.user.id}` : `/students/${row.user.id}`
+}
+
+export function LeaderboardPage() {
+  const { user } = useAuth()
+  const { pushToast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [data, setData] = useState<LeaderboardResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [seasonModalOpen, setSeasonModalOpen] = useState(false)
+  const [seasonName, setSeasonName] = useState('')
+  const [isEndingSeason, setIsEndingSeason] = useState(false)
+
+  const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
+  const queryKey = searchParams.toString()
+
+  const filters = useMemo(
+    () => ({
+      education_level: searchParams.get('education_level') ?? undefined,
+      course: searchParams.get('course') ?? undefined,
+      category: searchParams.get('category') ?? undefined,
+      group: searchParams.get('group') ?? undefined,
+    }),
+    [queryKey]
+  )
+
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const response = await leaderboardApi.get(filters)
+        setData(response.data)
+      } catch (loadError) {
+        setError(getErrorMessage(loadError, 'Не удалось загрузить рейтинг.'))
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void load()
+  }, [filters])
+
+  useEffect(() => {
+    if (!data || searchParams.get('focus_me') !== '1') return
+
+    const target = document.querySelector<HTMLElement>('[data-leaderboard-self="true"]')
+    if (!target) return
+
+    const restore = {
+      boxShadow: target.style.boxShadow,
+      transform: target.style.transform,
+      backgroundColor: target.style.backgroundColor,
+      borderColor: target.style.borderColor,
+      position: target.style.position,
+      zIndex: target.style.zIndex,
+    }
+
+    const applyHighlight = () => {
+      target.style.boxShadow = '0 0 0 3px var(--theme-accent, #6d5ef3), 0 18px 36px rgba(15, 23, 42, 0.18)'
+      target.style.transform = 'translateY(-2px)'
+      target.style.backgroundColor = 'var(--theme-accent-soft, #eef2ff)'
+      target.style.borderColor = 'var(--theme-accent, #6d5ef3)'
+      target.style.position = 'relative'
+      target.style.zIndex = '1'
+
+      window.setTimeout(() => {
+        target.style.boxShadow = restore.boxShadow
+        target.style.transform = restore.transform
+        target.style.backgroundColor = restore.backgroundColor
+        target.style.borderColor = restore.borderColor
+        target.style.position = restore.position
+        target.style.zIndex = restore.zIndex
+      }, 3600)
+    }
+
+    window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      window.setTimeout(applyHighlight, 250)
+    }, 120)
+
+    const next = new URL(window.location.href)
+    next.searchParams.delete('focus_me')
+    window.history.replaceState({}, document.title, `${next.pathname}${next.search}${next.hash}`)
+  }, [data, searchParams])
+
+  const updateFilter = (key: string, value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (!value || value === 'all' || value === '0') next.delete(key)
+    else next.set(key, value)
+
+    if (key === 'education_level') {
+      next.delete('course')
+      next.delete('group')
+    }
+
+    setSearchParams(next)
+  }
+
+  const handleExport = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    try {
+      const response = await leaderboardApi.exportCsv(filters)
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8;' }))
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = 'leaderboard_export.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (downloadError) {
+      setError(getErrorMessage(downloadError, 'Не удалось выгрузить CSV.'))
+    }
+  }
+
+  const handleEndSeason = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsEndingSeason(true)
+    setError(null)
+
+    try {
+      await leaderboardApi.endSeason(seasonName)
+      pushToast({ title: 'Сезон завершён', message: 'Рейтинг сохранён в истории.', tone: 'success' })
+      setSeasonModalOpen(false)
+      setSeasonName('')
+      const response = await leaderboardApi.get(filters)
+      setData(response.data)
+    } catch (seasonError) {
+      setError(getErrorMessage(seasonError, 'Не удалось завершить сезон.'))
+    } finally {
+      setIsEndingSeason(false)
+    }
+  }
+
+  const courseOptions = data?.current_education_level && data.current_education_level !== 'all'
+    ? Array.from({ length: data.course_mapping[data.current_education_level] ?? 0 }, (_, index) => String(index + 1))
+    : []
+  const groupOptions = data?.current_education_level && data.current_education_level !== 'all'
+    ? data.group_mapping[data.current_education_level] ?? []
+    : []
+  const focusUrl = (() => {
+    const next = new URLSearchParams(searchParams)
+    next.set('focus_me', '1')
+    return `?${next.toString()}`
+  })()
+  const podium = data?.leaderboard.slice(0, 3) ?? []
+  const rest = data?.leaderboard.slice(3) ?? []
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6" data-focus-me={searchParams.get('focus_me') === '1' ? 'true' : 'false'}>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Рейтинг студентов</h2>
+          <p className="text-sm text-slate-500 mt-1">{leagueDescription(data, isStaff)}</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          {!isStaff ? (
+            <>
+              <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-6 shadow-sm w-full md:w-auto">
+                <div className="text-center flex-1 md:flex-none md:px-4">
+                  <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mb-0.5">Место в лиге</div>
+                  <div className="text-2xl font-bold text-indigo-600">{(data?.my_rank ?? 0) > 0 ? `#${data?.my_rank}` : '-'}</div>
+                </div>
+                <div className="w-px h-8 bg-slate-200"></div>
+                <div className="text-center flex-1 md:flex-none md:px-4">
+                  <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mb-0.5">Баллы</div>
+                  <div className="text-2xl font-bold text-slate-800">{data?.my_points ?? 0}</div>
+                </div>
+              </div>
+              {(data?.my_rank ?? 0) > 0 ? (
+                <a id="find-me-btn" href={focusUrl} onClick={(event) => { event.preventDefault(); const next = new URLSearchParams(searchParams); next.set('focus_me', '1'); setSearchParams(next) }} className="flex-1 md:flex-none inline-flex items-center justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors border border-indigo-200">
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  Найти меня
+                </a>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <a href={data?.export_url || '/api/v1/leaderboard/export'} onClick={handleExport} className="flex-1 md:flex-none inline-flex items-center justify-center bg-green-50 text-green-700 hover:bg-green-100 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors border border-green-200">
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Экспорт CSV
+              </a>
+              {user?.role === 'SUPER_ADMIN' ? (
+                <button type="button" onClick={() => setSeasonModalOpen(true)} className="flex-1 md:flex-none inline-flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors shadow-sm">
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+                  Завершить сезон
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+
+      {seasonModalOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+              </div>
+              <h3 className="text-xl font-bold text-slate-800">Завершить текущий сезон?</h3>
+              <p className="text-sm text-slate-500 mt-2">Рейтинг всех студентов будет зафиксирован в истории, а текущие баллы обнулятся. Это действие необратимо.</p>
+            </div>
+            <form onSubmit={handleEndSeason} className="px-6 pb-6">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 text-left">Название прошедшего сезона</label>
+              <input value={seasonName} onChange={(event) => setSeasonName(event.target.value)} type="text" required placeholder="Например: Осенний семестр 2026" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all mb-4" />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setSeasonModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Отмена</button>
+                <button type="submit" disabled={isEndingSeason} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-70">{isEndingSeason ? 'Сохраняем…' : 'Подтвердить'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div> : null}
+
+      <div className="bg-white p-4 rounded-xl border border-slate-200">
+        <form action="/sirius.achievements/leaderboard" method="GET" className="flex flex-wrap gap-4 items-end">
+          <div className="w-full sm:w-[180px]">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Направление</label>
+            <select value={data?.current_category || 'all'} onChange={(event) => updateFilter('category', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
+              <option value="all">Все направления</option>
+              {data?.categories.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+
+          {isStaff ? (
+            <>
+              <div className="w-full sm:w-[170px]">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Обучение</label>
+                <select value={data?.current_education_level || 'all'} onChange={(event) => updateFilter('education_level', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
+                  <option value="all">Все уровни</option>
+                  {data?.education_levels.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </div>
+              <div className="w-full sm:w-[120px]">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Курс</label>
+                <select value={String(data?.current_course ?? 0)} onChange={(event) => updateFilter('course', event.target.value)} disabled={(data?.current_education_level || 'all') === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                  <option value="0">Все курсы</option>
+                  {courseOptions.map((item) => <option key={item} value={item}>{item} курс</option>)}
+                </select>
+              </div>
+            </>
+          ) : null}
+
+          <div className="w-full sm:w-[120px]">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Группа</label>
+            <select value={data?.current_group || 'all'} onChange={(event) => updateFilter('group', event.target.value)} disabled={(data?.current_education_level || 'all') === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <option value="all">Все группы</option>
+              {groupOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+        </form>
+      </div>
+
+      {isLoading ? <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">Загрузка рейтинга…</div> : null}
+
+      {!isLoading && podium.length ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-4">
+          {podium[1] ? (
+            <div data-leaderboard-self={podium[1].is_me ? 'true' : undefined} className="order-2 md:order-1 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">2</div>
+              <div className="mt-2 mb-3">{podium[1].user.avatar_path ? <img src={`/static/${podium[1].user.avatar_path}`} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[1].user.first_name.slice(0, 1)}</div>}</div>
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[1], isStaff)} className="font-semibold text-slate-800 text-sm hover:text-indigo-600">{podium[1].user.first_name} {podium[1].user.last_name}</Link><div className="inline-flex bg-slate-50 text-slate-600 text-xs font-medium px-3 py-1 rounded-md border border-slate-100">{podium[1].total_points} баллов</div></div>
+            </div>
+          ) : <div className="hidden md:block"></div>}
+
+          <div data-leaderboard-self={podium[0]?.is_me ? 'true' : undefined} className="order-1 md:order-2 bg-white rounded-xl shadow-sm p-6 flex flex-col items-center relative transition-all duration-500" style={{ borderTop: '4px solid var(--theme-accent, #6d5ef3)' }}>
+            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-8 h-8 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md" style={{ background: 'var(--theme-accent, #6d5ef3)' }}>1</div>
+            <div className="mt-2 mb-3">{podium[0]?.user.avatar_path ? <img src={`/static/${podium[0].user.avatar_path}`} className="w-20 h-20 rounded-full object-cover border border-slate-200" /> : <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center text-2xl font-bold text-indigo-600 border border-indigo-100">{podium[0]?.user.first_name.slice(0, 1)}</div>}</div>
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[0], isStaff)} className="font-bold text-slate-900 text-base hover:text-indigo-600">{podium[0]?.user.first_name} {podium[0]?.user.last_name}</Link><div className="inline-flex text-sm font-bold px-4 py-1.5 rounded-md" style={{ background: 'var(--theme-accent-soft, #f0edff)', color: 'var(--theme-accent-strong, #5f4ee6)', border: '1px solid var(--theme-border-soft, #ebeff6)' }}>{podium[0]?.total_points ?? 0} баллов</div></div>
+          </div>
+
+          {podium[2] ? (
+            <div data-leaderboard-self={podium[2].is_me ? 'true' : undefined} className="order-3 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">3</div>
+              <div className="mt-2 mb-3">{podium[2].user.avatar_path ? <img src={`/static/${podium[2].user.avatar_path}`} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[2].user.first_name.slice(0, 1)}</div>}</div>
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[2], isStaff)} className="font-semibold text-slate-800 text-sm hover:text-indigo-600">{podium[2].user.first_name} {podium[2].user.last_name}</Link><div className="inline-flex bg-slate-50 text-slate-600 text-xs font-medium px-3 py-1 rounded-md border border-slate-100">{podium[2].total_points} баллов</div></div>
+            </div>
+          ) : <div className="hidden md:block"></div>}
+        </div>
+      ) : null}
+
+      {!isLoading && rest.length ? (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-700">Остальные участники</h3>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Всего в лиге: {data?.leaderboard.length ?? 0}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left whitespace-nowrap">
+              <tbody className="divide-y divide-slate-100">
+                {rest.map((row) => (
+                  <tr key={row.user.id} data-leaderboard-self={row.is_me ? 'true' : undefined} className={`transition-all duration-500 ${row.is_me ? 'bg-indigo-50/50 hover:bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                    <td className="px-5 py-3 w-12 text-center"><span className={`text-sm font-medium ${row.is_me ? 'text-indigo-600' : 'text-slate-400'}`}>{row.rank}</span></td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        {row.user.avatar_path ? <img src={`/static/${row.user.avatar_path}`} className="w-8 h-8 rounded-full object-cover border border-slate-200" /> : <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-medium text-xs">{row.user.first_name.slice(0, 1)}</div>}
+                        <div>
+                          <Link to={buildUserLink(row, isStaff)} className={`text-sm font-medium text-slate-800 hover:text-indigo-600 transition-colors ${row.is_me ? 'text-indigo-700' : ''}`}>
+                            {row.user.first_name} {row.user.last_name}
+                            {row.is_me ? <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">Вы</span> : null}
+                          </Link>
+                          <div className="text-[10px] text-slate-400">{row.user.education_level || ''} {row.user.course ? `${row.user.course} курс` : ''} {row.user.study_group ? `• ${row.user.study_group}` : ''}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right"><span className={`text-sm font-bold ${row.is_me ? 'text-indigo-600' : 'text-slate-700'}`}>{row.total_points}</span><span className="text-xs text-slate-400 ml-1">б.</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {!isLoading && !data?.leaderboard.length ? (
+        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 mb-3">
+            <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          </div>
+          <p className="text-sm text-slate-500">В этой лиге пока никто не набрал баллов.</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}

@@ -152,12 +152,11 @@ async def store(
     user_id = request.session.get('auth_id')
 
     rl_key = f"upload_rl:{user_id}"
-    if await rate_limiter.is_limited(rl_key, settings.UPLOAD_MAX_PER_HOUR, settings.UPLOAD_RATE_TTL):
+    upload_count = int(await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL))
+    if upload_count > settings.UPLOAD_MAX_PER_HOUR:
         return RedirectResponse(
             url=f"/sirius.achievements/achievements/create?toast_msg={quote('Слишком много загрузок. Попробуйте позже.')}&toast_type=error",
             status_code=302)
-    await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL)
-
     # Validate and resolve enum values (handles both names and values)
     resolved_category = _resolve_enum(AchievementCategory, category)
     resolved_level = _resolve_enum(AchievementLevel, level)

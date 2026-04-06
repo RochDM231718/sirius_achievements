@@ -192,14 +192,10 @@ sirius_achievements/
 │   ├── utils/                    # Rate limiter, уведомления, валидация
 │   ├── seeders/                  # Начальное наполнение БД
 │   └── tests/                    # Тесты
-├── templates/admin/              # Jinja2 HTML-шаблоны
-│   ├── auth/                     # Страницы входа, регистрации
-│   ├── dashboard/                # Дашборд
-│   ├── moderation/               # Входящие (модерация)
-│   ├── my_work/                  # Моя работа
-│   ├── leaderboard/              # Рейтинг
-│   ├── profile/                  # Профиль
-│   ├── users/                    # Управление пользователями
+├── frontend/                     # React SPA исходники
+│   ├── src/                      # Страницы, компоненты, API-клиент
+│   └── package.json              # Зависимости и скрипты фронтенда
+├── static/spa/                   # Собранный SPA-бандл
 │   ├── documents/                # Управление документами
 │   ├── support/                  # Поддержка
 │   ├── partials/                 # Компоненты (тема, кнопки)
@@ -451,4 +447,3 @@ docker exec -it sirius_redis_new redis-cli -a <REDIS_PASSWORD>
 ```
 
 ---
-

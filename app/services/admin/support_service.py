@@ -72,7 +72,7 @@ class SupportService:
 
         file_path = None
         if file and file.filename:
-            file_path = await self._file_validator.validate_and_save(file, subdirectory=str(ticket.id))
+            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket.id))
 
         if not clean_text and not file_path:
             raise ValueError("Сообщение должно содержать текст или файл")
@@ -133,7 +133,7 @@ class SupportService:
         clean_text = text.strip() if text and text.strip() else None
         file_path = None
         if file and file.filename:
-            file_path = await self._file_validator.validate_and_save(file, subdirectory=str(ticket_id))
+            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket_id))
 
         if not clean_text and not file_path:
             raise ValueError("Сообщение должно содержать текст или файл")

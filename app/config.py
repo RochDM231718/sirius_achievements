@@ -20,11 +20,18 @@ class Settings:
     DB_USERNAME: str = os.getenv("DB_USERNAME", "postgres")
     DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
 
+    # ── MinIO / S3 object storage ──
+    MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+    MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "sirius-files")
+
     # ── Redis ──
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 
     # ── Session ──
     SESSION_MAX_AGE: int = int(os.getenv("SESSION_MAX_AGE", "86400"))
+    TRUSTED_PROXY_IPS: str = os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1,::1,172.16.0.0/12")
 
     # ── File upload limits (bytes) ──
     MAX_AVATAR_SIZE: int = int(os.getenv("MAX_AVATAR_SIZE", str(2 * 1024 * 1024)))
@@ -51,6 +58,9 @@ class Settings:
 
     OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     OTP_LOCKOUT_TTL: int = int(os.getenv("OTP_LOCKOUT_TTL", "900"))
+
+    REGISTER_MAX_ATTEMPTS: int = int(os.getenv("REGISTER_MAX_ATTEMPTS", "5"))
+    REGISTER_LOCKOUT_TTL: int = int(os.getenv("REGISTER_LOCKOUT_TTL", "3600"))
 
     UPLOAD_MAX_PER_HOUR: int = int(os.getenv("UPLOAD_MAX_PER_HOUR", "20"))
     UPLOAD_RATE_TTL: int = int(os.getenv("UPLOAD_RATE_TTL", "3600"))
@@ -82,6 +92,12 @@ class Settings:
     MAIL_USERNAME: str = os.getenv("MAIL_USERNAME", "")
     MAIL_PASSWORD: str = os.getenv("MAIL_PASSWORD", "")
     MAIL_FROM: str = os.getenv("MAIL_FROM", os.getenv("MAIL_USERNAME", ""))
+    MAIL_TIMEOUT: int = int(os.getenv("MAIL_TIMEOUT", "30"))
+    MAIL_USE_SSL: bool = _env_bool("MAIL_USE_SSL", os.getenv("MAIL_PORT", "465") == "465")
+    MAIL_USE_STARTTLS: bool = _env_bool(
+        "MAIL_USE_STARTTLS", os.getenv("MAIL_PORT", "465") not in {"465"}
+    )
+    MAIL_DEV_LOG_CODES: bool = _env_bool("MAIL_DEV_LOG_CODES", False)
 
     # ── Yandex GPT ──
     YANDEX_API_KEY: str = os.getenv("YANDEX_API_KEY", "")

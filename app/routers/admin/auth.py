@@ -1,4 +1,4 @@
-import json
+﻿import json
 import secrets
 import time
 
@@ -17,7 +17,7 @@ from app.repositories.admin.user_token_repository import UserTokenRepository
 from app.routers.admin.admin import get_db, templates
 from app.routers.admin.deps import get_current_user
 from app.schemas.admin.auth import ResetPasswordSchema, UserRegister
-from app.security.csrf import validate_csrf
+from app.security.csrf import get_csrf_token, validate_csrf
 from app.services.admin.user_token_service import UserTokenService
 from app.services.auth_service import AuthService, UserBlockedException
 from app.utils.media_paths import guess_media_type, resolve_static_path
@@ -43,16 +43,17 @@ def _set_authenticated_session(request: Request, user):
     request.session["auth_avatar"] = user.avatar_path
     request.session["auth_role"] = user.role.value if hasattr(user.role, "value") else str(user.role)
     request.session["auth_session_version"] = int(user.session_version or 1)
+    get_csrf_token(request)
 
 
 def _public_media_response(relative_path: str) -> FileResponse:
     try:
         full_path = resolve_static_path(relative_path)
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail="Недопустимый путь к файлу") from exc
+        raise HTTPException(status_code=403, detail="РќРµРґРѕРїСѓСЃС‚РёРјС‹Р№ РїСѓС‚СЊ Рє С„Р°Р№Р»Сѓ") from exc
 
     if not full_path.exists():
-        raise HTTPException(status_code=404, detail="Файл физически отсутствует на сервере")
+        raise HTTPException(status_code=404, detail="Р¤Р°Р№Р» С„РёР·РёС‡РµСЃРєРё РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РЅР° СЃРµСЂРІРµСЂРµ")
 
     response = FileResponse(path=full_path, media_type=guess_media_type(full_path))
     response.headers["Content-Disposition"] = f'inline; filename="{full_path.name}"'
@@ -82,7 +83,7 @@ async def login(
                 "auth/sign-in.html",
                 {
                     "request": request,
-                    "error_msg": "Неверный email или пароль",
+                    "error_msg": "РќРµРІРµСЂРЅС‹Р№ email РёР»Рё РїР°СЂРѕР»СЊ",
                     "form_data": {"email": email},
                 },
             )
@@ -162,7 +163,7 @@ async def register(
             "auth/register.html",
             {
                 "request": request,
-                "error_msg": "Пароли не совпадают",
+                "error_msg": "РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚",
                 "form_data": form_data,
                 "education_levels": list(EducationLevel),
             },
@@ -215,16 +216,15 @@ async def forgot_password(
 ):
     client_ip = request.client.host if request.client else "unknown"
     rl_key = f"forgot_pwd:{client_ip}"
-    if await rate_limiter.is_limited(rl_key, settings.FORGOT_PWD_MAX_ATTEMPTS, settings.FORGOT_PWD_LOCKOUT_TTL):
+    attempt_count = int(await rate_limiter.increment(rl_key, settings.FORGOT_PWD_LOCKOUT_TTL))
+    if attempt_count > settings.FORGOT_PWD_MAX_ATTEMPTS:
         return templates.TemplateResponse(
             "auth/forgot-password.html",
             {
                 "request": request,
-                "error_msg": "Слишком много запросов. Попробуйте через 15 минут.",
+                "error_msg": "РЎР»РёС€РєРѕРј РјРЅРѕРіРѕ Р·Р°РїСЂРѕСЃРѕРІ. РџРѕРїСЂРѕР±СѓР№С‚Рµ С‡РµСЂРµР· 15 РјРёРЅСѓС‚.",
             },
         )
-    await rate_limiter.increment(rl_key, settings.FORGOT_PWD_LOCKOUT_TTL)
-
     success, msg, retry_after, user_id = await service.forgot_password(email, background_tasks)
 
     if not success:
@@ -296,13 +296,14 @@ async def verify_code(
         return RedirectResponse(url=request.url_for("admin.auth.forgot_password_page"), status_code=302)
 
     rl_key = f"otp_attempts:{flow_id}"
-    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
+    attempt_count = int(await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL))
+    if attempt_count > settings.OTP_MAX_ATTEMPTS:
         return templates.TemplateResponse(
             "auth/verify-code.html",
             {
                 "request": request,
                 "email": email,
-                "error_msg": "Слишком много попыток. Запросите новый код через 15 минут.",
+                "error_msg": "РЎР»РёС€РєРѕРј РјРЅРѕРіРѕ РїРѕРїС‹С‚РѕРє. Р—Р°РїСЂРѕСЃРёС‚Рµ РЅРѕРІС‹Р№ РєРѕРґ С‡РµСЂРµР· 15 РјРёРЅСѓС‚.",
                 "seconds_left": seconds_left,
             },
         )
@@ -314,11 +315,10 @@ async def verify_code(
         return RedirectResponse(url=request.url_for("admin.auth.reset_password_page"), status_code=302)
 
     except Exception:
-        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
-        remaining = await rate_limiter.remaining(rl_key, settings.OTP_MAX_ATTEMPTS)
-        error_msg = "Неверный код. Попробуйте еще раз."
+        remaining = max(0, settings.OTP_MAX_ATTEMPTS - attempt_count)
+        error_msg = "РќРµРІРµСЂРЅС‹Р№ РєРѕРґ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·."
         if remaining <= 2:
-            error_msg = f"Неверный код. Осталось попыток: {remaining}."
+            error_msg = f"РќРµРІРµСЂРЅС‹Р№ РєРѕРґ. РћСЃС‚Р°Р»РѕСЃСЊ РїРѕРїС‹С‚РѕРє: {remaining}."
 
         return templates.TemplateResponse(
             "auth/verify-code.html",
@@ -374,7 +374,7 @@ async def reset_password(
             "auth/sign-in.html",
             {
                 "request": request,
-                "success_msg": "Пароль успешно изменен. Войдите в систему.",
+                "success_msg": "РџР°СЂРѕР»СЊ СѓСЃРїРµС€РЅРѕ РёР·РјРµРЅРµРЅ. Р’РѕР№РґРёС‚Рµ РІ СЃРёСЃС‚РµРјСѓ.",
             },
         )
     except Exception as exc:
@@ -383,7 +383,7 @@ async def reset_password(
             "auth/reset-password.html",
             {
                 "request": request,
-                "error_msg": "Произошла ошибка при смене пароля",
+                "error_msg": "РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРјРµРЅРµ РїР°СЂРѕР»СЏ",
             },
         )
 
@@ -407,7 +407,7 @@ async def verify_email_page(
             success, _, retry_after = await service.send_email_verification(user, background_tasks)
             if success:
                 request.session["verify_email_retry_at"] = int(time.time()) + retry_after
-                info_msg = "Код подтверждения отправлен на вашу почту"
+                info_msg = "РљРѕРґ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РѕС‚РїСЂР°РІР»РµРЅ РЅР° РІР°С€Сѓ РїРѕС‡С‚Сѓ"
 
     retry_at = request.session.get("verify_email_retry_at", 0)
     seconds_left = max(0, retry_at - int(time.time()))
@@ -438,13 +438,14 @@ async def verify_email(
         return RedirectResponse(url=request.url_for("admin.auth.register_page"), status_code=302)
 
     rl_key = f"verify_email_attempts:{user_id}"
-    if await rate_limiter.is_limited(rl_key, settings.OTP_MAX_ATTEMPTS, settings.OTP_LOCKOUT_TTL):
+    attempt_count = int(await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL))
+    if attempt_count > settings.OTP_MAX_ATTEMPTS:
         return templates.TemplateResponse(
             "auth/verify-email-registration.html",
             {
                 "request": request,
                 "email": email,
-                "error_msg": "Слишком много попыток. Запросите новый код.",
+                "error_msg": "РЎР»РёС€РєРѕРј РјРЅРѕРіРѕ РїРѕРїС‹С‚РѕРє. Р—Р°РїСЂРѕСЃРёС‚Рµ РЅРѕРІС‹Р№ РєРѕРґ.",
                 "seconds_left": seconds_left,
             },
         )
@@ -460,11 +461,10 @@ async def verify_email(
         return RedirectResponse(url=request.url_for("admin.dashboard.index"), status_code=302)
 
     except Exception:
-        await rate_limiter.increment(rl_key, settings.OTP_LOCKOUT_TTL)
-        remaining = await rate_limiter.remaining(rl_key, settings.OTP_MAX_ATTEMPTS)
-        error_msg = "Неверный код. Попробуйте еще раз."
+        remaining = max(0, settings.OTP_MAX_ATTEMPTS - attempt_count)
+        error_msg = "РќРµРІРµСЂРЅС‹Р№ РєРѕРґ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·."
         if remaining <= 2:
-            error_msg = f"Неверный код. Осталось попыток: {remaining}."
+            error_msg = f"РќРµРІРµСЂРЅС‹Р№ РєРѕРґ. РћСЃС‚Р°Р»РѕСЃСЊ РїРѕРїС‹С‚РѕРє: {remaining}."
 
         return templates.TemplateResponse(
             "auth/verify-email-registration.html",
@@ -510,7 +510,7 @@ async def public_student_document_preview(
     document_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    raise HTTPException(status_code=404, detail="Публичный просмотр документов отключен")
+    raise HTTPException(status_code=404, detail="РџСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕСЃРјРѕС‚СЂ РґРѕРєСѓРјРµРЅС‚РѕРІ РѕС‚РєР»СЋС‡РµРЅ")
 
     stmt = (
         select(Achievement)
@@ -527,7 +527,7 @@ async def public_student_document_preview(
     document = (await db.execute(stmt)).scalars().first()
 
     if not document or not document.file_path:
-        raise HTTPException(status_code=404, detail="Документ не найден")
+        raise HTTPException(status_code=404, detail="Р”РѕРєСѓРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
 
     return _public_media_response(document.file_path)
 
@@ -538,107 +538,4 @@ async def public_student_profile(id: int, request: Request, db: AsyncSession = D
     if not student or student.role != UserRole.STUDENT or student.status != UserStatus.ACTIVE:
         return templates.TemplateResponse("public/student_not_found.html", {"request": request}, status_code=404)
 
-    achievements_stmt = (
-        select(Achievement)
-        .filter(Achievement.user_id == id, Achievement.status == AchievementStatus.APPROVED)
-        .order_by(Achievement.created_at.desc())
-    )
-    achievements = (await db.execute(achievements_stmt)).scalars().all()
-    total_points = sum(a.points or 0 for a in achievements) + calculate_gpa_bonus(student.session_gpa)
-
-    # Rank
-    achievement_points = func.coalesce(func.sum(Achievement.points), 0)
-    total_points_expr = (
-        achievement_points + aggregated_gpa_bonus_expr(Users.session_gpa)
-    ).label("total_points")
-    leaderboard_stmt = (
-        select(
-            Users.id,
-            total_points_expr,
-        )
-        .outerjoin(Achievement, (Users.id == Achievement.user_id) & (Achievement.status == AchievementStatus.APPROVED))
-        .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
-        .group_by(Users.id)
-        .order_by(desc("total_points"))
-    )
-    results = (await db.execute(leaderboard_stmt)).all()
-    rank = None
-    for idx, (uid, _pts) in enumerate(results, 1):
-        if uid == id:
-            rank = idx
-            break
-
-    # Chart data — unified timeline
-    approved_query = (
-        select(
-            func.date_trunc("month", Achievement.created_at).label("m"),
-            func.count().label("cnt"),
-            func.coalesce(func.sum(Achievement.points), 0).label("pts"),
-        )
-        .filter(Achievement.user_id == id, Achievement.status == AchievementStatus.APPROVED)
-        .group_by("m")
-        .order_by("m")
-    )
-    approved_rows = (await db.execute(approved_query)).all()
-    uploads_query = (
-        select(
-            func.date_trunc("month", Achievement.created_at).label("m"),
-            func.count().label("cnt"),
-        )
-        .filter(Achievement.user_id == id)
-        .group_by("m")
-        .order_by("m")
-    )
-    upload_rows = (await db.execute(uploads_query)).all()
-
-    all_months: dict[str, dict] = {}
-    for r in approved_rows:
-        key = r.m.strftime("%m.%Y")
-        all_months.setdefault(key, {"pts": 0, "uploads": 0, "sort": r.m})
-        all_months[key]["pts"] = int(r.pts)
-    for r in upload_rows:
-        key = r.m.strftime("%m.%Y")
-        all_months.setdefault(key, {"pts": 0, "uploads": 0, "sort": r.m})
-        all_months[key]["uploads"] = r.cnt
-
-    sorted_months = sorted(all_months.items(), key=lambda x: x[1]["sort"])
-    chart_labels = json.dumps([m[0] for m in sorted_months])
-    chart_points = json.dumps([m[1]["pts"] for m in sorted_months])
-    chart_uploads = json.dumps([m[1]["uploads"] for m in sorted_months])
-    cumulative = []
-    running = 0
-    for m in sorted_months:
-        running += m[1]["pts"]
-        cumulative.append(running)
-    chart_cumulative = json.dumps(cumulative)
-    has_chart_data = len(sorted_months) > 0
-    gpa_bonus = calculate_gpa_bonus(student.session_gpa)
-
-    # Category stats
-    cat_stats = {}
-    for a in achievements:
-        cat = a.category.value if a.category else "Другое"
-        cat_stats[cat] = cat_stats.get(cat, 0) + 1
-    cat_stats_labels = json.dumps(list(cat_stats.keys()), ensure_ascii=False)
-    cat_stats_values = json.dumps(list(cat_stats.values()))
-
-    return templates.TemplateResponse(
-        "public/student_profile.html",
-        {
-            "request": request,
-            "student": student,
-            "achievements": achievements,
-            "total_points": total_points,
-            "total_docs": len(achievements),
-            "rank": rank,
-            "cat_stats": cat_stats,
-            "cat_stats_labels": cat_stats_labels,
-            "cat_stats_values": cat_stats_values,
-            "chart_labels": chart_labels,
-            "chart_points": chart_points,
-            "chart_uploads": chart_uploads,
-            "chart_cumulative": chart_cumulative,
-            "has_chart_data": has_chart_data,
-            "gpa_bonus": gpa_bonus,
-        },
-    )
+    return RedirectResponse(url=f"/sirius.achievements/app/students/{id}", status_code=302)

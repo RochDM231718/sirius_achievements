@@ -1,0 +1,1169 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Chart, registerables } from 'chart.js'
+import { profileApi, type ProfileResponse } from '@/api/profile'
+import { usersApi } from '@/api/users'
+import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { useAuth } from '@/hooks/useAuth'
+import { useToast } from '@/hooks/useToast'
+import { UserRole } from '@/types/enums'
+import { isImageFile, isPdfFile } from '@/utils/documentPreview'
+import { getErrorMessage } from '@/utils/http'
+
+Chart.register(...registerables)
+
+function stripEmoji(value: string): string {
+  return value.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s{2,}/g, ' ')
+}
+
+function buildStaticUrl(path?: string | null) {
+  if (!path) return ''
+  if (path.startsWith('http') || path.startsWith('/')) return path
+  return `/static/${path.replace(/^\/+/, '')}`
+}
+
+type CropperWindow = Window & { Cropper?: unknown }
+
+function docStatusBadge(status: string, points?: number) {
+  switch (status) {
+    case 'approved':
+      return (
+        <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-green-500 text-white shadow-sm">
+          {points ?? 0} б.
+        </span>
+      )
+    case 'revision':
+      return (
+        <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-yellow-500 text-white shadow-sm">
+          Доработка
+        </span>
+      )
+    case 'rejected':
+      return (
+        <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-500 text-white shadow-sm">
+          Отклонено
+        </span>
+      )
+    default:
+      return (
+        <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-500 text-white shadow-sm">
+          Проверка
+        </span>
+      )
+  }
+}
+
+export function ProfilePage() {
+  const navigate = useNavigate()
+  const { user, refreshProfile, logout, setCurrentUser } = useAuth()
+  const { pushToast } = useToast()
+
+  const [profile, setProfile] = useState<ProfileResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile')
+
+  // Profile form
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+
+  // Avatar + cropper
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const imageToCropRef = useRef<HTMLImageElement>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cropperRef = useRef<any>(null)
+  const avatarBlobUrlRef = useRef<string | null>(null)
+  const cropSourceUrlRef = useRef<string | null>(null)
+  const [showCropModal, setShowCropModal] = useState(false)
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
+  const [cropSourceUrl, setCropSourceUrl] = useState<string | null>(null)
+  const [isCropperLibraryReady, setIsCropperLibraryReady] = useState(
+    () => typeof window !== 'undefined' && Boolean((window as CropperWindow).Cropper),
+  )
+  const [isCropperReady, setIsCropperReady] = useState(false)
+  const [croppedFile, setCroppedFile] = useState<File | null>(null)
+
+  // AI Resume
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false)
+  const [resumeText, setResumeText] = useState('')
+  const [canGenerate, setCanGenerate] = useState(false)
+  const [generateReason, setGenerateReason] = useState('')
+
+  // Password change
+  const [isSendingCode, setIsSendingCode] = useState(false)
+  const [passwordFlowId, setPasswordFlowId] = useState('')
+  const [passwordVerifiedFlowId, setPasswordVerifiedFlowId] = useState('')
+  const [passwordCode, setPasswordCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false)
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  // Charts
+  const chartRef = useRef<HTMLCanvasElement>(null)
+  const chartInstanceRef = useRef<Chart | null>(null)
+  const radarChartRef = useRef<HTMLCanvasElement>(null)
+  const radarInstanceRef = useRef<Chart | null>(null)
+  const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set())
+
+  const isStudent = user?.role === UserRole.STUDENT
+
+  const revokeAvatarBlobUrl = useCallback(() => {
+    if (avatarBlobUrlRef.current) {
+      URL.revokeObjectURL(avatarBlobUrlRef.current)
+      avatarBlobUrlRef.current = null
+    }
+  }, [])
+
+  const revokeCropSourceUrl = useCallback(() => {
+    if (cropSourceUrlRef.current) {
+      URL.revokeObjectURL(cropSourceUrlRef.current)
+      cropSourceUrlRef.current = null
+    }
+  }, [])
+
+  const closeCropModal = useCallback(() => {
+    setShowCropModal(false)
+    setCropSourceUrl(null)
+    setIsCropperReady(false)
+    revokeCropSourceUrl()
+  }, [revokeCropSourceUrl])
+
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const { data } = await profileApi.get()
+      setProfile(data)
+      setFirstName(data.user.first_name)
+      setLastName(data.user.last_name)
+      setPhoneNumber(data.user.phone_number ?? '')
+      revokeAvatarBlobUrl()
+      setAvatarPreviewUrl(data.user.avatar_path ? buildStaticUrl(data.user.avatar_path) + '?t=' + Date.now() : null)
+      setResumeText(data.user.resume_text ?? '')
+      setCanGenerate(data.can_generate)
+      setGenerateReason(data.generate_reason ?? '')
+    } catch (e) {
+      setError(getErrorMessage(e, 'Не удалось загрузить профиль.'))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [revokeAvatarBlobUrl])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  useEffect(() => {
+    return () => {
+      revokeAvatarBlobUrl()
+      revokeCropSourceUrl()
+    }
+  }, [revokeAvatarBlobUrl, revokeCropSourceUrl])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if ((window as CropperWindow).Cropper) {
+      setIsCropperLibraryReady(true)
+      return
+    }
+
+    const linkSelector = 'link[data-cropper-style="true"]'
+    if (!document.querySelector(linkSelector)) {
+      const style = document.createElement('link')
+      style.rel = 'stylesheet'
+      style.href = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css'
+      style.setAttribute('data-cropper-style', 'true')
+      document.head.appendChild(style)
+    }
+
+    let disposed = false
+    const existingScript = document.querySelector('script[data-cropper-script="true"]') as HTMLScriptElement | null
+    const handleLoad = () => {
+      if (!disposed && (window as CropperWindow).Cropper) {
+        setIsCropperLibraryReady(true)
+      }
+    }
+
+    if (existingScript) {
+      existingScript.addEventListener('load', handleLoad, { once: true })
+      return () => {
+        disposed = true
+        existingScript.removeEventListener('load', handleLoad)
+      }
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js'
+    script.async = true
+    script.setAttribute('data-cropper-script', 'true')
+    script.addEventListener('load', handleLoad, { once: true })
+    document.body.appendChild(script)
+
+    return () => {
+      disposed = true
+      script.removeEventListener('load', handleLoad)
+    }
+  }, [])
+
+  // Chart init
+  useEffect(() => {
+    if (!profile || !profile.has_chart_data || !chartRef.current || !isStudent) return
+    if (chartInstanceRef.current) chartInstanceRef.current.destroy()
+
+    const font = { family: "'Inter', system-ui, sans-serif", size: 11 }
+    chartInstanceRef.current = new Chart(chartRef.current, {
+      type: 'line',
+      data: {
+        labels: profile.chart_labels,
+        datasets: [
+          {
+            label: 'Баллы (накопительно)',
+            data: profile.chart_cumulative,
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99, 102, 241, 0.06)',
+            fill: true,
+            borderWidth: 2.5,
+            tension: 0.35,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: '#6366f1',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Баллы за месяц',
+            data: profile.chart_points,
+            borderColor: '#a78bfa',
+            backgroundColor: 'rgba(167, 139, 250, 0.06)',
+            fill: true,
+            borderWidth: 2,
+            borderDash: [5, 3],
+            tension: 0.35,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: '#a78bfa',
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Загрузки',
+            data: profile.chart_uploads,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.06)',
+            fill: true,
+            borderWidth: 2,
+            tension: 0.35,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: '#10b981',
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { font, usePointStyle: true, pointStyle: 'circle', padding: 20, boxWidth: 8, boxHeight: 8 },
+          },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: { ...font, weight: 'bold' },
+            bodyFont: font,
+            padding: 12,
+            cornerRadius: 10,
+            displayColors: true,
+            boxPadding: 4,
+            callbacks: {
+              label: (ctx) => {
+                if (ctx.datasetIndex === 2) return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + ' шт.'
+                return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + ' б.'
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            position: 'left',
+            grid: { color: '#f1f5f9' },
+            ticks: { font, color: '#94a3b8' },
+            title: { display: true, text: 'Баллы', font: { ...font, size: 10 }, color: '#94a3b8' },
+          },
+          y1: {
+            beginAtZero: true,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { font, color: '#10b981', stepSize: 1 },
+            title: { display: true, text: 'Документы', font: { ...font, size: 10 }, color: '#10b981' },
+          },
+          x: {
+            grid: { display: false },
+            ticks: { font, color: '#64748b' },
+          },
+        },
+      },
+    })
+
+    return () => {
+      chartInstanceRef.current?.destroy()
+      chartInstanceRef.current = null
+    }
+  }, [profile, isStudent])
+
+  // Radar chart by category (approved docs) — one dataset per category, toggle support
+  const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
+  const RADAR_COLORS = [
+    { border: '#6366f1', bg: 'rgba(99,102,241,0.18)' },   // Спорт — indigo
+    { border: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },   // Наука — blue
+    { border: '#ec4899', bg: 'rgba(236,72,153,0.18)' },   // Искусство — pink
+    { border: '#10b981', bg: 'rgba(16,185,129,0.18)' },   // Волонтёрство — emerald
+    { border: '#f59e0b', bg: 'rgba(245,158,11,0.18)' },   // Хакатон — amber
+    { border: '#ef4444', bg: 'rgba(239,68,68,0.18)' },    // Патриотизм — red
+    { border: '#8b5cf6', bg: 'rgba(139,92,246,0.18)' },   // Проекты — violet
+    { border: '#64748b', bg: 'rgba(100,116,139,0.18)' },  // Другое — slate
+  ]
+
+  useEffect(() => {
+    if (!profile || !isStudent || !radarChartRef.current) return
+    const pointsMap: Record<string, number> = {}
+    for (const cat of RADAR_CATS) pointsMap[cat] = 0
+    for (const doc of profile.my_docs) {
+      if (doc.status === 'approved' && doc.category && doc.category in pointsMap) {
+        pointsMap[doc.category] = (pointsMap[doc.category] ?? 0) + (doc.points ?? 0)
+      }
+    }
+    const hasData = RADAR_CATS.some((c) => (pointsMap[c] ?? 0) > 0)
+    if (!hasData) return
+
+    const font = { family: "'Inter', system-ui, sans-serif", size: 10 }
+    const maxVal = Math.max(...RADAR_CATS.map((c) => pointsMap[c] ?? 0))
+
+    radarInstanceRef.current?.destroy()
+    radarInstanceRef.current = new Chart(radarChartRef.current, {
+      type: 'radar',
+      data: {
+        labels: RADAR_CATS,
+        datasets: RADAR_CATS.map((cat, i) => {
+          const val = pointsMap[cat] ?? 0
+          const color = RADAR_COLORS[i]
+          // Sparse data: put actual value at this index, 0 elsewhere so each dataset draws one "spoke"
+          const data = RADAR_CATS.map((c) => (c === cat ? val : 0))
+          return {
+            label: cat,
+            data,
+            borderColor: val > 0 ? color.border : 'transparent',
+            backgroundColor: val > 0 ? color.bg : 'transparent',
+            borderWidth: 2,
+            pointBackgroundColor: val > 0 ? color.border : 'transparent',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: val > 0 ? 4 : 0,
+            hidden: hiddenCats.has(cat),
+          }
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: { ...font, weight: 'bold' as const },
+            bodyFont: font,
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.r
+                return v > 0 ? ` ${ctx.dataset.label}: ${v} б.` : ''
+              },
+            },
+          },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { font, color: '#94a3b8', backdropColor: 'transparent', stepSize: Math.max(1, Math.ceil(maxVal / 4)) },
+            pointLabels: { font: { ...font, size: 11 }, color: '#475569' },
+            grid: { color: '#e2e8f0' },
+            angleLines: { color: '#e2e8f0' },
+          },
+        },
+      },
+    })
+    return () => {
+      radarInstanceRef.current?.destroy()
+      radarInstanceRef.current = null
+    }
+  }, [profile, isStudent, hiddenCats])
+
+  // Cropper init when modal opens
+  useEffect(() => {
+    if (!showCropModal || !imageToCropRef.current || !cropSourceUrl) return
+    if (!isCropperLibraryReady) {
+      setIsCropperReady(false)
+      return
+    }
+    // @ts-expect-error Cropper loaded from CDN
+    const CropperClass = window.Cropper
+    if (!CropperClass) {
+      setIsCropperReady(false)
+      return
+    }
+    const image = imageToCropRef.current
+    let inst: any = null
+    const initCropper = () => {
+      inst?.destroy()
+      inst = new CropperClass(image, {
+        aspectRatio: 1,
+        viewMode: 1,
+        dragMode: 'move',
+        guides: false,
+        center: false,
+        highlight: false,
+        background: false,
+        ready: () => setIsCropperReady(true),
+      })
+      cropperRef.current = inst
+    }
+
+    setIsCropperReady(false)
+    if (image.complete && image.naturalWidth > 0) {
+      initCropper()
+    } else {
+      image.addEventListener('load', initCropper, { once: true })
+    }
+
+    return () => {
+      image.removeEventListener('load', initCropper)
+      inst?.destroy()
+      cropperRef.current = null
+      setIsCropperReady(false)
+    }
+  }, [cropSourceUrl, isCropperLibraryReady, showCropModal])
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+    if (!allowedTypes.includes(file.type)) {
+      pushToast({ title: 'Разрешены JPG, PNG, WEBP.', tone: 'error' })
+      e.target.value = ''
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      pushToast({ title: 'Файл слишком большой (до 2 МБ).', tone: 'error' })
+      e.target.value = ''
+      return
+    }
+    const url = URL.createObjectURL(file)
+    revokeCropSourceUrl()
+    cropSourceUrlRef.current = url
+    setCropSourceUrl(url)
+    setIsCropperReady(false)
+    setShowCropModal(true)
+    e.target.value = ''
+  }
+
+  const handleCropSave = () => {
+    const cropper = cropperRef.current
+    if (!cropper) return
+    cropper.getCroppedCanvas({ maxWidth: 800, maxHeight: 800 }).toBlob((blob: Blob | null) => {
+      if (!blob) return
+      const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' })
+      const previewUrl = URL.createObjectURL(blob)
+      revokeAvatarBlobUrl()
+      avatarBlobUrlRef.current = previewUrl
+      setCroppedFile(file)
+      setAvatarPreviewUrl(previewUrl)
+      closeCropModal()
+    }, 'image/jpeg')
+  }
+
+  const handleProfileSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSavingProfile(true)
+    setError(null)
+    try {
+      const formData = new FormData()
+      formData.append('first_name', firstName)
+      formData.append('last_name', lastName)
+      formData.append('phone_number', phoneNumber)
+      if (croppedFile) formData.append('avatar', croppedFile)
+      const { data } = await profileApi.update(formData)
+      setCurrentUser(data.user)
+      setProfile((current) => (current ? { ...current, user: data.user } : current))
+      revokeAvatarBlobUrl()
+      setAvatarPreviewUrl(data.user.avatar_path ? buildStaticUrl(data.user.avatar_path) + '?t=' + Date.now() : null)
+      await refreshProfile()
+      setCroppedFile(null)
+      pushToast({ title: 'Профиль обновлён', tone: 'success' })
+      await load()
+    } catch (err) {
+      setError(getErrorMessage(err, 'Не удалось обновить профиль.'))
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  const handleGenerateResume = async () => {
+    if (!user) return
+    setIsGeneratingResume(true)
+    try {
+      const { data } = await usersApi.generateResume(user.id)
+      if (data.resume) {
+        setResumeText(data.resume)
+        pushToast({ title: 'Резюме успешно обновлено', tone: 'success' })
+      }
+      if (data.can_generate !== undefined) {
+        setCanGenerate(data.can_generate)
+        setGenerateReason(data.reason ?? '')
+      }
+    } catch (err) {
+      pushToast({ title: getErrorMessage(err, 'Ошибка при генерации резюме'), tone: 'error' })
+    } finally {
+      setIsGeneratingResume(false)
+    }
+  }
+
+  const startResendCooldown = () => {
+    setResendCooldown(60)
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) { clearInterval(timer); return 0 }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const handleSendPasswordCode = async () => {
+    setIsSendingCode(true)
+    setError(null)
+    try {
+      const { data } = await profileApi.sendPasswordCode()
+      setPasswordFlowId(data.flow_id)
+      setPasswordVerifiedFlowId('')
+      setPasswordCode('')
+      setNewPassword('')
+      setConfirmPassword('')
+      startResendCooldown()
+      pushToast({ title: 'Код отправлен', message: 'Проверьте почту.', tone: 'success' })
+    } catch (err) {
+      setError(getErrorMessage(err, 'Не удалось отправить код.'))
+    } finally {
+      setIsSendingCode(false)
+    }
+  }
+
+  const handleVerifyPasswordCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsVerifyingCode(true)
+    setError(null)
+    try {
+      const { data } = await profileApi.verifyPasswordCode(passwordFlowId, passwordCode)
+      setPasswordVerifiedFlowId(data.flow_id)
+      pushToast({ title: 'Код подтверждён', tone: 'success' })
+    } catch (err) {
+      setError(getErrorMessage(err, 'Неверный код.'))
+    } finally {
+      setIsVerifyingCode(false)
+    }
+  }
+
+  const handleResendPasswordCode = async () => {
+    setIsSendingCode(true)
+    try {
+      const { data } = await profileApi.resendPasswordCode(passwordFlowId)
+      setPasswordFlowId(data.flow_id)
+      startResendCooldown()
+      pushToast({ title: 'Код отправлен повторно', tone: 'success' })
+    } catch (err) {
+      setError(getErrorMessage(err, 'Не удалось отправить код повторно.'))
+    } finally {
+      setIsSendingCode(false)
+    }
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsResettingPassword(true)
+    setError(null)
+    try {
+      await profileApi.resetPassword(passwordVerifiedFlowId, newPassword, confirmPassword)
+      await logout()
+      pushToast({ title: 'Пароль изменён', message: 'Войдите снова.', tone: 'success' })
+      navigate('/login')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Не удалось изменить пароль.'))
+    } finally {
+      setIsResettingPassword(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto py-16">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (!profile) return null
+
+  const docs = profile.my_docs ?? []
+
+  return (
+    <>
+      <div className="max-w-2xl mx-auto">
+        {/* Header */}
+        <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Настройки профиля</h2>
+          {isStudent && (
+            <a
+              href={`/students/${user?.id}`}
+              onClick={(e) => {
+                e.preventDefault()
+                navigate(`/students/${user?.id}`)
+              }}
+              className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg"
+            >
+              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Публичный профиль
+            </a>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex p-1 bg-slate-100 rounded-lg mb-6 w-max">
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === 'profile' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Основное
+          </button>
+          <button
+            onClick={() => setActiveTab('security')}
+            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === 'security' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Безопасность
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div>
+        )}
+
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {/* ===== PROFILE TAB ===== */}
+          {activeTab === 'profile' && (
+            <div className="p-5 sm:p-6">
+              {/* Student cohort banner */}
+              {isStudent && (
+                <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ваш учебный поток</p>
+                    <p className="text-sm font-medium text-slate-800">
+                      {profile.user.education_level ?? 'Не указано'}
+                      {profile.user.course && (
+                        <>
+                          <span className="mx-1 text-slate-300">&bull;</span>{profile.user.course} курс
+                        </>
+                      )}
+                      {profile.user.study_group && (
+                        <>
+                          <span className="mx-1 text-slate-300">&bull;</span>{profile.user.study_group}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center border border-slate-100 shadow-sm">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14v7" />
+                    </svg>
+                  </div>
+                </div>
+              )}
+
+              {/* GPA cards */}
+              {isStudent && (
+                <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl p-4">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Оценка модератора</p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-2xl font-bold text-slate-800">{profile.user.session_gpa || '—'}</span>
+                      {profile.user.session_gpa && <span className="text-xs text-slate-400 mb-1">из 5.0</span>}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">Средний балл сессии, который влияет на рейтинг</p>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Бонус в рейтинг</p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-2xl font-bold text-indigo-700">
+                        {profile.gpa_bonus ? `+${profile.gpa_bonus}` : '0'}
+                      </span>
+                      <span className="text-xs text-indigo-400 mb-1">баллов</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-500/80 mt-1">Бонус автоматически считается из оценки модератора</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Profile form */}
+              <form onSubmit={handleProfileSave} className="space-y-5">
+                <div className="flex items-center space-x-5 pb-4 border-b border-slate-100">
+                  <div className="shrink-0 relative">
+                    {avatarPreviewUrl ? (
+                      <img className="h-20 w-20 object-cover rounded-full border border-slate-200" src={avatarPreviewUrl} alt="" />
+                    ) : (
+                      <div className="h-20 w-20 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-medium text-xl">
+                        {profile.user.first_name?.[0] ?? '?'}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="inline-block bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors">
+                      Загрузить фото
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarChange}
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1">JPG, PNG до 2 МБ</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Имя</label>
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(stripEmoji(e.target.value))}
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Фамилия</label>
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(stripEmoji(e.target.value))}
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Email</label>
+                  <input
+                    type="email"
+                    value={profile.user.email}
+                    disabled
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Телефон (Опционально)</label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="+7 (999) 123-45-67"
+                    pattern="[\d\s\+\-\(\)]{0,20}"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                  />
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSavingProfile}
+                    className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  >
+                    {isSavingProfile ? 'Сохраняем...' : 'Сохранить'}
+                  </button>
+                </div>
+              </form>
+
+              {/* AI Resume block (students only) */}
+              {isStudent && (
+                <div className="mt-8 pt-6 border-t border-slate-100">
+                  <div className="bg-indigo-50/60 p-5 rounded-xl border border-indigo-100 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                      <div>
+                        <h3 className="text-base font-bold text-indigo-900 flex items-center gap-2">
+                          <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          AI-Сводка профиля
+                        </h3>
+                        <p className="text-xs text-indigo-700/70 mt-1">Автоматический анализ всех подтвержденных достижений нейросетью.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateResume()}
+                        disabled={isGeneratingResume || !canGenerate}
+                        className="shrink-0 px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm whitespace-nowrap"
+                      >
+                        {isGeneratingResume ? (
+                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                        )}
+                        {resumeText ? 'Обновить сводку' : 'Сгенерировать сводку'}
+                      </button>
+                    </div>
+
+                    {!canGenerate && generateReason && (
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                        {generateReason}
+                      </p>
+                    )}
+
+                    {resumeText ? (
+                      <div className="bg-white border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">
+                        {resumeText}
+                      </div>
+                    ) : !isGeneratingResume ? (
+                      <div className="text-center py-6 bg-white/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">
+                        Здесь появится ваше профессиональное резюме.<br />Нажмите кнопку выше, чтобы ИИ проанализировал ваши грамоты.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== SECURITY TAB ===== */}
+          {activeTab === 'security' && (
+            <div className="p-5 sm:p-6">
+              <div className="space-y-4">
+                {!passwordFlowId ? (
+                  <>
+                    <p className="text-sm text-slate-600">
+                      Для смены пароля мы отправим код подтверждения на вашу почту{' '}
+                      <span className="font-medium text-slate-800">{profile.user.email}</span>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleSendPasswordCode()}
+                      disabled={isSendingCode}
+                      className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                    >
+                      {isSendingCode ? 'Отправляем...' : 'Сменить пароль'}
+                    </button>
+                  </>
+                ) : !passwordVerifiedFlowId ? (
+                  <form onSubmit={handleVerifyPasswordCode} className="space-y-4">
+                    <p className="text-sm text-slate-600">Введите код из письма:</p>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Код подтверждения</label>
+                      <input
+                        type="text"
+                        value={passwordCode}
+                        onChange={(e) => setPasswordCode(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        disabled={isVerifyingCode}
+                        className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                      >
+                        {isVerifyingCode ? 'Проверяем...' : 'Подтвердить'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleResendPasswordCode()}
+                        disabled={isSendingCode || resendCooldown > 0}
+                        className="w-full sm:w-auto bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                      >
+                        {resendCooldown > 0 ? `Повторно (${resendCooldown}с)` : 'Отправить повторно'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Новый пароль</label>
+                      <div className="relative">
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                        />
+                        <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                          {showNewPassword ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Подтвердите пароль</label>
+                      <div className="relative">
+                        <input
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                        />
+                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                          {showConfirmPassword ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isResettingPassword}
+                      className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                    >
+                      {isResettingPassword ? 'Меняем...' : 'Сменить пароль'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ===== MY DOCS GRID ===== */}
+      {activeTab === 'profile' && docs.length > 0 && (
+        <div className="max-w-2xl mx-auto mt-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-semibold text-slate-700">Мои документы</h3>
+              <a
+                href={`/achievements`}
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/achievements')
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Все &rarr;
+              </a>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {docs.slice(0, 6).map((doc) => (
+                <a
+                  key={doc.id}
+                  href={`/achievements`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    navigate('/achievements')
+                  }}
+                  className="group block bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all overflow-hidden"
+                >
+                  <div className="h-28 w-full bg-slate-100 flex items-center justify-center overflow-hidden relative">
+                    {isImageFile(doc.file_path) ? (
+                      <DocumentPreviewImage
+                        documentId={doc.id}
+                        alt={doc.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : isPdfFile(doc.file_path) ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <svg className="w-10 h-10 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4z" />
+                        </svg>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">PDF</span>
+                      </div>
+                    ) : (
+                      <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    )}
+                    <div className="absolute top-2 right-2">
+                      {docStatusBadge(doc.status, doc.points)}
+                    </div>
+                  </div>
+                  <div className="p-2.5">
+                    <p className="text-xs font-medium text-slate-800 truncate">{doc.title}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {doc.category}
+                      {doc.result ? ` · ${doc.result}` : ''}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+            {docs.length > 6 && (
+              <div className="mt-3 text-center">
+                <a
+                  href={`/achievements`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    navigate('/achievements')
+                  }}
+                  className="text-xs text-indigo-600 hover:underline"
+                >
+                  Показать все {docs.length} документов
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== DYNAMICS CHART (students only) ===== */}
+      {activeTab === 'profile' && isStudent && (
+        <div className="max-w-2xl mx-auto mt-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-slate-700">Динамика достижений</h3>
+              {profile.user.session_gpa && (
+                <span className="text-xs text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full">
+                  GPA: <span className="font-semibold text-slate-700">{profile.user.session_gpa}</span> &middot; бонус +{profile.gpa_bonus}
+                </span>
+              )}
+            </div>
+            {profile.has_chart_data ? (
+              <div className="h-64">
+                <canvas ref={chartRef} />
+              </div>
+            ) : (
+              <div className="text-center py-8 text-sm text-slate-400">Пока нет данных для отображения графика</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== RADAR CHART (students only) ===== */}
+      {activeTab === 'profile' && isStudent && profile.my_docs.some((d) => d.status === 'approved') && (() => {
+        const pointsMap: Record<string, number> = {}
+        for (const cat of RADAR_CATS) pointsMap[cat] = 0
+        for (const doc of profile.my_docs) {
+          if (doc.status === 'approved' && doc.category && doc.category in pointsMap) {
+            pointsMap[doc.category] = (pointsMap[doc.category] ?? 0) + (doc.points ?? 0)
+          }
+        }
+        const activeCats = RADAR_CATS.filter((c) => (pointsMap[c] ?? 0) > 0)
+        return (
+          <div className="max-w-2xl mx-auto mt-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
+              <div className="h-64 sm:h-72">
+                <canvas ref={radarChartRef} />
+              </div>
+              {activeCats.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {activeCats.map((cat, _i) => {
+                    const idx = RADAR_CATS.indexOf(cat)
+                    const color = RADAR_COLORS[idx]
+                    const isHidden = hiddenCats.has(cat)
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setHiddenCats((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(cat)) next.delete(cat)
+                          else next.add(cat)
+                          return next
+                        })}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
+                        {cat}
+                        <span className="text-[10px] font-semibold ml-0.5" style={{ color: isHidden ? '#94a3b8' : color.border }}>
+                          {pointsMap[cat]} б.
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ===== CROP MODAL ===== */}
+      {showCropModal && (
+        <div className="fixed inset-0 z-[80] overflow-y-auto" role="dialog" aria-modal="true">
+          <div className="flex items-center justify-center min-h-screen p-4 text-center">
+            <div
+              className="fixed inset-0 bg-slate-900 bg-opacity-70 backdrop-blur-sm transition-opacity"
+              onClick={closeCropModal}
+            />
+            <div className="relative bg-white rounded-xl text-left overflow-hidden shadow-sm transform transition-all w-full max-w-lg flex flex-col">
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-sm font-bold text-slate-800">Фото профиля</h3>
+              </div>
+              <div className="p-4 bg-slate-50">
+                <div className="relative w-full h-64 bg-slate-200 rounded-lg overflow-hidden">
+                  {!isCropperLibraryReady && (
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+                      Загрузка редактора...
+                    </div>
+                  )}
+                  <img ref={imageToCropRef} src={cropSourceUrl ?? ''} className="max-w-full h-full object-contain" alt="" />
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-100 flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeCropModal}
+                  className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCropSave}
+                  disabled={!isCropperReady}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
+                >
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
