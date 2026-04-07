@@ -40,6 +40,20 @@ pipeline {
       }
     }
 
+    stage('Build') {
+      steps {
+        script {
+          sh """
+            docker build \
+              -t ${IMAGE_APP}:${env.IMAGE_TAG} \
+              -t ${IMAGE_APP}:latest \
+              ${DEPLOY_DIR}
+          """
+          echo "Image built: ${IMAGE_APP}:${env.IMAGE_TAG}"
+        }
+      }
+    }
+
     stage('Push to Docker Hub') {
       steps {
         withCredentials([usernamePassword(
@@ -52,6 +66,18 @@ pipeline {
             docker push ${IMAGE_APP}:${env.IMAGE_TAG}
             docker push ${IMAGE_APP}:latest
             docker logout
+          """
+        }
+      }
+    }
+
+    stage('Save Current Version') {
+      steps {
+        script {
+          sh """
+            PREV=\$(docker inspect --format='{{index .RepoTags 0}}' sirius_app_new 2>/dev/null || echo '')
+            echo "\$PREV" > /tmp/sirius_prev_tag.txt
+            echo "Current running version: \$PREV"
           """
         }
       }
@@ -100,16 +126,16 @@ pipeline {
         }
       }
     }
+
   }
 
   post {
+
     failure {
       script {
         echo "Deployment failed — starting rollback..."
-
         sh """
           PREV=\$(cat /tmp/sirius_prev_tag.txt 2>/dev/null || echo '')
-
           if [ -n "\$PREV" ]; then
             echo "Rolling back to: \$PREV"
             cd ${DEPLOY_DIR}
@@ -161,5 +187,7 @@ ${env.BUILD_URL}console
 
       sh "docker image prune -f --filter 'until=72h'"
     }
+
   }
+
 }
