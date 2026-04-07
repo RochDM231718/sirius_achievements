@@ -41,18 +41,18 @@ pipeline {
     }
 
     stage('Build') {
-      steps {
-        script {
-          sh """
-            docker build \
-              -t ${IMAGE_APP}:${env.IMAGE_TAG} \
-              -t ${IMAGE_APP}:latest \
-              ${DEPLOY_DIR}
-          """
-          echo "Image built: ${IMAGE_APP}:${env.IMAGE_TAG}"
-        }
-      }
+  steps {
+    script {
+      sh """
+        docker build \
+          -t ${IMAGE_APP}:${env.IMAGE_TAG} \
+          -t ${IMAGE_APP}:latest \
+          .
+      """
+      echo "Image built: ${IMAGE_APP}:${env.IMAGE_TAG}"
     }
+  }
+}
 
     stage('Push to Docker Hub') {
       steps {
