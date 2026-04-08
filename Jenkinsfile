@@ -98,7 +98,7 @@ stage('Build') {
             docker compose up -d --no-deps --pull always web
 
             echo "Waiting for container to start..."
-            sleep 50
+            sleep 100
           """
         }
       }
