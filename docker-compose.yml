@@ -117,6 +117,7 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      - /root/sirius_achievements:/root/sirius_achievements
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=true
     networks:
