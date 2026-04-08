@@ -39,17 +39,18 @@ pipeline {
         echo "Repository cloned, branch: prod, tag: ${env.IMAGE_TAG}"
       }
     }
-
-    stage('Build') {
+stage('Build') {
   steps {
     script {
       sh """
+        docker pull ${IMAGE_APP}:latest || true
         docker build \
+          --cache-from ${IMAGE_APP}:latest \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
           -t ${IMAGE_APP}:${env.IMAGE_TAG} \
           -t ${IMAGE_APP}:latest \
           .
       """
-      echo "Image built: ${IMAGE_APP}:${env.IMAGE_TAG}"
     }
   }
 }
@@ -97,7 +98,7 @@ pipeline {
             docker compose up -d --no-deps --pull always web
 
             echo "Waiting for container to start..."
-            sleep 15
+            sleep 50
           """
         }
       }
