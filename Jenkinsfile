@@ -10,7 +10,7 @@ pipeline {
     DOCKERHUB_USER = 'sh1tc0derdocker'
     IMAGE_APP      = "${DOCKERHUB_USER}/sirius-app"
     DEPLOY_DIR     = '/root/sirius_achievements'
-    NOTIFY_EMAIL   = 'efirkoumir@gmail.com, yaroslavroch2@gmail.com, matveys909@gmail.com'
+    NOTIFY_EMAIL   = 'efirkoumir@gmail.com,yaroslavroch2@gmail.com,matveys909@gmail.com'
   }
 
   stages {
