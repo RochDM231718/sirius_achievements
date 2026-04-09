@@ -152,7 +152,7 @@ stage('Build') {
 
       mail(
         to: "${env.NOTIFY_EMAIL}",
-        subject: "Что-то пошло по пизде! — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
+        subject: "Что-то пошло плохо! — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
         body: """
 Деплой завершился с ошибкой.
 
@@ -172,7 +172,7 @@ ${env.BUILD_URL}console
     success {
       mail(
         to: "${env.NOTIFY_EMAIL}",
-        subject: "Все заебись — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
+        subject: "Все прошло успешно — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
         body: """
 Деплой успешно завершён.
 
