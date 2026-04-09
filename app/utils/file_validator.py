@@ -100,6 +100,47 @@ class FileValidator:
                     return ext
         return None
 
+    async def validate_and_store(self, file: UploadFile, subdirectory: str = "") -> str:
+        """Validate → optimize → upload to MinIO. Returns ``s3:<key>``."""
+        from app.utils import optimizer as _opt
+        from app.utils import storage as _storage
+
+        data, detected_ext = await self._validate_to_bytes(file)
+        data = await __import__("asyncio").to_thread(_opt.optimize, data, detected_ext)
+
+        # Build MinIO key: <minio_prefix>[/<subdirectory>]/<uuid>.<ext>
+        parts = [self._minio_prefix]
+        if subdirectory:
+            parts.append(subdirectory)
+        parts.append(f"{uuid.uuid4().hex}.{detected_ext}")
+        key = "/".join(parts)
+
+        return await _storage.upload(data, key)
+
+    async def _validate_to_bytes(self, file: UploadFile) -> tuple[bytes, str]:
+        """Validate and return (raw_bytes, ext). Does NOT persist anywhere."""
+        header = await file.read(16)
+        await file.seek(0)
+
+        detected_ext = self._detect_extension(header, file.filename, file.file)
+        if not detected_ext:
+            formats = ", ".join(ext.upper() for ext in self.allowed)
+            raise ValueError(f"Недопустимый формат файла. Допустимы: {formats}.")
+
+        file_size = await self._get_file_size(file)
+        if file_size > self.max_size:
+            max_mb = self.max_size // (1024 * 1024)
+            raise ValueError(f"Файл слишком большой. Максимум: {max_mb} МБ.")
+
+        await file.seek(0)
+        data = await file.read()
+        return data, detected_ext
+
+    @property
+    def _minio_prefix(self) -> str:
+        """Derive the MinIO key prefix from upload_dir: last path component."""
+        return self.upload_dir.rstrip("/").rsplit("/", 1)[-1]
+
     @staticmethod
     async def _get_file_size(file: UploadFile) -> int:
         # Starlette 0.24+ provides .size from multipart parser

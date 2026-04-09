@@ -7,6 +7,7 @@ from app.config import settings
 from app.repositories.admin.achievement_repository import AchievementRepository
 from app.services.admin.base_crud_service import BaseCrudService
 from app.utils.file_validator import DOC_SIGNATURES, FileValidator
+from app.utils import storage
 
 logger = structlog.get_logger()
 
@@ -24,7 +25,7 @@ class AchievementService(BaseCrudService):
         )
 
     async def save_file(self, file: UploadFile) -> str:
-        return await self._file_validator.validate_and_save(file)
+        return await self._file_validator.validate_and_store(file)
 
     async def delete(
         self,
@@ -53,11 +54,14 @@ class AchievementService(BaseCrudService):
             raise ValueError("У вас нет прав на удаление этого файла")
 
         if item.file_path:
-            full_path = os.path.join("static", item.file_path)
-            if os.path.exists(full_path):
-                try:
-                    os.remove(full_path)
-                except OSError:
-                    logger.warning("Failed to delete file", path=full_path)
+            if storage.is_minio_path(item.file_path):
+                await storage.delete(storage.extract_key(item.file_path))
+            else:
+                full_path = os.path.join("static", item.file_path)
+                if os.path.exists(full_path):
+                    try:
+                        os.remove(full_path)
+                    except OSError:
+                        logger.warning("Failed to delete file", path=full_path)
 
         await self.repo.delete(id)

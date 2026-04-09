@@ -150,6 +150,8 @@ async def _apply_schema_updates():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _apply_schema_updates()
+    from app.utils.storage import ensure_bucket
+    await ensure_bucket()
     task = asyncio.create_task(_support_maintenance_loop())
     try:
         yield

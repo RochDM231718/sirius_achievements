@@ -20,6 +20,12 @@ class Settings:
     DB_USERNAME: str = os.getenv("DB_USERNAME", "postgres")
     DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
 
+    # ── MinIO / S3 object storage ──
+    MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+    MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "sirius-files")
+
     # ── Redis ──
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 

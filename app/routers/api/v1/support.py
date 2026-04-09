@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+import io
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import get_db
@@ -10,6 +12,7 @@ from app.repositories.admin.support_repository import SupportMessageRepository, 
 from app.services.admin.support_service import SupportService
 from app.utils.access import is_in_zone
 from app.utils.media_paths import guess_media_type, resolve_static_path
+from app.utils import storage
 from app.utils.notifications import broadcast_staff_event
 
 from .serializers import serialize_support_message, serialize_support_ticket
@@ -31,7 +34,20 @@ def _can_access_ticket(user, ticket) -> bool:
     return is_in_zone(user, getattr(getattr(ticket, 'user', None), 'education_level', None))
 
 
-def _inline_file_response(relative_path: str) -> FileResponse:
+async def _inline_file_response(relative_path: str) -> FileResponse | StreamingResponse:
+    if storage.is_minio_path(relative_path):
+        key = storage.extract_key(relative_path)
+        try:
+            data = await storage.download(key)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail='File not found') from exc
+        filename = key.rsplit('/', 1)[-1]
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type=guess_media_type(filename),
+            headers={'Content-Disposition': f'inline; filename="{filename}"'},
+        )
+
     try:
         full_path = resolve_static_path(relative_path)
     except ValueError as exc:
@@ -157,4 +173,4 @@ async def get_attachment(
     if not _can_access_ticket(current_user, message.ticket):
         raise HTTPException(status_code=403, detail='Access denied')
 
-    return _inline_file_response(message.file_path)
+    return await _inline_file_response(message.file_path)

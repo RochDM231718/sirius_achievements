@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,6 +17,7 @@ from app.repositories.admin.achievement_repository import AchievementRepository
 from app.services.admin.achievement_service import AchievementService
 from app.utils.access import is_in_zone
 from app.utils.media_paths import guess_media_type, resolve_static_path
+from app.utils import storage
 from app.utils.search import escape_like
 
 from .serializers import serialize_achievement
@@ -48,7 +51,23 @@ async def _get_document(db: AsyncSession, document_id: int) -> Achievement | Non
     return result.scalars().first()
 
 
-def _file_response(relative_path: str, inline: bool) -> FileResponse:
+async def _file_response(relative_path: str, inline: bool) -> FileResponse | StreamingResponse:
+    if storage.is_minio_path(relative_path):
+        key = storage.extract_key(relative_path)
+        try:
+            data = await storage.download(key)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail='File not found') from exc
+
+        filename = key.rsplit('/', 1)[-1]
+        media_type = guess_media_type(filename) if not inline else guess_media_type(filename)
+        disposition = 'inline' if inline else 'attachment'
+        headers = {'Content-Disposition': f'{disposition}; filename="{filename}"'}
+        if not inline:
+            media_type = 'application/octet-stream'
+        return StreamingResponse(io.BytesIO(data), media_type=media_type, headers=headers)
+
+    # Legacy: serve from local filesystem
     try:
         full_path = resolve_static_path(relative_path)
     except ValueError as exc:
@@ -133,7 +152,7 @@ async def preview_document(
     if not _can_access_document(current_user, document):
         raise HTTPException(status_code=403, detail='Access denied')
 
-    return _file_response(document.file_path, inline=True)
+    return await _file_response(document.file_path, inline=True)
 
 
 @router.get('/{document_id}/download')
@@ -148,7 +167,7 @@ async def download_document(
     if not _can_access_document(current_user, document):
         raise HTTPException(status_code=403, detail='Access denied')
 
-    return _file_response(document.file_path, inline=False)
+    return await _file_response(document.file_path, inline=False)
 
 
 @router.delete('/{document_id}')
