@@ -20,10 +20,12 @@ export function ModerationAchievementsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalPending, setTotalPending] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [isPaginating, setIsPaginating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
-    setIsLoading(true)
+  const load = async (isInitial = false) => {
+    if (isInitial) setIsLoading(true)
+    else setIsPaginating(true)
     setError(null)
 
     try {
@@ -35,11 +37,12 @@ export function ModerationAchievementsPage() {
       setError(getErrorMessage(loadError, 'Не удалось загрузить очередь достижений.'))
     } finally {
       setIsLoading(false)
+      setIsPaginating(false)
     }
   }
 
   useEffect(() => {
-    void load()
+    void load(page === 1 && items.length === 0)
   }, [page])
 
   const handleTake = async (item: Achievement) => {
@@ -92,7 +95,12 @@ export function ModerationAchievementsPage() {
         <div className="py-16"><LoadingSpinner /></div>
       ) : items.length ? (
         <>
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative transition-opacity ${isPaginating ? 'opacity-60 pointer-events-none' : ''}`}>
+            {isPaginating && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/50">
+                <LoadingSpinner />
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
