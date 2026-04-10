@@ -150,41 +150,41 @@ stage('Build') {
         """
       }
 
-//       mail(
-//         to: "${env.NOTIFY_EMAIL}",
-//         subject: "Что-то пошло плохо! — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
-//         body: """
-// Деплой завершился с ошибкой.
+      mail(
+        to: "${env.NOTIFY_EMAIL}",
+        subject: "Что-то пошло плохо! — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
+        body: """
+Деплой завершился с ошибкой.
 
-// Проект:  ${env.JOB_NAME}
-// Тег:     ${env.IMAGE_TAG}
-// Ветка:   prod
-// Сборка:  #${env.BUILD_NUMBER}
+Проект:  ${env.JOB_NAME}
+Тег:     ${env.IMAGE_TAG}
+Ветка:   prod
+Сборка:  #${env.BUILD_NUMBER}
 
-// Был выполнен автоматический откат на предыдущую версию.
+Был выполнен автоматический откат на предыдущую версию.
 
-// Подробные логи:
-// ${env.BUILD_URL}console
-//         """.stripIndent()
-//       )
+Подробные логи:
+${env.BUILD_URL}console
+        """.stripIndent()
+      )
     }
 
     success {
-//       mail(
-//         to: "${env.NOTIFY_EMAIL}",
-//         subject: "Все прошло успешно — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
-//         body: """
-// Деплой успешно завершён.
+      mail(
+        to: "${env.NOTIFY_EMAIL}",
+        subject: "Все прошло успешно — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
+        body: """
+Деплой успешно завершён.
 
-// Проект:  ${env.JOB_NAME}
-// Тег:     ${env.IMAGE_TAG}
-// Ветка:   prod
-// Сборка:  #${env.BUILD_NUMBER}
+Проект:  ${env.JOB_NAME}
+Тег:     ${env.IMAGE_TAG}
+Ветка:   prod
+Сборка:  #${env.BUILD_NUMBER}
 
-// Подробные логи:
-// ${env.BUILD_URL}console
-//         """.stripIndent()
-//       )
+Подробные логи:
+${env.BUILD_URL}console
+        """.stripIndent()
+      )
 
       sh "docker image prune -f --filter 'until=72h'"
     }
