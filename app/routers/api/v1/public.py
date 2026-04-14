@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from app.infrastructure.database import get_db
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole, UserStatus
 from app.models.user import Users
+from app.utils import storage
 from app.utils.media_paths import guess_media_type, resolve_static_path
 from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 
@@ -150,8 +151,23 @@ async def public_document_preview(student_id: int, document_id: int, db: AsyncSe
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Document not found.')
 
+    file_path = achievement.file_path
+
+    if storage.is_minio_path(file_path):
+        key = storage.extract_key(file_path)
+        try:
+            data = await storage.download(key)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail='File not found.') from exc
+        filename = key.rsplit('/', 1)[-1]
+        return StreamingResponse(
+            __import__('io').BytesIO(data),
+            media_type=guess_media_type(filename),
+            headers={'Content-Disposition': f'inline; filename="{filename}"'},
+        )
+
     try:
-        full_path = resolve_static_path(achievement.file_path)
+        full_path = resolve_static_path(file_path)
     except ValueError as exc:
         raise HTTPException(status_code=403, detail='Invalid file path') from exc
 

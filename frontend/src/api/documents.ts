@@ -2,6 +2,7 @@ import client from './client'
 import { Achievement } from '@/types/achievement'
 
 export interface DocumentsParams {
+  page?: number
   query?: string
   status?: string
   category?: string
@@ -12,6 +13,8 @@ export interface DocumentsParams {
 export interface DocumentsResponse {
   achievements: Achievement[]
   total: number
+  page: number
+  total_pages: number
   statuses: string[]
   categories: string[]
   levels: string[]

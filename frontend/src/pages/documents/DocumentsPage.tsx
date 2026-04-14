@@ -10,14 +10,13 @@ import { useToast } from '@/hooks/useToast'
 import { Achievement } from '@/types/achievement'
 import { openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
-import { getTotalPages, paginateItems } from '@/utils/pagination'
 
 interface SuggestionItem {
   value: string
   text: string
 }
 
-const DOCUMENTS_PAGE_SIZE = 10
+const DOCUMENTS_PAGE_SIZE = 20
 
 function statusLabel(status: string, moderatorId?: number, currentUserId?: number) {
   if (status === 'approved') return 'Одобрено'
@@ -51,26 +50,24 @@ export function DocumentsPage() {
   const [level, setLevel] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
 
   const filters = useMemo(
     () => ({
+      page,
       query: query || undefined,
       status: status || undefined,
       category: category || undefined,
       level: level || undefined,
       sort_by: sortBy,
     }),
-    [category, level, query, sortBy, status]
+    [page, category, level, query, sortBy, status]
   )
 
-  const totalPages = useMemo(() => getTotalPages(items.length, DOCUMENTS_PAGE_SIZE), [items.length])
-  const paginatedItems = useMemo(
-    () => paginateItems(items, page, DOCUMENTS_PAGE_SIZE),
-    [items, page]
-  )
+  const paginatedItems = items
 
   const loadDocuments = async () => {
     setIsLoading(true)
@@ -79,6 +76,7 @@ export function DocumentsPage() {
     try {
       const { data } = await documentsApi.list(filters)
       setItems(data.achievements)
+      setTotalPages(data.total_pages ?? 1)
       setStatuses(data.statuses)
       setCategories(data.categories)
       setLevels(data.levels)
@@ -291,7 +289,7 @@ export function DocumentsPage() {
             </div>
             <div className="pagination-footer">
               <p className="pagination-summary">
-                Показано {paginatedItems.length} из {items.length} документов. По {DOCUMENTS_PAGE_SIZE} на страницу.
+                Страница {page} из {totalPages} · По {DOCUMENTS_PAGE_SIZE} на страницу.
               </p>
               <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
