@@ -356,6 +356,16 @@ async def update_user_role(
     elif payload.role == UserRole.SUPER_ADMIN:
         update_data['education_level'] = None
 
+    # Super admin promoting a guest to any real role — activate immediately
+    # regardless of email verification status
+    if (
+        current_user.role == UserRole.SUPER_ADMIN
+        and target_user.role == UserRole.GUEST
+        and payload.role != UserRole.GUEST
+    ):
+        update_data['is_active'] = True
+        update_data['status'] = UserStatus.ACTIVE
+
     repository = UserRepository(db)
     updated_user = await repository.update(user_id, update_data)
     return {'success': True, 'user': serialize_user(updated_user)}
