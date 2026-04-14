@@ -17,8 +17,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - prod_net
 
   redis:
     image: redis:7-alpine
@@ -30,8 +28,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - prod_net
 
   minio:
     image: minio/minio:latest
@@ -52,8 +48,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    networks:
-      - prod_net
 
   web:
     build: .
@@ -90,48 +84,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    networks:
-      - prod_net
-
-  nginx:
-    image: nginx:alpine
-    container_name: sirius_nginx
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - web
-    networks:
-      - prod_net
-      - jenkins_net  # чтобы проксировать jenkins тоже
-
-  jenkins:
-    image: jenkins-with-docker
-    container_name: jenkins
-    restart: unless-stopped
-    user: root
-    volumes:
-      - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /root/sirius_achievements:/root/sirius_achievements
-      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins
-    environment:
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=true
-    networks:
-      - jenkins_net
 
 volumes:
   postgres_data_new:
   uploads_data:
   minio_data:
-  jenkins_home:
-
-networks:
-  prod_net:
-    driver: bridge
-  jenkins_net:
-    driver: bridge

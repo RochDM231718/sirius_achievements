@@ -2,7 +2,12 @@ import os
 import logging
 import httpx
 import asyncio
-import easyocr
+try:
+    import easyocr
+    _EASYOCR_AVAILABLE = True
+except ImportError:
+    easyocr = None  # type: ignore[assignment]
+    _EASYOCR_AVAILABLE = False
 import fitz  # PyMuPDF
 from pathlib import Path
 from datetime import datetime, timezone
@@ -24,6 +29,8 @@ _ocr_reader = None
 
 def get_ocr_reader():
     global _ocr_reader
+    if not _EASYOCR_AVAILABLE:
+        return None
     if _ocr_reader is None:
         model_dir = os.getenv('EASYOCR_MODEL_DIR', '/app/easyocr_models')
         download_enabled = settings.RESUME_OCR_MODEL_DOWNLOAD_ENABLED
@@ -50,7 +57,6 @@ def get_ocr_reader():
             except Exception as e2:
                 log.error("EasyOCR init completely failed: %s", e2)
                 _ocr_reader = None
-                raise
     return _ocr_reader
 
 
@@ -63,17 +69,20 @@ def extract_text_from_pdf(filepath: str) -> str:
             if page_text:
                 text += page_text + "\n"
             else:
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_bytes = pix.tobytes("png")
                 reader = get_ocr_reader()
-                ocr_results = reader.readtext(img_bytes, detail=0, paragraph=True)
-                text += "\n".join(ocr_results) + "\n"
+                if reader is not None:
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                    img_bytes = pix.tobytes("png")
+                    ocr_results = reader.readtext(img_bytes, detail=0, paragraph=True)
+                    text += "\n".join(ocr_results) + "\n"
     return text.strip()
 
 
 def extract_text_from_image(filepath: str) -> str:
     """Извлекает текст из изображения с помощью EasyOCR."""
     reader = get_ocr_reader()
+    if reader is None:
+        return ""
     ocr_results = reader.readtext(filepath, detail=0, paragraph=True)
     return "\n".join(ocr_results)
 

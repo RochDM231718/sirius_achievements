@@ -39,5 +39,42 @@ frontend/node_modules/
 frontend/dist/
 static/spa/
 
+*.sqlite3
+*.db
+db.sqlite3
+test.db
+
+*.log
+*.log.*
+app.log
+
+.venv/
+venv/
+env/
+
+__pycache__/
+*.pyc
+
+.idea/
+
+# Database backups
+*.sql
+backup.sql
+
+# Setup/seeder credentials
+.seed_credentials
+.setup_credentials
+
+# Uploaded files
+static/uploads/
+
+# EasyOCR models
+/models/
+
+# React frontend
+frontend/node_modules/
+frontend/dist/
+static/spa/
+
 # Local deploy artifacts
 .deploy-backups/

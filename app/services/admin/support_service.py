@@ -9,7 +9,7 @@ from app.models.enums import SupportTicketStatus
 from app.models.support_message import SupportMessage
 from app.models.support_ticket import SupportTicket
 from app.repositories.admin.support_repository import SupportMessageRepository, SupportTicketRepository
-from app.utils.file_validator import FileValidator, IMAGE_SIGNATURES
+from app.utils.file_validator import FileValidator, SUPPORT_SIGNATURES
 from app.utils.support_sessions import calculate_session_expiration
 
 logger = structlog.get_logger()
@@ -21,7 +21,7 @@ class SupportService:
         self.message_repo = message_repo
         self.db = ticket_repo.db
         self._file_validator = FileValidator(
-            allowed=IMAGE_SIGNATURES,
+            allowed=SUPPORT_SIGNATURES,
             max_size=settings.MAX_SUPPORT_FILE_SIZE,
             upload_dir=settings.UPLOAD_DIR_SUPPORT,
         )

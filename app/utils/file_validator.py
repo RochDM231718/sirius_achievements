@@ -38,6 +38,12 @@ DOC_SIGNATURES = {
 }
 IMAGE_SIGNATURES = {"jpg": SIGNATURES["jpg"], "png": SIGNATURES["png"], "webp": SIGNATURES["webp"]}
 AVATAR_SIGNATURES = IMAGE_SIGNATURES
+SUPPORT_SIGNATURES = {
+    "pdf": SIGNATURES["pdf"],
+    "jpg": SIGNATURES["jpg"],
+    "png": SIGNATURES["png"],
+    "webp": SIGNATURES["webp"],
+}
 
 
 class FileValidator:

@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { PdfViewer } from '@/components/ui/PdfViewer'
 import { useAuth } from '@/hooks/useAuth'
 
 type PreviewState = {
@@ -285,12 +286,7 @@ export function AppLayout() {
                   <img src={preview.src} className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
                 </div>
               ) : (
-                <iframe
-                  src={preview.src}
-                  className="w-full h-full border-0 bg-white"
-                  title="PDF"
-                  allow="fullscreen"
-                />
+                <PdfViewer src={preview.src} className="w-full h-full bg-slate-100" />
               )}
             </div>
           </div>

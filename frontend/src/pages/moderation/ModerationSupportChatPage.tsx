@@ -3,9 +3,25 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { supportApi } from '@/api/support'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { PdfViewer } from '@/components/ui/PdfViewer'
 import { SupportChatResponse } from '@/types/support'
 import { useToast } from '@/hooks/useToast'
 import { getErrorMessage } from '@/utils/http'
+
+function isPdf(path?: string | null) {
+  return /\.pdf$/i.test(path ?? '')
+}
+
+function openImageOverlay(src: string) {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:pointer'
+  const bigImg = document.createElement('img')
+  bigImg.src = src
+  bigImg.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain'
+  overlay.appendChild(bigImg)
+  overlay.addEventListener('click', () => overlay.remove())
+  document.body.appendChild(overlay)
+}
 
 function formatMsgDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -47,6 +63,9 @@ export function ModerationSupportChatPage() {
   const [isClosing, setIsClosing] = useState(false)
   const [isReopening, setIsReopening] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<number, string>>({})
+  const attachmentUrlsRef = useRef<Record<number, string>>({})
+  const [pdfOverlay, setPdfOverlay] = useState<string | null>(null)
 
   const backHref = `/moderation/support?tab=${from}`
 
@@ -79,6 +98,38 @@ export function ModerationSupportChatPage() {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight
     }
   }, [chat?.messages])
+
+  useEffect(() => {
+    if (!chat?.messages) return
+    const msgsWithFile = chat.messages.filter((m) => m.file_path && !(m.id in attachmentUrlsRef.current))
+    if (!msgsWithFile.length) return
+
+    void (async () => {
+      const entries = await Promise.all(
+        msgsWithFile.map(async (m) => {
+          try {
+            const { data } = await supportApi.getAttachment(m.id)
+            const url = URL.createObjectURL(data as Blob)
+            return [m.id, url] as [number, string]
+          } catch {
+            return null
+          }
+        })
+      )
+      const newUrls: Record<number, string> = {}
+      for (const entry of entries) {
+        if (entry) newUrls[entry[0]] = entry[1]
+      }
+      attachmentUrlsRef.current = { ...attachmentUrlsRef.current, ...newUrls }
+      setAttachmentUrls((prev) => ({ ...prev, ...newUrls }))
+    })()
+  }, [chat?.messages])
+
+  useEffect(() => {
+    return () => {
+      Object.values(attachmentUrlsRef.current).forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [])
 
   const resizeTextarea = () => {
     const ta = textareaRef.current
@@ -165,16 +216,6 @@ export function ModerationSupportChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleAttachmentClick = (src: string) => {
-    const overlay = document.createElement('div')
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;cursor:pointer'
-    const bigImg = document.createElement('img')
-    bigImg.src = src
-    bigImg.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain'
-    overlay.appendChild(bigImg)
-    overlay.addEventListener('click', () => overlay.remove())
-    document.body.appendChild(overlay)
-  }
 
   if (isLoading) return <div className="py-16"><LoadingSpinner /></div>
   if (!chat) return null
@@ -317,29 +358,37 @@ export function ModerationSupportChatPage() {
 
                 {msg.file_path ? (
                   <div className="mt-2">
-                    <img
-                      src={`/sirius.achievements/support/messages/${msg.id}/attachment`}
-                      alt="Вложение"
-                      className="max-w-full rounded-lg max-h-64 object-contain cursor-pointer"
-                      loading="lazy"
-                      onClick={() => handleAttachmentClick(`/sirius.achievements/support/messages/${msg.id}/attachment`)}
-                      onError={(e) => {
-                        const target = e.currentTarget
-                        target.style.display = 'none'
-                        const fallback = target.nextElementSibling as HTMLElement | null
-                        if (fallback) fallback.style.display = 'inline-flex'
-                      }}
-                    />
-                    <a
-                      href={`/sirius.achievements/support/messages/${msg.id}/attachment`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="items-center gap-1.5 text-xs mt-1 px-2 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors"
-                      style={{ display: 'none' }}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                      Скачать вложение
-                    </a>
+                    {attachmentUrls[msg.id] ? (
+                      <div className="space-y-1.5">
+                        {isPdf(msg.file_path) ? (
+                          <button
+                            type="button"
+                            onClick={() => setPdfOverlay(attachmentUrls[msg.id])}
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors font-medium"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                            Открыть PDF
+                          </button>
+                        ) : (
+                          <img
+                            src={attachmentUrls[msg.id]}
+                            alt="Вложение"
+                            className="max-w-full rounded-lg max-h-64 object-contain cursor-pointer"
+                            onClick={() => openImageOverlay(attachmentUrls[msg.id])}
+                          />
+                        )}
+                        <a
+                          href={attachmentUrls[msg.id]}
+                          download={msg.file_path.split('/').pop() ?? 'attachment'}
+                          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          Скачать
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="text-xs opacity-60 py-1">Загрузка вложения…</div>
+                    )}
                   </div>
                 ) : null}
 
@@ -360,7 +409,7 @@ export function ModerationSupportChatPage() {
             <form onSubmit={handleSend} className="flex items-end gap-2">
               <label className="shrink-0 cursor-pointer text-slate-400 hover:text-indigo-600 transition-colors p-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
               </label>
 
               <div className="flex-1">
@@ -374,9 +423,10 @@ export function ModerationSupportChatPage() {
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
                 />
                 {file ? (
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="text-[10px] text-indigo-600 truncate">{file.name}</span>
-                    <button type="button" onClick={handleRemoveFile} className="text-slate-400 hover:text-red-500 transition-colors shrink-0">
+                  <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                    <svg className="w-3.5 h-3.5 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                    <span className="text-[10px] text-indigo-600 truncate min-w-0 flex-1">{file.name}</span>
+                    <button type="button" onClick={handleRemoveFile} className="text-slate-400 hover:text-red-500 transition-colors shrink-0 ml-1">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>
@@ -408,6 +458,34 @@ export function ModerationSupportChatPage() {
           </div>
         )}
       </div>
+
+      {pdfOverlay ? (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
+          <div className="relative bg-white rounded-xl w-full max-w-3xl h-[85dvh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+              <span className="text-sm font-bold text-slate-800">Просмотр PDF</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={pdfOverlay}
+                  download="attachment.pdf"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Скачать
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPdfOverlay(null)}
+                  className="text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+            <PdfViewer src={pdfOverlay} className="flex-1 overflow-auto bg-slate-100" />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

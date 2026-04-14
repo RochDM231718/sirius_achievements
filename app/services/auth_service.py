@@ -105,6 +105,10 @@ class AuthService:
             logger.warning("Login failed: wrong password", email=email)
             return None
 
+        if not self.verify_password(password, user.hashed_password):
+            logger.warning("Login failed: wrong password", email=email)
+            return None
+
         await rate_limiter.reset(rl_key)
 
         logger.info("User logged in", user_id=user.id, email=user.email)
