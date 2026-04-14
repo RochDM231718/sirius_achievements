@@ -2,9 +2,11 @@
 
 import io
 
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -87,6 +89,7 @@ async def _file_response(relative_path: str, inline: bool) -> FileResponse | Str
 @router.get('')
 @router.get('/')
 async def list_documents(
+    page: int = Query(default=1, ge=1, le=10000),
     query: str = '',
     status: str = '',
     category: str = '',
@@ -95,8 +98,11 @@ async def list_documents(
     current_user=Depends(_check_admin_rights),
     db: AsyncSession = Depends(get_db),
 ):
+    page_size = 20
+    offset = (page - 1) * page_size
+
     repo = AchievementRepository(db)
-    achievements = await repo.get_all_with_filters(
+    stmt = repo.build_filter_stmt(
         search=query,
         status=status,
         category=category,
@@ -105,9 +111,14 @@ async def list_documents(
         owner_education_level=_document_zone_filter(current_user),
     )
 
+    total_items = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    achievements = (await db.execute(stmt.offset(offset).limit(page_size))).scalars().all()
+
     return {
         'achievements': [serialize_achievement(item) for item in achievements],
-        'total': len(achievements),
+        'total': total_items,
+        'page': page,
+        'total_pages': max(1, math.ceil(total_items / page_size)),
         'statuses': [item.value for item in AchievementStatus],
         'categories': [item.value for item in AchievementCategory],
         'levels': [item.value for item in AchievementLevel],

@@ -10,7 +10,7 @@ class AchievementRepository(BaseCrudRepository):
     def __init__(self, db):
         super().__init__(db, Achievement)
 
-    async def get_all_with_filters(
+    def build_filter_stmt(
             self,
             search: str = "",
             status: str = "",
@@ -49,5 +49,26 @@ class AchievementRepository(BaseCrudRepository):
         else:
             stmt = stmt.order_by(self.model.created_at.desc())
 
+        return stmt
+
+    async def get_all_with_filters(
+            self,
+            search: str = "",
+            status: str = "",
+            category: str = "",
+            level: str = "",
+            sort_by: str = "newest",
+            owner_education_level=None,
+            owner_id: int | None = None,
+    ):
+        stmt = self.build_filter_stmt(
+            search=search,
+            status=status,
+            category=category,
+            level=level,
+            sort_by=sort_by,
+            owner_education_level=owner_education_level,
+            owner_id=owner_id,
+        )
         result = await self.db.execute(stmt)
         return result.scalars().all()
