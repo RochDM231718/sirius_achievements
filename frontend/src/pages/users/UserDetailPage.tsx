@@ -13,6 +13,18 @@ import { openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
 
+const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
+const RADAR_COLORS = [
+  { border: '#6366f1', bg: 'rgba(99,102,241,0.18)' },
+  { border: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },
+  { border: '#ec4899', bg: 'rgba(236,72,153,0.18)' },
+  { border: '#10b981', bg: 'rgba(16,185,129,0.18)' },
+  { border: '#f59e0b', bg: 'rgba(245,158,11,0.18)' },
+  { border: '#ef4444', bg: 'rgba(239,68,68,0.18)' },
+  { border: '#8b5cf6', bg: 'rgba(139,92,246,0.18)' },
+  { border: '#64748b', bg: 'rgba(100,116,139,0.18)' },
+]
+
 function achievementStatusLabel(status: string) {
   switch (status) {
     case AchievementStatus.APPROVED:
@@ -51,6 +63,9 @@ export function UserDetailPage() {
   const { pushToast } = useToast()
   const chartRef = useRef<HTMLCanvasElement | null>(null)
   const chartInstanceRef = useRef<Chart | null>(null)
+  const radarChartRef = useRef<HTMLCanvasElement | null>(null)
+  const radarInstanceRef = useRef<Chart | null>(null)
+  const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set())
   const [detail, setDetail] = useState<UserDetailResponse | null>(null)
   const [resumeText, setResumeText] = useState('')
   const [canGenerateResume, setCanGenerateResume] = useState(false)
@@ -164,6 +179,70 @@ export function UserDetailPage() {
       chartInstanceRef.current = null
     }
   }, [detail])
+
+  useEffect(() => {
+    if (!radarChartRef.current || !detail?.achievements?.length) return
+    const pointsMap: Record<string, number> = {}
+    for (const cat of RADAR_CATS) pointsMap[cat] = 0
+    for (const a of detail.achievements) {
+      const cat = a.category as string
+      if (cat in pointsMap) pointsMap[cat] = (pointsMap[cat] ?? 0) + (a.points ?? 0)
+    }
+    if (!RADAR_CATS.some((c) => (pointsMap[c] ?? 0) > 0)) return
+    const maxVal = Math.max(...RADAR_CATS.map((c) => pointsMap[c] ?? 0))
+    const font = { family: "'Inter', system-ui, sans-serif", size: 10 }
+    radarInstanceRef.current?.destroy()
+    radarInstanceRef.current = new Chart(radarChartRef.current, {
+      type: 'radar',
+      data: {
+        labels: RADAR_CATS,
+        datasets: RADAR_CATS.map((cat, i) => {
+          const val = pointsMap[cat] ?? 0
+          const color = RADAR_COLORS[i]
+          return {
+            label: cat,
+            data: RADAR_CATS.map((c) => (c === cat ? val : 0)),
+            borderColor: val > 0 ? color.border : 'transparent',
+            backgroundColor: val > 0 ? color.bg : 'transparent',
+            borderWidth: 2,
+            pointBackgroundColor: val > 0 ? color.border : 'transparent',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: val > 0 ? 4 : 0,
+            hidden: hiddenCats.has(cat),
+          }
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleFont: { ...font, weight: 'bold' as const },
+            bodyFont: font,
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: { label: (ctx) => ctx.parsed.r > 0 ? ` ${ctx.dataset.label}: ${ctx.parsed.r} б.` : '' },
+          },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { font, color: '#94a3b8', backdropColor: 'transparent', stepSize: Math.max(1, Math.ceil(maxVal / 4)) },
+            pointLabels: { font: { ...font, size: 11 }, color: '#475569' },
+            grid: { color: '#e2e8f0' },
+            angleLines: { color: '#e2e8f0' },
+          },
+        },
+      },
+    })
+    return () => {
+      radarInstanceRef.current?.destroy()
+      radarInstanceRef.current = null
+    }
+  }, [detail, hiddenCats])
 
   const handleRoleSave = async () => {
     setIsSavingRole(true)
@@ -334,6 +413,51 @@ export function UserDetailPage() {
           </div>
 
           {detail.user.role === 'STUDENT' ? <div className="bg-white rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>}</div> : null}
+
+          {detail.user.role === 'STUDENT' && detail.achievements.length ? (() => {
+            const pointsMap: Record<string, number> = {}
+            for (const cat of RADAR_CATS) pointsMap[cat] = 0
+            for (const a of detail.achievements) {
+              const cat = a.category as string
+              if (cat in pointsMap) pointsMap[cat] = (pointsMap[cat] ?? 0) + (a.points ?? 0)
+            }
+            const activeCats = RADAR_CATS.filter((c) => pointsMap[c] > 0)
+            if (!activeCats.length) return null
+            return (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
+                <div className="h-64">
+                  <canvas ref={radarChartRef} />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {activeCats.map((cat) => {
+                    const idx = RADAR_CATS.indexOf(cat)
+                    const color = RADAR_COLORS[idx]
+                    const isHidden = hiddenCats.has(cat)
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setHiddenCats((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(cat)) next.delete(cat)
+                          else next.add(cat)
+                          return next
+                        })}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
+                        {cat}
+                        <span className="text-[10px] font-semibold ml-0.5" style={{ color: isHidden ? '#94a3b8' : color.border }}>
+                          {pointsMap[cat]} б.
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })() : null}
         </div> : null}
       </div>
     </div>
