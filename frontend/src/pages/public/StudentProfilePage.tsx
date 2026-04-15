@@ -4,6 +4,7 @@ import Chart from 'chart.js/auto'
 
 import { publicApi, PublicStudentResponse } from '@/api/public'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/utils/http'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -48,6 +49,8 @@ const RADAR_COLORS = [
 function StudentProfilePageInner() {
   const { id } = useParams<{ id: string }>()
   const studentId = Number(id)
+  const { user: currentUser } = useAuth()
+  const isOwnProfile = currentUser?.id === studentId
   const navigate = useNavigate()
   const progressChartRef = useRef<HTMLCanvasElement>(null)
   const radarChartRef = useRef<HTMLCanvasElement>(null)
@@ -378,8 +381,8 @@ function StudentProfilePageInner() {
                 {data.achievements.map((a) => (
                   <div
                     key={a.id}
-                    className={`group bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all overflow-hidden ${a.preview_url ? 'cursor-pointer' : ''}`}
-                    onClick={() => a.preview_url && setPreviewUrl(a.preview_url)}
+                    className={`group bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all overflow-hidden ${isOwnProfile && a.preview_url ? 'cursor-pointer' : ''}`}
+                    onClick={() => isOwnProfile && a.preview_url && setPreviewUrl(a.preview_url)}
                   >
                     <div className="p-3 sm:p-4">
                       <div className="flex items-start justify-between gap-3">
