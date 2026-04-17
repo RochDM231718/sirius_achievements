@@ -19,7 +19,7 @@ DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT
 safe_url = DATABASE_URL.replace(DB_PASSWORD, "****") if DB_PASSWORD else DATABASE_URL
 _logger.info("Database connection: %s", safe_url)
 
-engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True, connect_args={"ssl": None})
+engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True, connect_args={"ssl": False})
 async_session_maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False)
 
 class Base(DeclarativeBase):
