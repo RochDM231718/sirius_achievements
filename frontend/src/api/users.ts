@@ -1,5 +1,5 @@
 import client from './client'
-import { User, UserListResponse, UserDetailResponse } from '@/types/user'
+import { User, UserListResponse, UserDetailResponse, UserNote } from '@/types/user'
 
 export interface UsersParams {
   page?: number
@@ -51,5 +51,30 @@ export const usersApi = {
 
   setGpa(id: number, gpa: string) {
     return client.post<{ success: boolean; gpa: string; bonus: number; user: User }>(`/users/${id}/set-gpa`, { gpa })
+  },
+
+  listNotes(userId: number) {
+    return client.get<{ notes: UserNote[] }>(`/users/${userId}/notes`)
+  },
+
+  createNote(userId: number, text: string, file?: File) {
+    const form = new FormData()
+    form.append('text', text)
+    if (file) form.append('file', file)
+    return client.post<{ note: UserNote }>(`/users/${userId}/notes`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  deleteNote(userId: number, noteId: number) {
+    return client.delete<{ success: boolean }>(`/users/${userId}/notes/${noteId}`)
+  },
+
+  getNoteFileUrl(userId: number, noteId: number) {
+    return `/api/v1/users/${userId}/notes/${noteId}/file`
+  },
+
+  getNoteFile(userId: number, noteId: number) {
+    return client.get(`/users/${userId}/notes/${noteId}/file`, { responseType: 'blob' })
   },
 }

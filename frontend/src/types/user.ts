@@ -46,6 +46,23 @@ export interface UserDetailResponse {
   education_levels: string[]
 }
 
+export interface UserNote {
+  id: number
+  user_id: number
+  author_id: number | null
+  text: string
+  file_path: string | null
+  has_file: boolean
+  created_at: string
+  author: {
+    id: number
+    first_name: string
+    last_name: string
+    email: string
+    avatar_path?: string
+  } | null
+}
+
 export interface SeasonResult {
   id: number
   season_name: string

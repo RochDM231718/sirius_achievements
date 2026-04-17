@@ -42,6 +42,7 @@ class Settings:
     UPLOAD_DIR_AVATARS: str = "static/uploads/avatars"
     UPLOAD_DIR_ACHIEVEMENTS: str = "static/uploads/achievements"
     UPLOAD_DIR_SUPPORT: str = "static/uploads/support"
+    UPLOAD_DIR_NOTES: str = "static/uploads/notes"
 
     # ── Rate limiting ──
     LOGIN_MAX_ATTEMPTS: int = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))

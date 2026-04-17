@@ -36,6 +36,7 @@ class Users(Base):
     api_refresh_version = Column(Integer, nullable=False, default=1, server_default="1")
 
     achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan", foreign_keys="Achievement.user_id")
+    notes = relationship("UserNote", back_populates="user", cascade="all, delete-orphan", foreign_keys="UserNote.user_id")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     tokens = relationship("UserToken", back_populates="user", cascade="all, delete-orphan")
     support_tickets = relationship(

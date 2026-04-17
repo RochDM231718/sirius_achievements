@@ -8,7 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { AchievementStatus } from '@/types/enums'
-import { UserDetailResponse } from '@/types/user'
+import { UserDetailResponse, UserNote } from '@/types/user'
 import { openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
@@ -79,6 +79,14 @@ export function UserDetailPage() {
   const [isGeneratingResume, setIsGeneratingResume] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notes, setNotes] = useState<UserNote[]>([])
+  const [noteText, setNoteText] = useState('')
+  const [noteFile, setNoteFile] = useState<File | null>(null)
+  const [isAddingNote, setIsAddingNote] = useState(false)
+  const [notePreview, setNotePreview] = useState<{ url: string; type: 'pdf' | 'image'; noteId: number } | null>(null)
+  const [notePreviewLoading, setNotePreviewLoading] = useState(false)
+  const noteFileInputRef = useRef<HTMLInputElement>(null)
+  const notePreviewUrlRef = useRef<string | null>(null)
 
   const backUrl = useMemo(() => {
     const params = new URLSearchParams(location.search)
@@ -107,7 +115,11 @@ export function UserDetailPage() {
     setError(null)
 
     try {
-      const [detailResponse, resumeResponse] = await Promise.all([usersApi.get(userId), usersApi.checkResume(userId)])
+      const [detailResponse, resumeResponse, notesResponse] = await Promise.all([
+        usersApi.get(userId),
+        usersApi.checkResume(userId),
+        usersApi.listNotes(userId),
+      ])
       setDetail(detailResponse.data)
       setRole(detailResponse.data.user.role)
       setEducationLevel(detailResponse.data.user.education_level ?? '')
@@ -115,6 +127,7 @@ export function UserDetailPage() {
       setResumeText(resumeResponse.data.resume ?? detailResponse.data.user.resume_text ?? '')
       setCanGenerateResume(resumeResponse.data.can_generate)
       setResumeReason(resumeResponse.data.reason ?? null)
+      setNotes(notesResponse.data.notes)
     } catch (loadError) {
       setError(getErrorMessage(loadError, 'Не удалось загрузить карточку пользователя.'))
     } finally {
@@ -313,6 +326,78 @@ export function UserDetailPage() {
     }
   }
 
+  const closeNotePreview = () => {
+    if (notePreviewUrlRef.current) {
+      URL.revokeObjectURL(notePreviewUrlRef.current)
+      notePreviewUrlRef.current = null
+    }
+    setNotePreview(null)
+  }
+
+  const handleOpenNotePreview = async (note: UserNote) => {
+    if (notePreviewLoading) return
+    setNotePreviewLoading(true)
+    try {
+      const response = await usersApi.getNoteFile(userId, note.id)
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data])
+      if (notePreviewUrlRef.current) URL.revokeObjectURL(notePreviewUrlRef.current)
+      const url = URL.createObjectURL(blob)
+      notePreviewUrlRef.current = url
+      const isPdf = blob.type === 'application/pdf' || /\.pdf/i.test(note.file_path ?? '')
+      setNotePreview({ url, type: isPdf ? 'pdf' : 'image', noteId: note.id })
+    } catch {
+      setError('Не удалось загрузить файл заметки.')
+    } finally {
+      setNotePreviewLoading(false)
+    }
+  }
+
+  const handleDownloadNoteFile = async (note: UserNote) => {
+    try {
+      const response = await usersApi.getNoteFile(userId, note.id)
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data])
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const ext = note.file_path ? note.file_path.split('.').pop() ?? 'bin' : 'bin'
+      a.download = `note_${note.id}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Не удалось скачать файл.')
+    }
+  }
+
+  const handleAddNote = async () => {
+    if (!noteText.trim()) return
+    setIsAddingNote(true)
+    try {
+      const { data } = await usersApi.createNote(userId, noteText.trim(), noteFile ?? undefined)
+      setNotes((prev) => [data.note, ...prev])
+      setNoteText('')
+      setNoteFile(null)
+      if (noteFileInputRef.current) noteFileInputRef.current.value = ''
+      pushToast({ title: 'Заметка добавлена', tone: 'success' })
+    } catch (err) {
+      setError(getErrorMessage(err, 'Не удалось добавить заметку.'))
+    } finally {
+      setIsAddingNote(false)
+    }
+  }
+
+  const handleDeleteNote = async (noteId: number) => {
+    if (!window.confirm('Удалить заметку?')) return
+    try {
+      await usersApi.deleteNote(userId, noteId)
+      setNotes((prev) => prev.filter((n) => n.id !== noteId))
+      pushToast({ title: 'Заметка удалена', tone: 'success' })
+    } catch (err) {
+      setError(getErrorMessage(err, 'Не удалось удалить заметку.'))
+    }
+  }
+
   const handleDeleteUser = async () => {
     if (!detail || !window.confirm(`Удалить пользователя ${detail.user.first_name} ${detail.user.last_name}?`)) return
     try {
@@ -390,7 +475,7 @@ export function UserDetailPage() {
             </div>
           </div>
 
-          {isAdminViewer && detail.user.role === 'STUDENT' ? <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"><div className="px-5 py-3 border-b border-slate-100 bg-slate-50"><h3 className="text-sm font-bold text-slate-700">Средний балл сессии</h3></div><div className="p-5"><div className="flex gap-2"><input type="text" value={gpa} onChange={(event) => setGpa(event.target.value)} placeholder="4.5" className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" /><button type="button" onClick={() => void handleGpaSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingGpa}>Сохранить</button></div><p className="text-[10px] text-slate-400 mt-1.5">Оценка от 2.0 до 5.0, конвертируется в бонусные баллы рейтинга</p></div></div> : null}
+          {isAdminViewer && detail.user.role === 'STUDENT' ? <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"><div className="px-5 py-3 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Средний балл сессии</h3></div><div className="p-5"><div className="flex gap-2"><input type="text" value={gpa} onChange={(event) => setGpa(event.target.value)} placeholder="4.5" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" /><button type="button" onClick={() => void handleGpaSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingGpa}>Сохранить</button></div><p className="text-[10px] text-slate-400 mt-1.5">Оценка от 2.0 до 5.0, конвертируется в бонусные баллы рейтинга</p></div></div> : null}
         </div>
 
         {!isGuestOrPending || isAdminViewer ? <div className="lg:col-span-2 space-y-6">
@@ -413,6 +498,84 @@ export function UserDetailPage() {
           </div>
 
           {detail.user.role === 'STUDENT' ? <div className="bg-white rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>}</div> : null}
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+              <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+              <h3 className="text-sm font-bold text-slate-700">Служебные заметки</h3>
+              <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-amber-600 font-medium bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wider">
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                Только для сотрудников
+              </span>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="space-y-2">
+                <textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder="Опишите нарушение или причину заметки..."
+                  rows={3}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none resize-none transition-all"
+                />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
+                    <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                    {noteFile ? <span className="max-w-[140px] truncate text-indigo-600 font-medium">{noteFile.name}</span> : 'Прикрепить файл'}
+                    <input ref={noteFileInputRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xlsx,.pptx" onChange={(e) => setNoteFile(e.target.files?.[0] ?? null)} />
+                  </label>
+                  {noteFile && (
+                    <button type="button" onClick={() => { setNoteFile(null); if (noteFileInputRef.current) noteFileInputRef.current.value = '' }} className="text-xs text-slate-400 hover:text-red-500 transition-colors">
+                      Убрать
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleAddNote()}
+                    disabled={isAddingNote || !noteText.trim()}
+                    className="ml-auto px-4 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isAddingNote ? 'Сохранение...' : 'Добавить заметку'}
+                  </button>
+                </div>
+              </div>
+
+              {notes.length > 0 ? (
+                <ul className="divide-y divide-slate-100 -mx-5">
+                  {notes.map((note) => (
+                    <li key={note.id} className="px-5 py-4 hover:bg-slate-50 transition-colors">
+                      <p className="text-sm text-slate-800 whitespace-pre-wrap">{note.text}</p>
+                      <div className="mt-2 flex items-center gap-3 flex-wrap">
+                        {note.has_file && (
+                          <>
+                            <button type="button" onClick={() => void handleOpenNotePreview(note)} disabled={notePreviewLoading} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors disabled:opacity-50">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                              {notePreviewLoading ? 'Загрузка...' : 'Просмотр'}
+                            </button>
+                            <button type="button" onClick={() => void handleDownloadNoteFile(note)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                              Скачать
+                            </button>
+                          </>
+                        )}
+                        <button type="button" onClick={() => void handleDeleteNote(note.id)} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 transition-colors ml-auto">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          Удалить
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-400">
+                        <span>{note.author ? `${note.author.first_name} ${note.author.last_name}` : 'Неизвестно'}</span>
+                        <span>·</span>
+                        <span>{note.created_at ? new Date(note.created_at).toLocaleString('ru-RU') : ''}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-400 text-center py-2">Заметок пока нет</p>
+              )}
+            </div>
+          </div>
 
           {detail.user.role === 'STUDENT' && detail.achievements.length ? (() => {
             const pointsMap: Record<string, number> = {}
@@ -460,6 +623,36 @@ export function UserDetailPage() {
           })() : null}
         </div> : null}
       </div>
+
+      {notePreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closeNotePreview}>
+          <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Файл заметки</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { const a = document.createElement('a'); a.href = notePreview.url; a.download = `note_${notePreview.noteId}.${notePreview.type === 'pdf' ? 'pdf' : 'bin'}`; document.body.appendChild(a); a.click(); a.remove() }}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Скачать
+                </button>
+                <button type="button" onClick={closeNotePreview} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[400px]">
+              {notePreview.type === 'pdf' ? (
+                <iframe src={notePreview.url} className="w-full h-full min-h-[500px] border-0 bg-white" title="PDF" allow="fullscreen" />
+              ) : (
+                <img src={notePreview.url} alt="Файл" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -147,6 +147,20 @@ def serialize_user_public(user):
     }
 
 
+def serialize_user_note(note):
+    author = _loaded_relationship(note, 'author')
+    return {
+        'id': note.id,
+        'user_id': note.user_id,
+        'author_id': note.author_id,
+        'text': note.text,
+        'file_path': note.file_path,
+        'has_file': bool(note.file_path),
+        'created_at': _iso(note.created_at),
+        'author': serialize_user_brief(author),
+    }
+
+
 def serialize_notification(notification):
     return {
         'id': notification.id,
