@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { documentsApi } from '@/api/documents'
 import { moderationApi } from '@/api/moderation'
+import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
+import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
-import { Achievement } from '@/types/achievement'
+import type { Achievement } from '@/types/achievement'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
 
@@ -16,20 +18,35 @@ export function ModerationAchievementsPage() {
   const { user: currentUser } = useAuth()
   const { pushToast } = useToast()
   const [items, setItems] = useState<Achievement[]>([])
+  const [query, setQuery] = useState('')
+  const [sortBy, setSortBy] = useState('oldest')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalPending, setTotalPending] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isPaginating, setIsPaginating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
 
-  const load = async (isInitial = false) => {
-    if (isInitial) setIsLoading(true)
-    else setIsPaginating(true)
+  const filters = useMemo(
+    () => ({
+      page,
+      query: query || undefined,
+      sort_by: sortBy,
+    }),
+    [page, query, sortBy],
+  )
+
+  const load = async (initial = false) => {
+    if (initial) {
+      setIsLoading(true)
+    } else {
+      setIsPaginating(true)
+    }
     setError(null)
 
     try {
-      const { data } = await moderationApi.getAchievements(page)
+      const { data } = await moderationApi.getAchievements(filters)
       setItems(data.achievements)
       setTotalPending(data.stats.total_pending)
       setTotalPages(data.total_pages)
@@ -43,7 +60,41 @@ export function ModerationAchievementsPage() {
 
   useEffect(() => {
     void load(page === 1 && items.length === 0)
-  }, [page])
+  }, [filters])
+
+  useEffect(() => {
+    setPage(1)
+  }, [query, sortBy])
+
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      setSuggestions([])
+      return
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const { data } = await moderationApi.getAchievements({
+          page: 1,
+          query: trimmed,
+          sort_by: sortBy,
+        })
+        setSuggestions(
+          data.achievements.slice(0, 5).map((item) => ({
+            value: item.title,
+            text: item.title,
+          })),
+        )
+      } catch {
+        setSuggestions([])
+      }
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [query, sortBy])
 
   const handleTake = async (item: Achievement) => {
     try {
@@ -58,7 +109,12 @@ export function ModerationAchievementsPage() {
   const handleDownload = async (item: Achievement) => {
     try {
       const response = await documentsApi.download(item.id)
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' })
+      const blob =
+        response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], {
+              type: response.headers['content-type'] || 'application/octet-stream',
+            })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = item.file_path?.split('/').pop() || `${item.title}.bin`
@@ -71,39 +127,95 @@ export function ModerationAchievementsPage() {
     }
   }
 
+  const resetFilters = () => {
+    setQuery('')
+    setSortBy('oldest')
+    setSuggestions([])
+    setPage(1)
+  }
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Новые документы</h2>
-          <p className="text-sm text-slate-500 mt-1">{totalPending} документов ожидают проверки</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link to="/moderation/achievements" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
-            Новые документы
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-          </Link>
-          <Link to="/documents" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
-            Все документы
-          </Link>
-        </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <StaffSectionHeader
+        kind="documents"
+        currentView="incoming"
+        title="Новые документы"
+        description={`${totalPending} ожидают проверки. Поиск и быстрые переходы теперь такие же, как на остальных документных страницах.`}
+      />
+
+      {error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+      ) : null}
+
+      <div className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-5">
+        <form onSubmit={(event) => event.preventDefault()} className="flex flex-wrap items-end gap-3">
+          <SearchAutocompleteInput
+            label="Поиск"
+            value={query}
+            placeholder="Название, описание или студент..."
+            suggestions={suggestions}
+            onChange={setQuery}
+            onSelectSuggestion={(item) => {
+              setQuery(item.value || item.text)
+              setSuggestions([])
+            }}
+            className="min-w-[240px] flex-1"
+          />
+
+          <div className="w-full sm:w-[170px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Сортировка
+            </label>
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="oldest">Сначала старые</option>
+              <option value="newest">Сначала новые</option>
+              <option value="category">По категории</option>
+              <option value="level">По уровню</option>
+              <option value="title">По названию</option>
+            </select>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="h-[38px] rounded-lg bg-indigo-600 px-4 text-xs font-medium text-white transition-colors hover:bg-indigo-700"
+            >
+              Обновить
+            </button>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="h-[38px] rounded-lg border border-slate-200 px-4 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Сбросить
+            </button>
+          </div>
+        </form>
       </div>
 
-      {error ? <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div> : null}
-
       {isLoading ? (
-        <div className="py-16"><LoadingSpinner /></div>
+        <div className="py-16">
+          <LoadingSpinner />
+        </div>
       ) : items.length ? (
         <>
-          <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative transition-opacity ${isPaginating ? 'opacity-60 pointer-events-none' : ''}`}>
-            {isPaginating && (
-              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/50">
+          <div
+            className={`relative overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm transition-opacity ${isPaginating ? 'pointer-events-none opacity-60' : ''}`}
+          >
+            {isPaginating ? (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/50">
                 <LoadingSpinner />
               </div>
-            )}
+            ) : null}
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+                <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="px-5 py-3 font-bold">Превью</th>
                     <th className="px-5 py-3 font-bold">Документ</th>
@@ -112,62 +224,91 @@ export function ModerationAchievementsPage() {
                     <th className="px-5 py-3 font-bold">Дата</th>
                     <th className="px-5 py-3 font-bold">Статус</th>
                     <th className="px-5 py-3 font-bold">Модератор</th>
-                    <th className="px-5 py-3 font-bold text-right">Действие</th>
+                    <th className="px-5 py-3 text-right font-bold">Действие</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {items.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={item.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-5 py-3">
-                        <div
-                          className="w-12 h-14 shrink-0 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center cursor-pointer group"
+                        <button
+                          type="button"
+                          className="group flex h-14 w-12 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50"
                           onClick={() => openDocumentPreview(item.id, item.file_path)}
                         >
                           {item.file_path && isImageFile(item.file_path) ? (
-                            <DocumentPreviewImage documentId={item.id} alt={item.title} className="w-full h-full object-cover" />
+                            <DocumentPreviewImage
+                              documentId={item.id}
+                              alt={item.title}
+                              className="h-full w-full object-cover"
+                            />
                           ) : item.file_path && isPdfFile(item.file_path) ? (
-                            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                            <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                              />
+                            </svg>
                           ) : (
                             <span className="text-[8px] text-slate-400">—</span>
                           )}
-                        </div>
+                        </button>
                       </td>
                       <td className="px-5 py-3">
-                        <div className="max-w-[200px]">
-                          <div className="text-sm font-medium text-slate-800 truncate" title={item.title}>{item.title}</div>
-                          {item.description ? <div className="text-[10px] text-slate-400 truncate mt-0.5" title={item.description}>{item.description}</div> : null}
+                        <div className="max-w-[220px]">
+                          <div className="truncate text-sm font-medium text-slate-800" title={item.title}>
+                            {item.title}
+                          </div>
+                          {item.description ? (
+                            <div className="mt-0.5 truncate text-[10px] text-slate-400" title={item.description}>
+                              {item.description}
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-600">
                         {item.user ? (
                           <>
-                            <Link to={`/users/${item.user.id}`} className="hover:text-indigo-600 transition-colors">
+                            <Link
+                              to={`/users/${item.user.id}`}
+                              className="transition-colors hover:text-indigo-600"
+                            >
                               {item.user.first_name} {item.user.last_name}
                             </Link>
                             <div className="text-[10px] text-slate-400">{item.user.email}</div>
                           </>
-                        ) : <span className="text-slate-400">—</span>}
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex flex-col gap-1">
-                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100/50 w-fit">
+                          <span className="inline-flex w-fit rounded border border-indigo-100/50 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-indigo-700">
                             {item.category || '—'}
                           </span>
-                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200/50 w-fit">
+                          <span className="inline-flex w-fit rounded border border-slate-200/50 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
                             {item.level || '—'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-5 py-3 text-xs text-slate-500">
                         {item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : '—'}
                       </td>
                       <td className="px-5 py-3">
                         {!item.moderator_id ? (
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-50 text-yellow-700 border border-yellow-200">Новый</span>
+                          <span className="inline-flex rounded border border-yellow-200 bg-yellow-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-yellow-700">
+                            Новый
+                          </span>
                         ) : item.moderator_id === currentUser?.id ? (
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">В работе</span>
+                          <span className="inline-flex rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                            В работе
+                          </span>
                         ) : (
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Занят</span>
+                          <span className="inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Занят
+                          </span>
                         )}
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-500">
@@ -180,14 +321,37 @@ export function ModerationAchievementsPage() {
                         )}
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <div className="flex justify-end items-center gap-2">
-                          <button type="button" onClick={() => void handleDownload(item)} className="text-xs text-slate-500 hover:text-slate-700 transition-colors" title="Скачать">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleDownload(item)}
+                            className="text-xs text-slate-500 transition-colors hover:text-slate-700"
+                            title="Скачать"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                              />
+                            </svg>
                           </button>
                           {!item.moderator_id ? (
-                            <button type="button" onClick={() => void handleTake(item)} className="text-xs text-indigo-600 font-bold hover:underline">Взять в работу</button>
+                            <button
+                              type="button"
+                              onClick={() => void handleTake(item)}
+                              className="text-xs font-bold text-indigo-600 hover:underline"
+                            >
+                              Взять в работу
+                            </button>
                           ) : item.moderator_id === currentUser?.id ? (
-                            <Link to="/my-work?tab=achievements" className="text-xs text-indigo-600 font-bold hover:underline">Моя работа</Link>
+                            <Link
+                              to="/my-work?tab=achievements"
+                              className="text-xs font-bold text-indigo-600 hover:underline"
+                            >
+                              Моя работа
+                            </Link>
                           ) : (
                             <span className="text-xs text-slate-400">Занят</span>
                           )}
@@ -203,11 +367,15 @@ export function ModerationAchievementsPage() {
           <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+        <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
+            <svg className="h-8 w-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-          <p className="text-sm text-slate-500">Нет новых документов для модерации</p>
+          <p className="text-sm text-slate-500">
+            {query ? 'Поиск не дал результатов среди новых документов.' : 'Нет новых документов для модерации.'}
+          </p>
         </div>
       )}
     </div>

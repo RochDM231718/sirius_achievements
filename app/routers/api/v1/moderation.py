@@ -5,7 +5,7 @@ import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +20,7 @@ from app.services.points_calculator import calculate_points
 from app.services.ws_manager import ws_manager
 from app.utils.access import is_in_zone
 from app.utils.notifications import make_notification, serialize_notification
+from app.utils.search import escape_like
 
 from .serializers import serialize_achievement, serialize_user
 
@@ -146,6 +147,8 @@ async def release_user(
 @router.get('/achievements')
 async def pending_achievements(
     page: int = Query(default=1, ge=1, le=1000),
+    query: str = Query(default=''),
+    sort_by: str = Query(default='oldest'),
     current_user=Depends(require_moderator),
     db: AsyncSession = Depends(get_db),
 ):
@@ -162,7 +165,30 @@ async def pending_achievements(
     if current_user.role == UserRole.MODERATOR and current_user.education_level:
         stmt = stmt.filter(Users.education_level == current_user.education_level)
 
-    stmt = stmt.order_by(Achievement.created_at.asc())
+    if query:
+        like_term = f"%{escape_like(query)}%"
+        stmt = stmt.filter(
+            or_(
+                Achievement.title.ilike(like_term),
+                Achievement.description.ilike(like_term),
+                Users.first_name.ilike(like_term),
+                Users.last_name.ilike(like_term),
+                Users.email.ilike(like_term),
+                (Users.first_name + ' ' + Users.last_name).ilike(like_term),
+            )
+        )
+
+    if sort_by == 'newest':
+        stmt = stmt.order_by(Achievement.created_at.desc())
+    elif sort_by == 'category':
+        stmt = stmt.order_by(Achievement.category.asc(), Achievement.created_at.desc())
+    elif sort_by == 'level':
+        stmt = stmt.order_by(Achievement.level.asc(), Achievement.created_at.desc())
+    elif sort_by == 'title':
+        stmt = stmt.order_by(Achievement.title.asc(), Achievement.created_at.desc())
+    else:
+        stmt = stmt.order_by(Achievement.created_at.asc())
+
     total_pending = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
     achievements = (await db.execute(stmt.offset(offset).limit(limit))).scalars().all()
 

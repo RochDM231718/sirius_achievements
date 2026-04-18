@@ -71,13 +71,13 @@ export function PdfViewer({ src, className }: Props) {
   return (
     <div className={`relative overflow-auto ${className ?? 'w-full h-full bg-slate-100'}`}>
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface/80 z-10">
           <LoadingSpinner />
         </div>
       )}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
-          <div className="bg-white rounded-xl border border-red-100 px-6 py-5 text-sm text-red-600 shadow-sm text-center">{error}</div>
+          <div className="bg-surface rounded-xl border border-red-100 px-6 py-5 text-sm text-red-600 shadow-sm text-center">{error}</div>
         </div>
       )}
       <div ref={containerRef} className="p-3" />

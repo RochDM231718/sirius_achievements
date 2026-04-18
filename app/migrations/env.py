@@ -16,6 +16,8 @@ from app.models.achievement import Achievement
 from app.models.notification import Notification
 from app.models.support_ticket import SupportTicket
 from app.models.support_message import SupportMessage
+from app.models.audit_log import AuditLog
+from app.models.user_note import UserNote
 
 config = context.config
 
@@ -65,6 +67,7 @@ async def run_async_migrations() -> None:
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={"ssl": False},
     )
 
     async with connectable.connect() as connection:

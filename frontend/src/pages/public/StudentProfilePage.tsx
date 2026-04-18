@@ -2,6 +2,7 @@ import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Chart from 'chart.js/auto'
 
+import client from '@/api/client'
 import { publicApi, PublicStudentResponse } from '@/api/public'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useAuth } from '@/hooks/useAuth'
@@ -51,6 +52,8 @@ function StudentProfilePageInner() {
   const studentId = Number(id)
   const { user: currentUser } = useAuth()
   const isOwnProfile = currentUser?.id === studentId
+  const isStaff = currentUser?.role === 'MODERATOR' || currentUser?.role === 'SUPER_ADMIN'
+  const canViewDocs = isOwnProfile || isStaff
   const navigate = useNavigate()
   const progressChartRef = useRef<HTMLCanvasElement>(null)
   const radarChartRef = useRef<HTMLCanvasElement>(null)
@@ -60,7 +63,38 @@ function StudentProfilePageInner() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!previewUrl) {
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl)
+        setPreviewBlobUrl(null)
+      }
+      return
+    }
+    let revoked = false
+    let createdUrl: string | null = null
+    setPreviewLoading(true)
+    ;(async () => {
+      try {
+        const resp = await client.get(previewUrl.replace(/^\/api\/v1/, ''), { responseType: 'blob' })
+        if (revoked) return
+        createdUrl = URL.createObjectURL(resp.data as Blob)
+        setPreviewBlobUrl(createdUrl)
+      } catch {
+        if (!revoked) setPreviewUrl(null)
+      } finally {
+        if (!revoked) setPreviewLoading(false)
+      }
+    })()
+    return () => {
+      revoked = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  }, [previewUrl])
 
   useEffect(() => {
     const load = async () => {
@@ -257,7 +291,7 @@ function StudentProfilePageInner() {
       </div>
 
       {/* Profile card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 mb-6">
+      <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 mb-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
           <div className="flex-shrink-0">
             {data.student.avatar_path ? (
@@ -304,7 +338,7 @@ function StudentProfilePageInner() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           {data.student.session_gpa ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Оценка модератора</h3>
               <div className="space-y-3">
                 <div>
@@ -322,7 +356,7 @@ function StudentProfilePageInner() {
 
         <div className="lg:col-span-2 space-y-6">
           {hasChartData ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Динамика достижений</h3>
               <canvas ref={progressChartRef} height="160" />
             </div>
@@ -339,7 +373,7 @@ function StudentProfilePageInner() {
             const activeCats = RADAR_CATS.filter((c) => pointsMap[c] > 0)
             if (!activeCats.length) return null
             return (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
                 <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
                 <div className="h-64">
                   <canvas ref={radarChartRef} />
@@ -359,7 +393,7 @@ function StudentProfilePageInner() {
                           else next.add(cat)
                           return next
                         })}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-surface border-slate-200 text-slate-700'}`}
                       >
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
                         {cat}
@@ -374,15 +408,15 @@ function StudentProfilePageInner() {
             )
           })() : null}
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Достижения ({data.total_docs})</h3>
             {data.achievements.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {data.achievements.map((a) => (
                   <div
                     key={a.id}
-                    className={`group bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all overflow-hidden ${isOwnProfile && a.preview_url ? 'cursor-pointer' : ''}`}
-                    onClick={() => isOwnProfile && a.preview_url && setPreviewUrl(a.preview_url)}
+                    className={`group bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all overflow-hidden ${canViewDocs && a.preview_url ? 'cursor-pointer' : ''}`}
+                    onClick={() => canViewDocs && a.preview_url && setPreviewUrl(a.preview_url)}
                   >
                     <div className="p-3 sm:p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -416,7 +450,7 @@ function StudentProfilePageInner() {
       </div>
 
       {data.student.resume_text ? (
-        <div className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div className="mt-6 bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
           <h3 className="text-sm font-semibold text-slate-700 mb-3">AI-сводка профиля</h3>
           <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{data.student.resume_text}</div>
         </div>
@@ -430,20 +464,22 @@ function StudentProfilePageInner() {
           onClick={() => setPreviewUrl(null)}
         >
           <div
-            className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="relative w-full max-w-3xl max-h-[90vh] bg-surface rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
               <span className="text-sm font-semibold text-slate-700">Просмотр документа</span>
               <div className="flex items-center gap-2">
-                <a
-                  href={previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors"
-                >
-                  Открыть в новой вкладке
-                </a>
+                {previewBlobUrl ? (
+                  <a
+                    href={previewBlobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-surface border border-indigo-200 hover:bg-indigo-50 transition-colors"
+                  >
+                    Открыть в новой вкладке
+                  </a>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setPreviewUrl(null)}
@@ -456,15 +492,17 @@ function StudentProfilePageInner() {
               </div>
             </div>
             <div className="flex-1 overflow-auto bg-slate-50 flex items-center justify-center min-h-[400px]">
-              {isPdf(previewUrl) ? (
+              {previewLoading || !previewBlobUrl ? (
+                <LoadingSpinner />
+              ) : isPdf(previewUrl) ? (
                 <iframe
-                  src={previewUrl}
-                  className="w-full h-full min-h-[500px] border-0 bg-white"
+                  src={previewBlobUrl}
+                  className="w-full h-full min-h-[500px] border-0 bg-surface"
                   title="PDF"
                   allow="fullscreen"
                 />
               ) : (
-                <img src={previewUrl} alt="Документ" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
+                <img src={previewBlobUrl} alt="Документ" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
               )}
             </div>
           </div>

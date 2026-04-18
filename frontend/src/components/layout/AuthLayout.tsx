@@ -14,9 +14,9 @@ export function AuthLayout() {
   }, [])
 
   return (
-    <>
+    <div className="flex flex-1 min-h-[100dvh] items-center justify-center p-4">
       <ThemeToggle floating />
       <Outlet />
-    </>
+    </div>
   )
 }

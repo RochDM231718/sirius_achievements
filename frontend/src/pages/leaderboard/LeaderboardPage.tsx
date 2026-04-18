@@ -181,7 +181,7 @@ export function LeaderboardPage() {
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           {!isStaff ? (
             <>
-              <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-6 shadow-sm w-full md:w-auto">
+              <div className="bg-surface border border-slate-200 rounded-xl p-4 flex items-center gap-6 shadow-sm w-full md:w-auto">
                 <div className="text-center flex-1 md:flex-none md:px-4">
                   <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mb-0.5">Место в лиге</div>
                   <div className="text-2xl font-bold text-indigo-600">{(data?.my_rank ?? 0) > 0 ? `#${data?.my_rank}` : '-'}</div>
@@ -218,7 +218,7 @@ export function LeaderboardPage() {
 
       {seasonModalOpen ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
@@ -228,7 +228,7 @@ export function LeaderboardPage() {
             </div>
             <form onSubmit={handleEndSeason} className="px-6 pb-6">
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 text-left">Название прошедшего сезона</label>
-              <input value={seasonName} onChange={(event) => setSeasonName(event.target.value)} type="text" required placeholder="Например: Осенний семестр 2026" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all mb-4" />
+              <input value={seasonName} onChange={(event) => setSeasonName(event.target.value)} type="text" required placeholder="Например: Осенний семестр 2026" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all mb-4" />
               <div className="flex gap-3">
                 <button type="button" onClick={() => setSeasonModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Отмена</button>
                 <button type="submit" disabled={isEndingSeason} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-70">{isEndingSeason ? 'Сохраняем…' : 'Подтвердить'}</button>
@@ -240,11 +240,11 @@ export function LeaderboardPage() {
 
       {error ? <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
-      <div className="bg-white p-4 rounded-xl border border-slate-200">
+      <div className="bg-surface p-4 rounded-xl border border-slate-200">
         <form action="/sirius.achievements/leaderboard" method="GET" className="flex flex-wrap gap-4 items-end">
           <div className="w-full sm:w-[180px]">
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Направление</label>
-            <select value={data?.current_category || 'all'} onChange={(event) => updateFilter('category', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
+            <select value={data?.current_category || 'all'} onChange={(event) => updateFilter('category', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
               <option value="all">Все направления</option>
               {data?.categories.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
@@ -254,14 +254,14 @@ export function LeaderboardPage() {
             <>
               <div className="w-full sm:w-[170px]">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Обучение</label>
-                <select value={data?.current_education_level || 'all'} onChange={(event) => updateFilter('education_level', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
+                <select value={data?.current_education_level || 'all'} onChange={(event) => updateFilter('education_level', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
                   <option value="all">Все уровни</option>
                   {data?.education_levels.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
               <div className="w-full sm:w-[120px]">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Курс</label>
-                <select value={String(data?.current_course ?? 0)} onChange={(event) => updateFilter('course', event.target.value)} disabled={(data?.current_education_level || 'all') === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                <select value={String(data?.current_course ?? 0)} onChange={(event) => updateFilter('course', event.target.value)} disabled={(data?.current_education_level || 'all') === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                   <option value="0">Все курсы</option>
                   {courseOptions.map((item) => <option key={item} value={item}>{item} курс</option>)}
                 </select>
@@ -271,7 +271,7 @@ export function LeaderboardPage() {
 
           <div className="w-full sm:w-[120px]">
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Группа</label>
-            <select value={data?.current_group || 'all'} onChange={(event) => updateFilter('group', event.target.value)} disabled={(data?.current_education_level || 'all') === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            <select value={data?.current_group || 'all'} onChange={(event) => updateFilter('group', event.target.value)} disabled={(data?.current_education_level || 'all') === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
               <option value="all">Все группы</option>
               {groupOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
@@ -279,27 +279,27 @@ export function LeaderboardPage() {
         </form>
       </div>
 
-      {isLoading ? <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">Загрузка рейтинга…</div> : null}
+      {isLoading ? <div className="bg-surface rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">Загрузка рейтинга…</div> : null}
 
       {!isLoading && podium.length ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-4">
           {podium[1] ? (
-            <div data-leaderboard-self={podium[1].is_me ? 'true' : undefined} className="order-2 md:order-1 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">2</div>
+            <div data-leaderboard-self={podium[1].is_me ? 'true' : undefined} className="order-2 md:order-1 bg-surface rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-surface border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">2</div>
               <div className="mt-2 mb-3">{podium[1].user.avatar_path ? <img src={`/static/${podium[1].user.avatar_path}`} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[1].user.first_name.slice(0, 1)}</div>}</div>
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[1], isStaff)} className="font-semibold text-slate-800 text-sm hover:text-indigo-600">{podium[1].user.first_name} {podium[1].user.last_name}</Link><div className="inline-flex bg-slate-50 text-slate-600 text-xs font-medium px-3 py-1 rounded-md border border-slate-100">{podium[1].total_points} баллов</div></div>
             </div>
           ) : <div className="hidden md:block"></div>}
 
-          <div data-leaderboard-self={podium[0]?.is_me ? 'true' : undefined} className="order-1 md:order-2 bg-white rounded-xl shadow-sm p-6 flex flex-col items-center relative transition-all duration-500" style={{ borderTop: '4px solid var(--theme-accent, #6d5ef3)' }}>
+          <div data-leaderboard-self={podium[0]?.is_me ? 'true' : undefined} className="order-1 md:order-2 bg-surface rounded-xl shadow-sm p-6 flex flex-col items-center relative transition-all duration-500" style={{ borderTop: '4px solid var(--theme-accent, #6d5ef3)' }}>
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-8 h-8 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md" style={{ background: 'var(--theme-accent, #6d5ef3)' }}>1</div>
             <div className="mt-2 mb-3">{podium[0]?.user.avatar_path ? <img src={`/static/${podium[0].user.avatar_path}`} className="w-20 h-20 rounded-full object-cover border border-slate-200" /> : <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center text-2xl font-bold text-indigo-600 border border-indigo-100">{podium[0]?.user.first_name.slice(0, 1)}</div>}</div>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[0], isStaff)} className="font-bold text-slate-900 text-base hover:text-indigo-600">{podium[0]?.user.first_name} {podium[0]?.user.last_name}</Link><div className="inline-flex text-sm font-bold px-4 py-1.5 rounded-md" style={{ background: 'var(--theme-accent-soft, #f0edff)', color: 'var(--theme-accent-strong, #5f4ee6)', border: '1px solid var(--theme-border-soft, #ebeff6)' }}>{podium[0]?.total_points ?? 0} баллов</div></div>
           </div>
 
           {podium[2] ? (
-            <div data-leaderboard-self={podium[2].is_me ? 'true' : undefined} className="order-3 bg-white rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">3</div>
+            <div data-leaderboard-self={podium[2].is_me ? 'true' : undefined} className="order-3 bg-surface rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-surface border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">3</div>
               <div className="mt-2 mb-3">{podium[2].user.avatar_path ? <img src={`/static/${podium[2].user.avatar_path}`} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[2].user.first_name.slice(0, 1)}</div>}</div>
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[2], isStaff)} className="font-semibold text-slate-800 text-sm hover:text-indigo-600">{podium[2].user.first_name} {podium[2].user.last_name}</Link><div className="inline-flex bg-slate-50 text-slate-600 text-xs font-medium px-3 py-1 rounded-md border border-slate-100">{podium[2].total_points} баллов</div></div>
             </div>
@@ -308,7 +308,7 @@ export function LeaderboardPage() {
       ) : null}
 
       {!isLoading && rest.length ? (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700">Остальные участники</h3>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Всего в лиге: {data?.leaderboard.length ?? 0}</span>
@@ -341,7 +341,7 @@ export function LeaderboardPage() {
       ) : null}
 
       {!isLoading && !data?.leaderboard.length ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+        <div className="text-center py-16 bg-surface rounded-xl border border-slate-200">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 mb-3">
             <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
           </div>

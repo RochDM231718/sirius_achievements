@@ -55,7 +55,7 @@ export function Sidebar({ user }: SidebarProps) {
     !location.search.includes('tab=chats')
 
   return (
-    <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 z-40">
+    <aside className="hidden md:flex flex-col w-64 bg-surface border-r border-slate-200 z-40">
       <div className="flex items-center justify-center h-14 border-b border-slate-100 shrink-0">
         <Link to="/dashboard" className="text-lg font-bold text-indigo-600 tracking-tight">
           Sirius.Achievements

@@ -3,18 +3,15 @@ import { Link } from 'react-router-dom'
 
 import { documentsApi } from '@/api/documents'
 import { moderationApi } from '@/api/moderation'
+import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
+import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
-import { Achievement } from '@/types/achievement'
+import type { Achievement } from '@/types/achievement'
 import { openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
-
-interface SuggestionItem {
-  value: string
-  text: string
-}
 
 const DOCUMENTS_PAGE_SIZE = 20
 
@@ -53,7 +50,7 @@ export function DocumentsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
+  const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
 
   const filters = useMemo(
     () => ({
@@ -64,10 +61,8 @@ export function DocumentsPage() {
       level: level || undefined,
       sort_by: sortBy,
     }),
-    [page, category, level, query, sortBy, status]
+    [category, level, page, query, sortBy, status],
   )
-
-  const paginatedItems = items
 
   const loadDocuments = async () => {
     setIsLoading(true)
@@ -97,24 +92,24 @@ export function DocumentsPage() {
 
   useEffect(() => {
     const trimmed = query.trim()
-    if (trimmed.length < 1) {
+    if (!trimmed) {
       setSuggestions([])
       return
     }
 
     const timeoutId = window.setTimeout(async () => {
       try {
-        const { data } = await documentsApi.list({ query: trimmed, sort_by: sortBy })
-        setSuggestions(data.achievements.slice(0, 5).map((item) => ({ value: item.title, text: item.title })))
+        const { data } = await documentsApi.search(trimmed)
+        setSuggestions(data)
       } catch {
         setSuggestions([])
       }
-    }, 300)
+    }, 250)
 
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [query, sortBy])
+  }, [query])
 
   useEffect(() => {
     if (page > totalPages) {
@@ -122,10 +117,25 @@ export function DocumentsPage() {
     }
   }, [page, totalPages])
 
+  const resetFilters = () => {
+    setQuery('')
+    setStatus('')
+    setCategory('')
+    setLevel('')
+    setSortBy('newest')
+    setSuggestions([])
+    setPage(1)
+  }
+
   const handleDownload = async (item: Achievement) => {
     try {
       const response = await documentsApi.download(item.id)
-      const blob = new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' })
+      const blob =
+        response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], {
+              type: response.headers['content-type'] || 'application/octet-stream',
+            })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = item.file_path.split('/').pop() || `${item.title}.bin`
@@ -149,7 +159,9 @@ export function DocumentsPage() {
   }
 
   const handleDelete = async (item: Achievement) => {
-    if (!window.confirm(`Удалить документ «${item.title}»?`)) return
+    if (!window.confirm(`Удалить документ «${item.title}»?`)) {
+      return
+    }
 
     try {
       await documentsApi.delete(item.id)
@@ -161,76 +173,130 @@ export function DocumentsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Все документы</h2>
-          <p className="text-sm text-slate-500">Управление базой достижений</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link to="/moderation/achievements" className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">Новые документы</Link>
-          <Link to="/documents" className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">Все документы<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></Link>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <StaffSectionHeader
+        kind="documents"
+        currentView="all"
+        title="Все документы"
+        description="Единый поиск по базе достижений, а фильтры и сортировка настроены под полный реестр."
+      />
 
-      {error ? <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div> : null}
+      {error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+      ) : null}
 
-      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
-        <form onSubmit={(event) => event.preventDefault()} className="flex flex-wrap gap-3 items-end">
-          <div className="flex-grow min-w-[200px] relative">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Поиск</label>
-            <div className="relative">
-              <div className="absolute left-3 top-2.5 text-slate-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              </div>
-              <input type="text" value={query} onChange={(event) => setQuery(event.target.value)} onBlur={() => window.setTimeout(() => setSuggestions([]), 150)} placeholder="Название..." autoComplete="off" className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none text-sm text-slate-800 transition-all h-[38px]" />
-            </div>
-            {suggestions.length ? <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">{suggestions.map((item) => <li key={`${item.value}-${item.text}`} onMouseDown={() => { setQuery(item.value || item.text); setSuggestions([]) }} className="px-4 py-2 hover:bg-slate-50 cursor-pointer text-sm border-b border-slate-100 last:border-0 text-slate-700">{item.text || item.value}</li>)}</ul> : null}
-          </div>
+      <div className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-5">
+        <form onSubmit={(event) => event.preventDefault()} className="flex flex-wrap items-end gap-3">
+          <SearchAutocompleteInput
+            label="Поиск"
+            value={query}
+            placeholder="Название или описание документа..."
+            suggestions={suggestions}
+            onChange={setQuery}
+            onSelectSuggestion={(item) => {
+              setQuery(item.value || item.text)
+              setSuggestions([])
+            }}
+            className="min-w-[240px] flex-1"
+          />
 
-          <div className="w-full sm:w-[130px]">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Статус</label>
-            <select value={status} onChange={(event) => setStatus(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]">
-              <option value="">Все</option>
-              {statuses.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="w-full sm:w-[130px]">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Вид</label>
-            <select value={category} onChange={(event) => setCategory(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]">
-              <option value="">Все виды</option>
-              {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="w-full sm:w-[130px]">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Уровень</label>
-            <select value={level} onChange={(event) => setLevel(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]">
-              <option value="">Все уровни</option>
-              {levels.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="w-full sm:w-[140px]">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Сортировка</label>
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]">
+          <div className="w-full sm:w-[150px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Сортировка
+            </label>
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
               <option value="newest">Новые</option>
               <option value="oldest">Старые</option>
-              <option value="level">По значимости</option>
-              <option value="category">По виду</option>
+              <option value="level">По уровню</option>
+              <option value="category">По категории</option>
             </select>
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button type="button" onClick={() => void loadDocuments()} className="flex-1 sm:flex-none px-6 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center h-[38px]">Найти</button>
-            <button type="button" onClick={() => { setQuery(''); setStatus(''); setCategory(''); setLevel(''); setSortBy('newest'); setSuggestions([]) }} className="w-[38px] flex-shrink-0 bg-white border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center h-[38px]" title="Сбросить">✕</button>
+
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Статус
+            </label>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {statuses.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Категория
+            </label>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Уровень</label>
+            <select
+              value={level}
+              onChange={(event) => setLevel(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {levels.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void loadDocuments()}
+              className="h-[38px] rounded-lg bg-indigo-600 px-4 text-xs font-medium text-white transition-colors hover:bg-indigo-700"
+            >
+              Обновить
+            </button>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="h-[38px] rounded-lg border border-slate-200 px-4 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Сбросить
+            </button>
           </div>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        {isLoading ? <div className="py-16"><LoadingSpinner /></div> : items.length ? (
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
+        {isLoading ? (
+          <div className="py-16">
+            <LoadingSpinner />
+          </div>
+        ) : items.length ? (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+              <table className="w-full whitespace-nowrap text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="px-5 py-3 font-bold">Файл</th>
                     <th className="px-5 py-3 font-bold">Название</th>
@@ -238,15 +304,32 @@ export function DocumentsPage() {
                     <th className="px-5 py-3 font-bold">Категория</th>
                     <th className="px-5 py-3 font-bold">Статус</th>
                     <th className="px-5 py-3 font-bold">Создано</th>
-                    <th className="px-5 py-3 font-bold text-right">Действия</th>
+                    <th className="px-5 py-3 text-right font-bold">Действия</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {paginatedItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                  {items.map((item) => (
+                    <tr key={item.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-5 py-3">
-                        <button type="button" onClick={() => openDocumentPreview(item.id, item.file_path)} className="inline-flex w-8 h-8 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors items-center justify-center">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        <button
+                          type="button"
+                          onClick={() => openDocumentPreview(item.id, item.file_path)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-indigo-50 text-indigo-600 transition-colors hover:bg-indigo-100 hover:text-indigo-700"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
                         </button>
                       </td>
                       <td className="px-5 py-3">
@@ -255,31 +338,75 @@ export function DocumentsPage() {
                       <td className="px-5 py-3 text-xs text-slate-600">
                         {item.user ? (
                           <>
-                            <Link to={`/users/${item.user.id}?from=documents`} className="hover:text-indigo-600 transition-colors">
+                            <Link
+                              to={`/users/${item.user.id}?from=documents`}
+                              className="transition-colors hover:text-indigo-600"
+                            >
                               {item.user.first_name} {item.user.last_name}
                             </Link>
-                            <div className="text-[10px] text-slate-400">ID: {item.user.id} • {item.user.email}</div>
+                            <div className="text-[10px] text-slate-400">
+                              ID: {item.user.id} • {item.user.email}
+                            </div>
                           </>
-                        ) : <span className="text-slate-400">—</span>}
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-600">
                         <span className="block">{item.category}</span>
                         <span className="text-slate-400">{item.level}</span>
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${statusClass(item.status, item.moderator_id, currentUser?.id)}`}>
+                        <span
+                          className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass(item.status, item.moderator_id, currentUser?.id)}`}
+                        >
                           {statusLabel(item.status, item.moderator_id, currentUser?.id)}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-xs text-slate-500">{item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '—'}</td>
+                      <td className="px-5 py-3 text-xs text-slate-500">
+                        {item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '—'}
+                      </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-3">
-                          <button type="button" onClick={() => void handleDownload(item)} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Скачать">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                          <button
+                            type="button"
+                            onClick={() => void handleDownload(item)}
+                            className="text-slate-400 transition-colors hover:text-indigo-600"
+                            title="Скачать"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                              />
+                            </svg>
                           </button>
-                          {item.status === 'pending' && !item.moderator_id ? <button type="button" onClick={() => void handleTake(item)} className="text-xs text-indigo-600 font-bold hover:underline">Взять</button> : null}
-                          {item.status === 'pending' && item.moderator_id === currentUser?.id ? <Link to="/my-work?tab=achievements" className="text-xs text-indigo-600 font-bold hover:underline">Моя работа</Link> : null}
-                          <button type="button" onClick={() => void handleDelete(item)} className="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">Удалить</button>
+                          {item.status === 'pending' && !item.moderator_id ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTake(item)}
+                              className="text-xs font-bold text-indigo-600 hover:underline"
+                            >
+                              Взять
+                            </button>
+                          ) : null}
+                          {item.status === 'pending' && item.moderator_id === currentUser?.id ? (
+                            <Link
+                              to="/my-work?tab=achievements"
+                              className="text-xs font-bold text-indigo-600 hover:underline"
+                            >
+                              Моя работа
+                            </Link>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(item)}
+                            className="text-xs font-medium text-slate-400 transition-colors hover:text-red-600"
+                          >
+                            Удалить
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -287,6 +414,7 @@ export function DocumentsPage() {
                 </tbody>
               </table>
             </div>
+
             <div className="pagination-footer">
               <p className="pagination-summary">
                 Страница {page} из {totalPages} · По {DOCUMENTS_PAGE_SIZE} на страницу.
@@ -294,7 +422,21 @@ export function DocumentsPage() {
               <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </>
-        ) : <div className="py-12 text-center"><div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 mb-3 text-slate-400"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></div><p className="text-sm text-slate-500">Документы не найдены</p></div>}
+        ) : (
+          <div className="py-12 text-center">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <p className="text-sm text-slate-500">Документы по текущим фильтрам не найдены.</p>
+          </div>
+        )}
       </div>
     </div>
   )

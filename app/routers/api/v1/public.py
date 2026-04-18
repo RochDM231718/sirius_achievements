@@ -6,6 +6,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import get_db
+from app.middlewares.api_auth_middleware import auth, auth_optional
 from app.models.achievement import Achievement
 from app.models.enums import AchievementStatus, UserRole, UserStatus
 from app.models.user import Users
@@ -17,9 +18,23 @@ from .serializers import serialize_achievement, serialize_user_public
 
 router = APIRouter(prefix='/api/v1/public', tags=['api.v1.public'])
 
+_STAFF_ROLES = (UserRole.MODERATOR, UserRole.SUPER_ADMIN)
+
+
+def _can_view_documents(viewer: Users | None, student_id: int) -> bool:
+    if viewer is None:
+        return False
+    if int(viewer.id) == int(student_id):
+        return True
+    return UserRole(viewer.role) in _STAFF_ROLES
+
 
 @router.get('/students/{student_id}')
-async def public_student_profile(student_id: int, db: AsyncSession = Depends(get_db)):
+async def public_student_profile(
+    student_id: int,
+    db: AsyncSession = Depends(get_db),
+    viewer: Users | None = Depends(auth_optional),
+):
     student = await db.get(Users, student_id)
     if not student or student.role != UserRole.STUDENT or student.status != UserStatus.ACTIVE:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Student not found.')
@@ -106,12 +121,13 @@ async def public_student_profile(student_id: int, db: AsyncSession = Depends(get
         category = achievement.category.value if getattr(achievement, 'category', None) else 'Other'
         category_breakdown[category] = category_breakdown.get(category, 0) + 1
 
+    can_view_docs = _can_view_documents(viewer, student_id)
     achievements_payload = []
     for achievement in achievements:
         item = serialize_achievement(achievement)
         item['preview_url'] = (
             f'/api/v1/public/students/{student_id}/documents/{achievement.id}/preview'
-            if achievement.file_path else None
+            if achievement.file_path and can_view_docs else None
         )
         achievements_payload.append(item)
 
@@ -136,8 +152,16 @@ async def public_student_profile(student_id: int, db: AsyncSession = Depends(get
 
 
 @router.get('/students/{student_id}/documents/{document_id}/preview')
-async def public_document_preview(student_id: int, document_id: int, db: AsyncSession = Depends(get_db)):
-    """Serve approved achievement documents publicly (no auth required)."""
+async def public_document_preview(
+    student_id: int,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    viewer: Users = Depends(auth),
+):
+    """Serve approved achievement documents. Only the owner or staff (mod/admin) may view."""
+    if not _can_view_documents(viewer, student_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied.')
+
     student = await db.get(Users, student_id)
     if not student or student.role != UserRole.STUDENT or student.status != UserStatus.ACTIVE:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Student not found.')

@@ -105,21 +105,20 @@ class AuthService:
             logger.warning("Login failed: wrong password", email=email)
             return None
 
-        if not self.verify_password(password, user.hashed_password):
-            logger.warning("Login failed: wrong password", email=email)
-            return None
-
         await rate_limiter.reset(rl_key)
 
         logger.info("User logged in", user_id=user.id, email=user.email)
         return user
 
-    async def register_user(self, data: UserRegister) -> Users:
+    async def register_user(self, data: UserRegister) -> Users | None:
         data.email = data.email.strip().lower()
         stmt = select(Users).where(func.lower(Users.email) == data.email)
         result = await self.db.execute(stmt)
         if result.scalars().first():
-            raise Exception("Пользователь с таким email уже существует")
+            # Return None on duplicate to avoid user enumeration.
+            # Caller should always respond with the same generic success.
+            logger.info("Registration attempt for existing email", email=data.email)
+            return None
 
         hashed_pw = hash_password(data.password)
 

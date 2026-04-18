@@ -428,8 +428,8 @@ export function UserDetailPage() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Карточка пользователя</h2>
         <div className="flex items-center gap-3">
-          {detail.user.role === 'STUDENT' && detail.user.status === 'active' ? <Link to={`/students/${detail.user.id}`} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg">Публичный профиль</Link> : null}
-          <button type="button" onClick={() => void handleExportPdf()} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg">{isExportingPdf ? 'PDF...' : 'PDF'}</button>
+          {detail.user.role === 'STUDENT' && detail.user.status === 'active' ? <Link to={`/students/${detail.user.id}`} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">Публичный профиль</Link> : null}
+          <button type="button" onClick={() => void handleExportPdf()} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">{isExportingPdf ? 'PDF...' : 'PDF'}</button>
           <Link to={backUrl} className="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">Назад</Link>
         </div>
       </div>
@@ -438,7 +438,7 @@ export function UserDetailPage() {
 
       <div className={`grid grid-cols-1 ${!isGuestOrPending || isAdminViewer ? 'lg:grid-cols-3' : ''} gap-6`}>
         <div className={`space-y-6 ${isGuestOrPending && !isAdminViewer ? 'max-w-xl mx-auto w-full' : ''}`}>
-          <div className="bg-white rounded-xl border border-slate-200 p-6 text-center flex flex-col items-center shadow-sm">
+          <div className="bg-surface rounded-xl border border-slate-200 p-6 text-center flex flex-col items-center shadow-sm">
             <div className="h-28 w-28 mb-4 relative">
               {detail.user.avatar_path ? <img className="h-28 w-28 rounded-full object-cover border border-slate-200" src={buildStaticUrl(detail.user.avatar_path)} alt="Avatar" /> : <div className="h-28 w-28 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 text-3xl font-bold">{detail.user.first_name.slice(0, 1)}{detail.user.last_name.slice(0, 1)}</div>}
             </div>
@@ -454,17 +454,17 @@ export function UserDetailPage() {
               <div className="w-full pt-4 border-t border-slate-100">
                 <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 text-left">Изменить роль</label>
                 <div className="flex gap-2">
-                  <select value={role} onChange={(event) => setRole(event.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                  <select value={role} onChange={(event) => setRole(event.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                     {detail.roles.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
                   <button type="button" onClick={() => void handleRoleSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingRole}>OK</button>
                 </div>
-                {role === 'MODERATOR' ? <div className="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100"><label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Зона проверки модератора</label><select value={educationLevel} onChange={(event) => setEducationLevel(event.target.value)} className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"><option value="">Глобальный (Все направления)</option>{detail.education_levels.map((item) => <option key={item} value={item}>Только {item}</option>)}</select></div> : null}
+                {role === 'MODERATOR' ? <div className="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100"><label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Зона проверки модератора</label><select value={educationLevel} onChange={(event) => setEducationLevel(event.target.value)} className="w-full px-3 py-2 bg-surface border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"><option value="">Глобальный (Все направления)</option>{detail.education_levels.map((item) => <option key={item} value={item}>Только {item}</option>)}</select></div> : null}
               </div>
             ) : null}
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50"><h3 className="text-sm font-bold text-slate-700">Информация</h3></div>
             <div className="p-5 space-y-3 text-sm">
               {detail.user.education_level ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Обучение / Зона</span><span className="font-medium text-slate-800">{detail.user.education_level}</span></div> : null}
@@ -475,11 +475,11 @@ export function UserDetailPage() {
             </div>
           </div>
 
-          {isAdminViewer && detail.user.role === 'STUDENT' ? <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"><div className="px-5 py-3 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Средний балл сессии</h3></div><div className="p-5"><div className="flex gap-2"><input type="text" value={gpa} onChange={(event) => setGpa(event.target.value)} placeholder="4.5" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" /><button type="button" onClick={() => void handleGpaSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingGpa}>Сохранить</button></div><p className="text-[10px] text-slate-400 mt-1.5">Оценка от 2.0 до 5.0, конвертируется в бонусные баллы рейтинга</p></div></div> : null}
+          {isAdminViewer && detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm"><div className="px-5 py-3 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Средний балл сессии</h3></div><div className="p-5"><div className="flex gap-2"><input type="text" value={gpa} onChange={(event) => setGpa(event.target.value)} placeholder="4.5" className="flex-1 px-3 py-2 bg-surface border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" /><button type="button" onClick={() => void handleGpaSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingGpa}>Сохранить</button></div><p className="text-[10px] text-slate-400 mt-1.5">Оценка от 2.0 до 5.0, конвертируется в бонусные баллы рейтинга</p></div></div> : null}
         </div>
 
         {!isGuestOrPending || isAdminViewer ? <div className="lg:col-span-2 space-y-6">
-          {!isGuestOrPending ? <div className="grid grid-cols-2 gap-4"><div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Документов в текущем сезоне</div><div className="text-2xl font-semibold text-slate-800 mt-1">{detail.total_docs}</div></div>{detail.rank ? <div className="bg-white p-5 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm"><div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Текущее место</div><div className="text-2xl font-bold text-indigo-600 mt-1">#{detail.rank}</div></div><div className="w-px h-8 bg-slate-200" /><div className="text-right"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Баллы</div><div className="text-2xl font-bold text-indigo-600 mt-1">{detail.total_points}</div></div></div> : null}</div> : null}
+          {!isGuestOrPending ? <div className="grid grid-cols-2 gap-4"><div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Документов в текущем сезоне</div><div className="text-2xl font-semibold text-slate-800 mt-1">{detail.total_docs}</div></div>{detail.rank ? <div className="bg-surface p-5 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm"><div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Текущее место</div><div className="text-2xl font-bold text-indigo-600 mt-1">#{detail.rank}</div></div><div className="w-px h-8 bg-slate-200" /><div className="text-right"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Баллы</div><div className="text-2xl font-bold text-indigo-600 mt-1">{detail.total_points}</div></div></div> : null}</div> : null}
 
           <div className="bg-indigo-50/60 p-5 sm:p-6 rounded-xl border border-indigo-100 shadow-sm">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
@@ -487,19 +487,19 @@ export function UserDetailPage() {
               <button type="button" onClick={() => void handleGenerateResume()} disabled={isGeneratingResume || !canGenerateResume} className="shrink-0 px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">{isGeneratingResume ? 'Генерация...' : resumeText ? 'Обновить сводку' : 'Сгенерировать сводку'}</button>
             </div>
             {!canGenerateResume && resumeReason ? <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">{resumeReason}</p> : null}
-            {resumeText ? <div className="bg-white border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">{resumeText}</div> : <div className="text-center py-6 bg-white/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">Сводка ещё не сгенерирована. Нажмите кнопку, чтобы ИИ проанализировал грамоты этого студента.</div>}
+            {resumeText ? <div className="bg-surface border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">{resumeText}</div> : <div className="text-center py-6 bg-surface/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">Сводка ещё не сгенерирована. Нажмите кнопку, чтобы ИИ проанализировал грамоты этого студента.</div>}
           </div>
 
-          {detail.season_history.length ? <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden text-white shadow-md relative"><div className="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center relative z-10"><h3 className="text-sm font-bold text-white">Зал славы (Архив сезонов)</h3></div><div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">{detail.season_history.map((item) => <div key={item.id} className="bg-white/10 rounded-lg p-4 flex justify-between items-center border border-white/5 hover:bg-white/20 transition-colors"><div><div className="text-xs font-bold text-slate-200">{item.season_name}</div><div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Место: <span className="text-white text-sm">#{item.rank}</span></div></div><div className="text-xl font-black text-yellow-400">{item.points} <span className="text-[10px] font-normal text-slate-400">б.</span></div></div>)}</div></div> : null}
+          {detail.season_history.length ? <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden text-white shadow-md relative"><div className="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center relative z-10"><h3 className="text-sm font-bold text-white">Зал славы (Архив сезонов)</h3></div><div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">{detail.season_history.map((item) => <div key={item.id} className="bg-surface/10 rounded-lg p-4 flex justify-between items-center border border-white/5 hover:bg-surface/20 transition-colors"><div><div className="text-xs font-bold text-slate-200">{item.season_name}</div><div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Место: <span className="text-white text-sm">#{item.rank}</span></div></div><div className="text-xl font-black text-yellow-400">{item.points} <span className="text-[10px] font-normal text-slate-400">б.</span></div></div>)}</div></div> : null}
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><h3 className="text-sm font-bold text-slate-700">Документы текущего сезона</h3><button type="button" onClick={() => void handleDeleteUser()} className="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">Удалить пользователя</button></div>
             {detail.achievements.length ? <ul className="divide-y divide-slate-100">{detail.achievements.map((item) => <li key={item.id} className="p-4 hover:bg-slate-50 flex items-center justify-between transition-colors"><div className="flex items-center flex-1 min-w-0 pr-4"><div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mr-4 shrink-0 border border-indigo-100"><button type="button" onClick={() => openDocumentPreview(item.id, item.file_path)}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button></div><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-800 truncate">{item.title}</p><p className="text-xs text-slate-500 mt-0.5 flex items-center"><span className="mr-2">{item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : 'Дата не указана'}</span>{item.rejection_reason ? <span className="text-red-500 truncate max-w-[200px]">• {item.rejection_reason}</span> : null}</p></div></div><div className="flex items-center gap-3 shrink-0"><span className={`hidden sm:inline-flex px-2 py-0.5 text-[10px] rounded font-medium border ${statusClass(item.status)}`}>{achievementStatusLabel(item.status)}</span><button type="button" onClick={() => void handleDeleteDocument(item.id, item.title)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Удалить"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></li>)}</ul> : <div className="p-10 text-center flex flex-col items-center"><p className="text-sm text-slate-500">Достижений пока нет.</p></div>}
           </div>
 
-          {detail.user.role === 'STUDENT' ? <div className="bg-white rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>}</div> : null}
+          {detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>}</div> : null}
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
               <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
               <h3 className="text-sm font-bold text-slate-700">Служебные заметки</h3>
@@ -516,10 +516,10 @@ export function UserDetailPage() {
                   onChange={(e) => setNoteText(e.target.value)}
                   placeholder="Опишите нарушение или причину заметки..."
                   rows={3}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none resize-none transition-all"
+                  className="w-full px-3 py-2 bg-surface border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none resize-none transition-all"
                 />
                 <div className="flex items-center gap-2 flex-wrap">
-                  <label className="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
+                  <label className="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 bg-surface border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
                     <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                     {noteFile ? <span className="max-w-[140px] truncate text-indigo-600 font-medium">{noteFile.name}</span> : 'Прикрепить файл'}
                     <input ref={noteFileInputRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xlsx,.pptx" onChange={(e) => setNoteFile(e.target.files?.[0] ?? null)} />
@@ -587,7 +587,7 @@ export function UserDetailPage() {
             const activeCats = RADAR_CATS.filter((c) => pointsMap[c] > 0)
             if (!activeCats.length) return null
             return (
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="bg-surface rounded-xl border border-slate-200 p-5">
                 <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
                 <div className="h-64">
                   <canvas ref={radarChartRef} />
@@ -607,7 +607,7 @@ export function UserDetailPage() {
                           else next.add(cat)
                           return next
                         })}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-surface border-slate-200 text-slate-700'}`}
                       >
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
                         {cat}
@@ -626,14 +626,14 @@ export function UserDetailPage() {
 
       {notePreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closeNotePreview}>
-          <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full max-w-3xl max-h-[90vh] bg-surface dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Файл заметки</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => { const a = document.createElement('a'); a.href = notePreview.url; a.download = `note_${notePreview.noteId}.${notePreview.type === 'pdf' ? 'pdf' : 'bin'}`; document.body.appendChild(a); a.click(); a.remove() }}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 bg-surface dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   Скачать
@@ -645,7 +645,7 @@ export function UserDetailPage() {
             </div>
             <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[400px]">
               {notePreview.type === 'pdf' ? (
-                <iframe src={notePreview.url} className="w-full h-full min-h-[500px] border-0 bg-white" title="PDF" allow="fullscreen" />
+                <iframe src={notePreview.url} className="w-full h-full min-h-[500px] border-0 bg-surface" title="PDF" allow="fullscreen" />
               ) : (
                 <img src={notePreview.url} alt="Файл" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
               )}

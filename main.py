@@ -53,7 +53,13 @@ async def _support_maintenance_loop():
 
 
 async def _apply_schema_updates():
-    """Add missing columns to existing tables (safe: IF NOT EXISTS)."""
+    """Idempotent safety net that runs AFTER alembic in entrypoint.sh.
+
+    Alembic is the primary migration path (see entrypoint.sh). This function
+    covers edge cases where alembic is not yet in sync with hand-applied
+    production schema — all statements use IF NOT EXISTS / try/except so they
+    never fail on an already-correct schema.
+    """
     from sqlalchemy import text
 
     alter_statements = [
@@ -163,7 +169,19 @@ async def lifespan(app: FastAPI):
         logger.info("Database engine disposed. Graceful shutdown complete.")
 
 
-app = FastAPI(root_path=os.getenv("ROOT_PATH", ""), lifespan=lifespan)
+ENV = os.getenv("ENV", "development")
+IS_DEBUG = str(os.getenv("DEBUG", "False")).lower() in ("true", "1", "yes")
+
+if ENV == "production":
+    IS_DEBUG = False
+
+app = FastAPI(
+    root_path=os.getenv("ROOT_PATH", ""),
+    lifespan=lifespan,
+    docs_url="/docs" if ENV != "production" else None,
+    redoc_url="/redoc" if ENV != "production" else None,
+    openapi_url="/openapi.json" if ENV != "production" else None,
+)
 FLASH_TOAST_SESSION_KEY = "_toast"
 
 
@@ -231,12 +249,6 @@ app.mount(
     name="spa-assets",
 )
 
-ENV = os.getenv("ENV", "development")
-IS_DEBUG = str(os.getenv("DEBUG", "False")).lower() in ("true", "1", "yes")
-
-if ENV == "production":
-    IS_DEBUG = False
-
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY or SECRET_KEY == "supersecretkey123":
     if ENV == "production":
@@ -267,7 +279,10 @@ app.include_router(api_v1_router)
 
 def _origin_allowed(origin: str | None, host_header: str | None) -> bool:
     if not origin:
-        return True
+        # Reject WS upgrades without an Origin header — real browsers always
+        # send one; missing Origin usually means a non-browser client bypassing
+        # same-origin protections.
+        return False
 
     parsed = urlparse(origin)
     origin_host = parsed.hostname

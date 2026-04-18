@@ -28,13 +28,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if not self._is_embeddable_media(request):
             nonce = request.state.csp_nonce
             response.headers["X-Frame-Options"] = "DENY"
+            # 'unsafe-inline' kept in style-src because Jinja error pages and the
+            # SPA's inline critical CSS use inline <style>. A nonce-based policy
+            # would be stricter but requires templating every <style> tag.
             csp = (
                 "default-src 'self'; "
-                f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
-                "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+                f"script-src 'self' 'nonce-{nonce}'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "font-src 'self' data:; "
                 "img-src 'self' data: blob:; "
-                "connect-src 'self' blob: ws: wss: https://cdn.jsdelivr.net https://cdn.tailwindcss.com; "
+                "connect-src 'self' blob: ws: wss:; "
                 "worker-src 'self' blob:; "
                 "frame-src 'self' blob:; "
                 "frame-ancestors 'none'; "

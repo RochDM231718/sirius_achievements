@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { documentsApi } from '@/api/documents'
 import { moderationApi } from '@/api/moderation'
 import { myWorkApi, type MyWorkResponse } from '@/api/myWork'
+import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
+import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useToast } from '@/hooks/useToast'
@@ -17,22 +19,70 @@ type WorkTab = 'users' | 'achievements'
 type DecisionStatus = 'revision' | 'rejected'
 
 const successActionClass =
-  'inline-flex items-center justify-center px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors shadow-sm bg-green-600 text-white hover:bg-green-700'
+  'inline-flex items-center justify-center rounded-md bg-green-600 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-green-700'
 
 const dangerActionClass =
-  'inline-flex items-center justify-center px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors shadow-sm bg-red-50 text-red-700 border border-red-100 hover:bg-red-100'
+  'inline-flex items-center justify-center rounded-md border border-red-100 bg-red-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-700 shadow-sm transition-colors hover:bg-red-100'
 
 const neutralActionClass =
-  'inline-flex items-center justify-center px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors shadow-sm bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100'
+  'inline-flex items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 shadow-sm transition-colors hover:bg-slate-100'
 
 function normalizeTab(value: string | null): WorkTab {
   return value === 'achievements' ? 'achievements' : 'users'
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLocaleLowerCase('ru-RU')
+}
+
+function matchesUser(user: User, query: string) {
+  const search = normalizeSearch(query)
+  if (!search) {
+    return true
+  }
+
+  return [
+    user.first_name,
+    user.last_name,
+    user.email,
+    user.education_level ?? '',
+    user.course ? String(user.course) : '',
+    `${user.first_name} ${user.last_name}`,
+  ]
+    .join(' ')
+    .toLocaleLowerCase('ru-RU')
+    .includes(search)
+}
+
+function matchesAchievement(item: Achievement, query: string) {
+  const search = normalizeSearch(query)
+  if (!search) {
+    return true
+  }
+
+  return [
+    item.title,
+    item.description ?? '',
+    item.category ?? '',
+    item.level ?? '',
+    item.user?.first_name ?? '',
+    item.user?.last_name ?? '',
+    item.user?.email ?? '',
+    item.user ? `${item.user.first_name} ${item.user.last_name}` : '',
+  ]
+    .join(' ')
+    .toLocaleLowerCase('ru-RU')
+    .includes(search)
 }
 
 export function MyWorkPage() {
   const { pushToast } = useToast()
   const [searchParams] = useSearchParams()
   const [data, setData] = useState<MyWorkResponse | null>(null)
+  const [query, setQuery] = useState('')
+  const [userSortBy, setUserSortBy] = useState('newest')
+  const [achievementSortBy, setAchievementSortBy] = useState('oldest')
+  const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [decisionTarget, setDecisionTarget] = useState<Achievement | null>(null)
@@ -44,6 +94,13 @@ export function MyWorkPage() {
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
 
   const tab = normalizeTab(searchParams.get('tab'))
+  const users = data?.users ?? []
+  const achievements = data?.achievements ?? []
+
+  useEffect(() => {
+    setQuery('')
+    setSuggestions([])
+  }, [tab])
 
   const load = async () => {
     setIsLoading(true)
@@ -62,6 +119,87 @@ export function MyWorkPage() {
   useEffect(() => {
     void load()
   }, [])
+
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      setSuggestions([])
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (tab === 'users') {
+        setSuggestions(
+          users
+            .filter((user) => matchesUser(user, trimmed))
+            .slice(0, 5)
+            .map((user) => ({
+              value: user.email,
+              text: `${user.first_name} ${user.last_name} (${user.email})`,
+            })),
+        )
+        return
+      }
+
+      setSuggestions(
+        achievements
+          .filter((item) => matchesAchievement(item, trimmed))
+          .slice(0, 5)
+          .map((item) => ({
+            value: item.title,
+            text: item.title,
+          })),
+      )
+    }, 150)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [achievements, query, tab, users])
+
+  const filteredUsers = useMemo(() => {
+    const nextUsers = users.filter((user) => matchesUser(user, query))
+
+    nextUsers.sort((left, right) => {
+      if (userSortBy === 'oldest') {
+        return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+      }
+
+      if (userSortBy === 'name_asc') {
+        return `${left.last_name} ${left.first_name}`.localeCompare(`${right.last_name} ${right.first_name}`, 'ru')
+      }
+
+      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    })
+
+    return nextUsers
+  }, [query, userSortBy, users])
+
+  const filteredAchievements = useMemo(() => {
+    const nextAchievements = achievements.filter((item) => matchesAchievement(item, query))
+
+    nextAchievements.sort((left, right) => {
+      if (achievementSortBy === 'newest') {
+        return new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+      }
+
+      if (achievementSortBy === 'title') {
+        return left.title.localeCompare(right.title, 'ru')
+      }
+
+      if (achievementSortBy === 'category') {
+        return String(left.category ?? '').localeCompare(String(right.category ?? ''), 'ru')
+      }
+
+      if (achievementSortBy === 'points_desc') {
+        return Number(right.projected_points ?? 0) - Number(left.projected_points ?? 0)
+      }
+
+      return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+    })
+
+    return nextAchievements
+  }, [achievementSortBy, achievements, query])
 
   const closeDecisionModal = () => {
     setDecisionTarget(null)
@@ -99,7 +237,7 @@ export function MyWorkPage() {
 
   const handleRejectUser = async (user: User) => {
     const confirmed = window.confirm(
-      `Отклонить пользователя ${user.first_name} ${user.last_name}? Это действие необратимо.`
+      `Отклонить пользователя ${user.first_name} ${user.last_name}? Это действие необратимо.`,
     )
 
     if (!confirmed) {
@@ -226,7 +364,12 @@ export function MyWorkPage() {
   const handleDownloadAchievement = async (item: Achievement) => {
     try {
       const response = await documentsApi.download(item.id)
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' })
+      const blob =
+        response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], {
+              type: response.headers['content-type'] || 'application/octet-stream',
+            })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = item.file_path?.split('/').pop() || `${item.title}.bin`
@@ -239,128 +382,147 @@ export function MyWorkPage() {
     }
   }
 
-  const users = data?.users ?? []
-  const achievements = data?.achievements ?? []
-  const sectionLinks =
+  const currentTitle = tab === 'users' ? 'Мои пользователи' : 'Мои документы'
+  const currentDescription =
     tab === 'users'
-      ? {
-          queueTo: '/moderation/users',
-          queueLabel: 'Новые пользователи',
-          allTo: '/users',
-          allLabel: 'Все пользователи',
-        }
-      : {
-          queueTo: '/moderation/achievements',
-          queueLabel: 'Новые документы',
-          allTo: '/documents',
-          allLabel: 'Все документы',
-        }
+      ? `Закреплённые за вами заявки: ${data?.total_users ?? 0}.`
+      : `Документы, которые сейчас находятся у вас в работе: ${data?.total_achievements ?? 0}.`
+
+  const resetFilters = () => {
+    setQuery('')
+    setSuggestions([])
+    if (tab === 'users') {
+      setUserSortBy('newest')
+      return
+    }
+
+    setAchievementSortBy('oldest')
+  }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Моя работа</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            {tab === 'users'
-              ? `Личный пул пользователей в работе: ${data?.total_users ?? 0}`
-              : `Личный пул документов в работе: ${data?.total_achievements ?? 0}`}
-          </p>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <StaffSectionHeader
+        kind={tab === 'users' ? 'users' : 'documents'}
+        currentView="my"
+        title={currentTitle}
+        description={currentDescription}
+      />
 
-        <div className="flex items-center gap-3">
-          <Link to={sectionLinks.queueTo} className="text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors">
-            {sectionLinks.queueLabel}
-          </Link>
-          <Link to={sectionLinks.allTo} className="text-sm text-indigo-600 font-medium hover:underline flex items-center gap-1">
-            {sectionLinks.allLabel}
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-        </div>
-      </div>
+      {error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+      ) : null}
 
-      {error ? <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div> : null}
+      <div className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-5">
+        <form onSubmit={(event) => event.preventDefault()} className="flex flex-wrap items-end gap-3">
+          <SearchAutocompleteInput
+            label="Поиск"
+            value={query}
+            placeholder={tab === 'users' ? 'Имя, email или поток...' : 'Название, описание или студент...'}
+            suggestions={suggestions}
+            onChange={setQuery}
+            onSelectSuggestion={(item) => {
+              setQuery(item.value || item.text)
+              setSuggestions([])
+            }}
+            className="min-w-[240px] flex-1"
+          />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Link
-          to="/my-work?tab=users"
-          className={`bg-white p-5 rounded-xl border shadow-sm flex flex-col justify-between transition-colors ${
-            tab === 'users'
-              ? 'border-indigo-200 ring-2 ring-indigo-500/10'
-              : 'border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-            <p className="text-[10px] text-slate-600 uppercase font-bold tracking-wider">Пользователи</p>
+          <div className="w-full sm:w-[180px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Сортировка
+            </label>
+            {tab === 'users' ? (
+              <select
+                value={userSortBy}
+                onChange={(event) => setUserSortBy(event.target.value)}
+                className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+              >
+                <option value="newest">Новые</option>
+                <option value="oldest">Старые</option>
+                <option value="name_asc">По алфавиту</option>
+              </select>
+            ) : (
+              <select
+                value={achievementSortBy}
+                onChange={(event) => setAchievementSortBy(event.target.value)}
+                className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+              >
+                <option value="oldest">Сначала старые</option>
+                <option value="newest">Сначала новые</option>
+                <option value="title">По названию</option>
+                <option value="category">По категории</option>
+                <option value="points_desc">По баллам</option>
+              </select>
+            )}
           </div>
-          <p className="text-3xl font-semibold text-slate-800">{data?.total_users ?? 0}</p>
-        </Link>
 
-        <Link
-          to="/my-work?tab=achievements"
-          className={`bg-white p-5 rounded-xl border shadow-sm flex flex-col justify-between transition-colors ${
-            tab === 'achievements'
-              ? 'border-indigo-200 ring-2 ring-indigo-500/10'
-              : 'border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-            <p className="text-[10px] text-slate-600 uppercase font-bold tracking-wider">Документы</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="h-[38px] rounded-lg bg-indigo-600 px-4 text-xs font-medium text-white transition-colors hover:bg-indigo-700"
+            >
+              Обновить
+            </button>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="h-[38px] rounded-lg border border-slate-200 px-4 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Сбросить
+            </button>
           </div>
-          <p className="text-3xl font-semibold text-slate-800">{data?.total_achievements ?? 0}</p>
-        </Link>
+        </form>
       </div>
 
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-slate-200 py-16">
+        <div className="rounded-xl border border-slate-200 bg-surface py-16">
           <LoadingSpinner />
         </div>
       ) : tab === 'users' ? (
-        users.length ? (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+        filteredUsers.length ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
               <h3 className="text-sm font-semibold text-slate-700">Пользователи в работе</h3>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Всего: {users.length}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Всего: {filteredUsers.length}
+              </span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+              <table className="w-full whitespace-nowrap text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="px-5 py-3 font-bold">ID</th>
                     <th className="px-5 py-3 font-bold">Пользователь</th>
                     <th className="px-5 py-3 font-bold">Роль / обучение</th>
                     <th className="px-5 py-3 font-bold">Регистрация</th>
-                    <th className="px-5 py-3 font-bold text-right">Действия</th>
+                    <th className="px-5 py-3 text-right font-bold">Действия</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-50">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                  {filteredUsers.map((user) => (
+                    <tr key={user.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-5 py-3 text-xs text-slate-400">{user.id}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-medium shrink-0">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 font-medium text-slate-600">
                             {user.first_name.slice(0, 1)}
                           </div>
                           <div>
                             <Link
                               to={`/users/${user.id}?from=my-work`}
-                              className="font-medium text-slate-800 hover:text-indigo-600 transition-colors block leading-tight"
+                              className="block font-medium leading-tight text-slate-800 transition-colors hover:text-indigo-600"
                             >
                               {user.first_name} {user.last_name}
                             </Link>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{user.email}</div>
+                            <div className="mt-0.5 text-[10px] text-slate-400">{user.email}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 mb-1">
+                        <span className="mb-1 inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                           {user.role}
                         </span>
                         <br />
@@ -376,10 +538,10 @@ export function MyWorkPage() {
                         {user.created_at ? new Date(user.created_at).toLocaleDateString('ru-RU') : '—'}
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <div className="flex justify-end gap-2 items-center flex-wrap">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           <Link
                             to={`/users/${user.id}?from=my-work`}
-                            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors mr-1"
+                            className="mr-1 text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-800"
                           >
                             Профиль
                           </Link>
@@ -401,78 +563,91 @@ export function MyWorkPage() {
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 mb-3 text-slate-400">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
                   d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                ></path>
+                />
               </svg>
             </div>
-            <p className="text-sm text-slate-500">У вас пока нет закреплённых пользователей</p>
-            <Link to="/moderation/users" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
+            <p className="text-sm text-slate-500">
+              {query ? 'По текущему поиску закреплённые пользователи не найдены.' : 'У вас пока нет закреплённых пользователей.'}
+            </p>
+            <Link
+              to="/moderation/users"
+              className="mt-3 inline-block text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-800"
+            >
               Перейти к новым пользователям
             </Link>
           </div>
         )
-      ) : achievements.length ? (
+      ) : filteredAchievements.length ? (
         <div className="space-y-3">
-          {achievements.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden p-4 transition-colors hover:border-slate-300">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex gap-3 flex-1">
+          {filteredAchievements.map((item) => (
+            <div
+              key={item.id}
+              className="overflow-hidden rounded-xl border border-slate-200 bg-surface p-4 transition-colors hover:border-slate-300"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex flex-1 gap-3">
                   <button
                     type="button"
                     onClick={() => openDocumentPreview(item.id, item.file_path)}
-                    className="w-20 h-24 sm:w-28 sm:h-28 shrink-0 bg-slate-50 rounded-lg overflow-hidden relative border border-slate-100 flex flex-col items-center justify-center group"
+                    className="relative flex h-24 w-20 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50 sm:h-28 sm:w-28"
                     title="Открыть превью"
                   >
                     {item.file_path && isImageFile(item.file_path) ? (
-                      <DocumentPreviewImage documentId={item.id} alt={item.title} className="w-full h-full object-cover" />
+                      <DocumentPreviewImage documentId={item.id} alt={item.title} className="h-full w-full object-cover" />
                     ) : item.file_path && isPdfFile(item.file_path) ? (
                       <>
-                        <svg className="w-6 h-6 text-slate-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                        <svg className="mb-1 h-6 w-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                          />
                         </svg>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase">PDF</span>
+                        <span className="text-[9px] font-bold uppercase text-slate-500">PDF</span>
                       </>
                     ) : (
-                      <span className="text-[9px] font-bold text-slate-400 uppercase">Нет файла</span>
+                      <span className="text-[9px] font-bold uppercase text-slate-400">Нет файла</span>
                     )}
                   </button>
 
-                  <div className="flex-1 min-w-0 flex flex-col py-0.5">
-                    <h3 className="text-sm font-bold text-slate-800 leading-tight line-clamp-2 mb-1.5" title={item.title}>
+                  <div className="flex min-w-0 flex-1 flex-col py-0.5">
+                    <h3 className="mb-1.5 line-clamp-2 text-sm font-bold leading-tight text-slate-800" title={item.title}>
                       {item.title}
                     </h3>
 
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100/50">
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      <span className="rounded border border-indigo-100/50 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-indigo-700">
                         {item.category || 'Без категории'}
                       </span>
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200/50">
+                      <span className="rounded border border-slate-200/50 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
                         {item.level || 'Без уровня'}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <div className="h-4 w-4 rounded bg-slate-100 flex items-center justify-center text-[8px] font-bold text-slate-600 shrink-0">
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-slate-100 text-[8px] font-bold text-slate-600">
                         {item.user?.first_name?.slice(0, 1) || '?'}
                       </div>
-                      <span className="text-xs font-medium text-slate-700 truncate">
+                      <span className="truncate text-xs font-medium text-slate-700">
                         {item.user ? `${item.user.first_name} ${item.user.last_name}` : 'Без автора'}
                       </span>
                     </div>
 
-                    <div className="mt-auto flex justify-between items-end gap-3">
-                      <span className="text-[9px] font-medium text-slate-400 uppercase tracking-wider">
+                    <div className="mt-auto flex items-end justify-between gap-3">
+                      <span className="text-[9px] font-medium uppercase tracking-wider text-slate-400">
                         {formatDateTime(item.created_at)}
                       </span>
                       {item.description ? (
-                        <span className="text-[10px] text-slate-400 truncate max-w-[160px] italic" title={item.description}>
+                        <span className="max-w-[160px] truncate text-[10px] italic text-slate-400" title={item.description}>
                           {item.description}
                         </span>
                       ) : null}
@@ -480,25 +655,30 @@ export function MyWorkPage() {
                   </div>
                 </div>
 
-                <div className="flex sm:flex-col gap-2 shrink-0 sm:w-36 justify-center border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-3">
+                <div className="flex shrink-0 justify-center gap-2 border-t border-slate-100 pt-3 sm:w-36 sm:flex-col sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
                   <button
                     type="button"
                     onClick={() => void handleApproveAchievement(item)}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex flex-col items-center justify-center leading-tight shadow-sm"
+                    className="flex w-full flex-col items-center justify-center rounded-lg bg-green-600 px-2 py-2 text-xs font-medium leading-tight text-white shadow-sm transition-colors hover:bg-green-700 sm:py-2.5"
                   >
                     <span>Одобрить</span>
                     {typeof item.projected_points === 'number' ? (
-                      <span className="text-[9px] opacity-90 mt-0.5 font-normal">+{item.projected_points} баллов</span>
+                      <span className="mt-0.5 text-[9px] font-normal opacity-90">+{item.projected_points} баллов</span>
                     ) : null}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => openEditModal(item)}
-                    className="w-full bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-surface px-2 py-2 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 sm:py-2.5"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 9.586-9.586z"></path>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 9.586-9.586z"
+                      />
                     </svg>
                     <span>Редактировать</span>
                   </button>
@@ -509,7 +689,7 @@ export function MyWorkPage() {
                       setDecisionTarget(item)
                       setDecisionReason(item.rejection_reason ?? '')
                     }}
-                    className="flex-1 sm:flex-none w-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 py-2 sm:py-2.5 px-2 rounded-lg text-xs font-medium transition-colors flex flex-col items-center justify-center leading-tight shadow-sm"
+                    className="flex w-full flex-col items-center justify-center rounded-lg border border-slate-200 bg-surface px-2 py-2 text-xs font-medium leading-tight text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:py-2.5"
                   >
                     <span>Отклонить /</span>
                     <span>Вернуть</span>
@@ -518,7 +698,7 @@ export function MyWorkPage() {
                   <button
                     type="button"
                     onClick={() => void handleReleaseAchievement(item)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 py-2 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:bg-slate-100"
                   >
                     Снять
                   </button>
@@ -526,10 +706,15 @@ export function MyWorkPage() {
                   <button
                     type="button"
                     onClick={() => void handleDownloadAchievement(item)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-100"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                      />
                     </svg>
                     <span>Скачать</span>
                   </button>
@@ -539,14 +724,24 @@ export function MyWorkPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 mb-3 text-slate-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+        <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">
+          <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400">
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
           </div>
-          <p className="text-sm text-slate-500">У вас пока нет закреплённых документов</p>
-          <Link to="/moderation/achievements" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
+          <p className="text-sm text-slate-500">
+            {query ? 'По текущему поиску закреплённые документы не найдены.' : 'У вас пока нет закреплённых документов.'}
+          </p>
+          <Link
+            to="/moderation/achievements"
+            className="mt-3 inline-block text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-800"
+          >
             Перейти к новым документам
           </Link>
         </div>
@@ -554,28 +749,30 @@ export function MyWorkPage() {
 
       {editTarget ? (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm"
           onClick={closeEditModal}
         >
           <div
-            className="bg-white rounded-xl shadow-lg w-full max-w-lg flex flex-col overflow-hidden"
+            className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl bg-surface shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+            <div className="flex items-center justify-between border-b border-slate-100 p-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Редактирование документа</h3>
-                <p className="text-xs text-slate-400 mt-1">Исправьте название или описание перед одобрением</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Исправьте название или описание перед одобрением.
+                </p>
               </div>
               <button type="button" onClick={closeEditModal} className="text-slate-400 hover:text-slate-600">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50 space-y-4">
+            <div className="space-y-4 bg-slate-50 p-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   Название <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -583,13 +780,13 @@ export function MyWorkPage() {
                   value={editTitle}
                   onChange={(event) => setEditTitle(event.target.value)}
                   disabled={isSubmittingEdit}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:bg-surface focus:ring-2 focus:ring-indigo-500/20"
                   placeholder="Название документа"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   Описание
                 </label>
                 <textarea
@@ -597,18 +794,18 @@ export function MyWorkPage() {
                   onChange={(event) => setEditDescription(event.target.value)}
                   rows={4}
                   disabled={isSubmittingEdit}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
+                  className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:bg-surface focus:ring-2 focus:ring-indigo-500/20"
                   placeholder="Короткое описание документа"
                 />
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col gap-3 border-t border-slate-100 bg-surface p-4 sm:flex-row">
               <button
                 type="button"
                 onClick={closeEditModal}
                 disabled={isSubmittingEdit}
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full rounded-lg border border-slate-200 bg-surface px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Отмена
               </button>
@@ -617,7 +814,7 @@ export function MyWorkPage() {
                 type="button"
                 onClick={() => void handleSaveAchievementMetadata()}
                 disabled={isSubmittingEdit}
-                className="w-full px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSubmittingEdit ? 'Сохранение...' : 'Сохранить'}
               </button>
@@ -628,27 +825,27 @@ export function MyWorkPage() {
 
       {decisionTarget ? (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm"
           onClick={closeDecisionModal}
         >
           <div
-            className="bg-white rounded-xl shadow-lg w-full max-w-lg flex flex-col overflow-hidden"
+            className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl bg-surface shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+            <div className="flex items-center justify-between border-b border-slate-100 p-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Решение по документу</h3>
-                <p className="text-xs text-slate-400 mt-1">{decisionTarget.title}</p>
+                <p className="mt-1 text-xs text-slate-400">{decisionTarget.title}</p>
               </div>
               <button type="button" onClick={closeDecisionModal} className="text-slate-400 hover:text-slate-600">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50">
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+            <div className="bg-slate-50 p-4">
+              <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 Причина или комментарий для студента <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -656,20 +853,25 @@ export function MyWorkPage() {
                 onChange={(event) => setDecisionReason(event.target.value)}
                 rows={4}
                 disabled={isSubmittingDecision}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
+                className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:bg-surface focus:ring-2 focus:ring-indigo-500/20"
                 placeholder="Например: размытое фото, загрузите документ заново."
               />
             </div>
 
-            <div className="p-4 border-t border-slate-100 bg-white grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 border-t border-slate-100 bg-surface p-4 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => void handleAchievementDecision('revision')}
                 disabled={isSubmittingDecision}
-                className="w-full px-4 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-200 text-sm font-medium rounded-lg hover:bg-yellow-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-2.5 text-sm font-medium text-yellow-700 transition-colors hover:bg-yellow-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
                 На доработку
               </button>
@@ -678,10 +880,15 @@ export function MyWorkPage() {
                 type="button"
                 onClick={() => void handleAchievementDecision('rejected')}
                 disabled={isSubmittingDecision}
-                className="w-full px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
                 Полный отказ
               </button>

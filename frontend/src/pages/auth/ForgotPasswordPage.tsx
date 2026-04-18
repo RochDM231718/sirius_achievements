@@ -53,7 +53,7 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="theme-auth-card w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+    <div className="theme-auth-card w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
       <div className="text-center mb-6">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Забыли пароль?</h1>
         <p className="text-sm text-slate-500 mt-2 leading-relaxed">
@@ -114,7 +114,7 @@ export function ForgotPasswordPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
-            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
           />
         </div>
 

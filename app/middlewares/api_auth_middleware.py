@@ -35,3 +35,32 @@ async def auth(request: Request):
     request.state.user_role = UserRole(user.role)
 
     return user
+
+
+async def auth_optional(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header.split(" ")[1]
+    payload = verify_token(token)
+
+    if not payload or payload.get("type") != "access":
+        return None
+
+    async with async_session_maker() as db:
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+        stmt = select(Users).filter(Users.id == int(user_id))
+        result = await db.execute(stmt)
+        user = result.scalars().first()
+
+        if not user or user.status == UserStatus.REJECTED or not user.is_active:
+            return None
+        if int(payload.get("av", 0)) != int(user.api_access_version or 0):
+            return None
+
+    request.state.user = user
+    request.state.user_role = UserRole(user.role)
+    return user

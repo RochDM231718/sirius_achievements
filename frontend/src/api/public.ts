@@ -1,13 +1,24 @@
 import client from './client'
 import { Achievement } from '@/types/achievement'
-import { User } from '@/types/user'
 
 export interface PublicStudentAchievement extends Achievement {
   preview_url: string | null
 }
 
+export interface PublicStudent {
+  id: number
+  first_name: string
+  last_name: string
+  avatar_path?: string
+  education_level?: string
+  course?: number
+  study_group?: string
+  session_gpa?: string
+  resume_text?: string
+}
+
 export interface PublicStudentResponse {
-  student: User
+  student: PublicStudent
   achievements: PublicStudentAchievement[]
   total_points: number
   total_docs: number

@@ -21,7 +21,7 @@ export function MobileNav({ user }: MobileNavProps) {
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 w-full bg-white border-t border-slate-200 z-50 flex justify-around items-center h-[64px] px-2 pb-safe">
+      <nav className="md:hidden fixed bottom-0 w-full bg-surface border-t border-slate-200 z-50 flex justify-around items-center h-[64px] px-2 pb-safe">
         <Link
           to="/dashboard"
           className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${
@@ -114,7 +114,7 @@ export function MobileNav({ user }: MobileNavProps) {
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden="true"
           />
-          <div className="absolute bottom-0 w-full bg-white rounded-t-2xl px-4 py-6 max-h-[80vh] overflow-y-auto scrollbar-hide pb-10">
+          <div className="absolute bottom-0 w-full bg-surface rounded-t-2xl px-4 py-6 max-h-[80vh] overflow-y-auto scrollbar-hide pb-10">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-slate-800 text-lg">Меню</h3>
               <button type="button" onClick={() => setMobileMenuOpen(false)} className="text-slate-400 p-2 bg-slate-50 rounded-full">

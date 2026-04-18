@@ -1,100 +1,146 @@
-import os
-import logging
-import httpx
+from __future__ import annotations
+
 import asyncio
+import logging
+import os
+import re
+import tempfile
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+import fitz
+import httpx
+from sqlalchemy import func as sql_func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 try:
     import easyocr
+
     _EASYOCR_AVAILABLE = True
 except ImportError:
     easyocr = None  # type: ignore[assignment]
     _EASYOCR_AVAILABLE = False
-import fitz  # PyMuPDF
-from pathlib import Path
-from datetime import datetime, timezone
-from collections import Counter
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func as sql_func
 
-from app.models.achievement import Achievement
-from app.models.user import Users
-from app.models.enums import AchievementStatus
 from app.config import settings
+from app.models.achievement import Achievement
+from app.models.enums import AchievementLevel, AchievementStatus
+from app.models.user import Users
+from app.utils import storage
+from app.utils.media_paths import resolve_static_path
 
-# Используем стандартный logging вместо structlog — structlog ломается
-# при логировании из фоновых потоков (run_in_executor)
 log = logging.getLogger("resume_service")
 
 _ocr_reader = None
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+SUPPORTED_OCR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+OCR_TEXT_LIMIT = 6000
+PROMPT_TEXT_LIMIT = 20000
+RESUME_TEXT_LIMIT = 12000
+
+LEVEL_ORDER = {
+    AchievementLevel.INTERNATIONAL.value: 5,
+    AchievementLevel.FEDERAL.value: 4,
+    AchievementLevel.REGIONAL.value: 3,
+    AchievementLevel.MUNICIPAL.value: 2,
+    AchievementLevel.SCHOOL.value: 1,
+}
+
+
+def sanitize_resume_text(value: str | None, max_length: int | None = None) -> str:
+    if not value:
+        return ""
+
+    cleaned = value.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = _CONTROL_CHARS_RE.sub("", cleaned)
+    cleaned = "\n".join(line.rstrip() for line in cleaned.split("\n"))
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+    if max_length and len(cleaned) > max_length:
+        shortened = cleaned[:max_length].rstrip()
+        last_space = shortened.rfind(" ")
+        if last_space > max_length * 0.7:
+            shortened = shortened[:last_space].rstrip()
+        cleaned = shortened
+
+    return cleaned
+
+
+def _enum_value(value: object | None, default: str) -> str:
+    if value is None:
+        return default
+    return value.value if hasattr(value, "value") else str(value)
 
 
 def get_ocr_reader():
     global _ocr_reader
+
     if not _EASYOCR_AVAILABLE:
         return None
-    if _ocr_reader is None:
-        model_dir = os.getenv('EASYOCR_MODEL_DIR', '/app/easyocr_models')
-        download_enabled = settings.RESUME_OCR_MODEL_DOWNLOAD_ENABLED
+    if _ocr_reader is not None:
+        return _ocr_reader
+
+    model_dir = os.getenv("EASYOCR_MODEL_DIR", "/app/easyocr_models")
+    download_enabled = settings.RESUME_OCR_MODEL_DOWNLOAD_ENABLED
+
+    try:
+        _ocr_reader = easyocr.Reader(
+            ["ru", "en"],
+            gpu=False,
+            model_storage_directory=model_dir,
+            download_enabled=download_enabled,
+            verbose=False,
+        )
+        log.info("EasyOCR initialized, model_dir=%s", model_dir)
+    except Exception as exc:
+        log.warning("EasyOCR init failed (%s), retrying offline", exc)
         try:
             _ocr_reader = easyocr.Reader(
-                ['ru', 'en'],
+                ["ru", "en"],
                 gpu=False,
                 model_storage_directory=model_dir,
-                download_enabled=download_enabled,
-                verbose=False
+                download_enabled=False,
+                verbose=False,
             )
-            log.info("EasyOCR initialized, model_dir=%s", model_dir)
-        except Exception as e:
-            log.warning("EasyOCR init failed (%s), retrying offline", e)
-            try:
-                _ocr_reader = easyocr.Reader(
-                    ['ru', 'en'],
-                    gpu=False,
-                    model_storage_directory=model_dir,
-                    download_enabled=False,
-                    verbose=False
-                )
-                log.info("EasyOCR initialized (offline mode)")
-            except Exception as e2:
-                log.error("EasyOCR init completely failed: %s", e2)
-                _ocr_reader = None
+            log.info("EasyOCR initialized (offline mode)")
+        except Exception as offline_exc:
+            log.error("EasyOCR init completely failed: %s", offline_exc)
+            _ocr_reader = None
+
     return _ocr_reader
 
 
 def extract_text_from_pdf(filepath: str) -> str:
-    """Извлекает текст из PDF: сначала вшитый текст, затем OCR для сканов."""
-    text = ""
-    with fitz.open(filepath) as doc:
-        for page in doc:
-            page_text = page.get_text().strip()
+    text_chunks: list[str] = []
+
+    with fitz.open(filepath) as document:
+        for page in document:
+            page_text = sanitize_resume_text(page.get_text())
             if page_text:
-                text += page_text + "\n"
-            else:
-                reader = get_ocr_reader()
-                if reader is not None:
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_bytes = pix.tobytes("png")
-                    ocr_results = reader.readtext(img_bytes, detail=0, paragraph=True)
-                    text += "\n".join(ocr_results) + "\n"
-    return text.strip()
+                text_chunks.append(page_text)
+                continue
+
+            reader = get_ocr_reader()
+            if reader is None:
+                continue
+
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+            image_bytes = pixmap.tobytes("png")
+            ocr_results = reader.readtext(image_bytes, detail=0, paragraph=True)
+            ocr_text = sanitize_resume_text("\n".join(ocr_results))
+            if ocr_text:
+                text_chunks.append(ocr_text)
+
+    return sanitize_resume_text("\n".join(text_chunks), max_length=OCR_TEXT_LIMIT)
 
 
 def extract_text_from_image(filepath: str) -> str:
-    """Извлекает текст из изображения с помощью EasyOCR."""
     reader = get_ocr_reader()
     if reader is None:
         return ""
+
     ocr_results = reader.readtext(filepath, detail=0, paragraph=True)
-    return "\n".join(ocr_results)
-
-
-# Маппинг уровней для сортировки (от высшего к низшему)
-LEVEL_ORDER = {
-    "Международный": 5,
-    "Федеральный": 4,
-    "Региональный": 3,
-    "Муниципальный": 2,
-    "Школьный": 1,
-}
+    return sanitize_resume_text("\n".join(ocr_results), max_length=OCR_TEXT_LIMIT)
 
 
 class ResumeService:
@@ -102,14 +148,13 @@ class ResumeService:
         self.db = db
 
     async def can_generate(self, user_id: int) -> dict:
-        """Проверяет, может ли пользователь сгенерировать резюме."""
         user = await self.db.get(Users, user_id)
         if not user:
             return {"allowed": False, "reason": "Пользователь не найден."}
 
         count_stmt = select(sql_func.count()).select_from(Achievement).filter(
             Achievement.user_id == user_id,
-            Achievement.status == AchievementStatus.APPROVED
+            Achievement.status == AchievementStatus.APPROVED,
         )
         approved_count = (await self.db.execute(count_stmt)).scalar() or 0
 
@@ -122,242 +167,328 @@ class ResumeService:
         new_stmt = select(sql_func.count()).select_from(Achievement).filter(
             Achievement.user_id == user_id,
             Achievement.status == AchievementStatus.APPROVED,
-            Achievement.updated_at > user.resume_generated_at
+            Achievement.updated_at > user.resume_generated_at,
         )
         new_count = (await self.db.execute(new_stmt)).scalar() or 0
 
         if new_count == 0:
-            return {"allowed": False, "reason": "Нет новых подтверждённых документов с момента последней генерации."}
+            return {
+                "allowed": False,
+                "reason": "Нет новых подтверждённых документов с момента последней генерации.",
+            }
 
         return {"allowed": True, "reason": None}
 
-    async def generate_resume(self, user_id: int, force_regenerate: bool = False, bypass_check: bool = False) -> dict:
-        user = await self.db.get(Users, user_id)
-        if not user:
-            return {"success": False, "error": "Пользователь не найден."}
+    async def generate_resume(
+        self,
+        user_id: int,
+        force_regenerate: bool = False,
+        bypass_check: bool = False,
+    ) -> dict:
+        try:
+            user = await self.db.get(Users, user_id)
+            if not user:
+                return {"success": False, "error": "Пользователь не найден.", "status_code": 404}
 
-        if user.resume_text and not force_regenerate:
-            return {"success": True, "resume": user.resume_text}
+            if user.resume_text and not force_regenerate:
+                return {
+                    "success": True,
+                    "resume": sanitize_resume_text(user.resume_text, max_length=RESUME_TEXT_LIMIT),
+                }
 
-        if not bypass_check:
-            check = await self.can_generate(user_id)
-            if not check["allowed"]:
-                return {"success": False, "error": check["reason"], "resume": user.resume_text}
+            if not bypass_check:
+                check = await self.can_generate(user_id)
+                if not check["allowed"]:
+                    return {"success": False, "error": check["reason"], "status_code": 429}
 
-        stmt = select(Achievement).filter(
-            Achievement.user_id == user_id,
-            Achievement.status == AchievementStatus.APPROVED
-        ).order_by(Achievement.created_at.desc())
-        achievements = (await self.db.execute(stmt)).scalars().all()
+            stmt = (
+                select(Achievement)
+                .filter(
+                    Achievement.user_id == user_id,
+                    Achievement.status == AchievementStatus.APPROVED,
+                )
+                .order_by(Achievement.created_at.desc())
+            )
+            achievements = (await self.db.execute(stmt)).scalars().all()
 
-        if not achievements:
-            return {"success": False, "error": "Нет подтвержденных достижений для генерации."}
+            if not achievements:
+                return {
+                    "success": False,
+                    "error": "Нет подтверждённых достижений для генерации.",
+                    "status_code": 429,
+                }
 
-        student_name = f"{user.first_name} {user.last_name}"
+            student_name = sanitize_resume_text(
+                f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                max_length=200,
+            ) or "Пользователь"
 
-        # Собираем данные по каждому документу
-        docs_data = []
-        loop = asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
+            docs_data: list[dict[str, object]] = []
 
-        for ach in achievements:
-            doc_info = {
-                "title": ach.title or "Без названия",
-                "category": ach.category.value if hasattr(ach.category, 'value') else str(ach.category) if ach.category else "Другое",
-                "level": ach.level.value if hasattr(ach.level, 'value') else str(ach.level) if ach.level else "Не указан",
-                "description": ach.description or "",
-                "points": ach.points or 0,
-                "date": ach.created_at.strftime('%d.%m.%Y') if ach.created_at else "",
-                "ocr_text": "",
+            for achievement in achievements:
+                document_data = self._build_document_data(achievement)
+                file_path = document_data.get("file_path")
+                if isinstance(file_path, str) and file_path:
+                    document_data["ocr_text"] = await self._extract_ocr_text(file_path, loop)
+                docs_data.append(document_data)
+
+            resume_result: str | None = None
+            if self._is_external_ai_configured():
+                combined_text = self._build_combined_text(student_name, docs_data)
+                if combined_text:
+                    resume_result = await self._call_yandex_gpt(combined_text, student_name)
+
+            if not resume_result:
+                resume_result = self._generate_local_resume(student_name, user, docs_data)
+
+            resume_result = sanitize_resume_text(resume_result, max_length=RESUME_TEXT_LIMIT)
+            if not resume_result:
+                return {
+                    "success": False,
+                    "error": "Не удалось собрать текст резюме по документам.",
+                    "status_code": 500,
+                }
+
+            user.resume_text = resume_result
+            user.resume_generated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            await self.db.refresh(user)
+
+            return {"success": True, "resume": resume_result}
+        except Exception:
+            await self.db.rollback()
+            log.exception("Resume generation failed for user_id=%s", user_id)
+            return {
+                "success": False,
+                "error": "Не удалось сгенерировать резюме из-за внутренней ошибки.",
+                "status_code": 500,
             }
 
-            if ach.file_path:
-                full_file_path = Path("static") / ach.file_path
-                ext = full_file_path.suffix.lower()
+    def _build_document_data(self, achievement: Achievement) -> dict[str, object]:
+        title = sanitize_resume_text(achievement.title or "Без названия", max_length=200) or "Без названия"
+        description = sanitize_resume_text(achievement.description or "", max_length=1200)
 
-                if full_file_path.is_file():
-                    if ext in ['.jpg', '.jpeg', '.png', '.webp']:
-                        try:
-                            doc_info["ocr_text"] = await loop.run_in_executor(
-                                None, extract_text_from_image, str(full_file_path)
-                            )
-                        except Exception as e:
-                            log.error("OCR error for image %s: %s", ach.file_path, e)
-                    elif ext == '.pdf':
-                        try:
-                            doc_info["ocr_text"] = await loop.run_in_executor(
-                                None, extract_text_from_pdf, str(full_file_path)
-                            )
-                        except Exception as e:
-                            log.error("OCR error for PDF %s: %s", ach.file_path, e)
+        return {
+            "title": title,
+            "category": _enum_value(achievement.category, "Другое"),
+            "level": _enum_value(achievement.level, "Не указан"),
+            "description": description,
+            "points": int(achievement.points or 0),
+            "date": achievement.created_at.strftime("%d.%m.%Y") if achievement.created_at else "",
+            "ocr_text": "",
+            "file_path": achievement.file_path or "",
+        }
 
-            docs_data.append(doc_info)
+    async def _extract_ocr_text(self, file_path: str, loop: asyncio.AbstractEventLoop) -> str:
+        normalized_path = file_path.replace("\\", "/")
+        source_for_extension = (
+            storage.extract_key(normalized_path) if storage.is_minio_path(normalized_path) else normalized_path
+        )
+        extension = Path(source_for_extension).suffix.lower()
+        if extension not in SUPPORTED_OCR_EXTENSIONS:
+            return ""
 
-        # Пробуем YandexGPT, если настроен
-        resume_result = None
+        temp_path: Path | None = None
+
+        try:
+            if storage.is_minio_path(normalized_path):
+                object_key = storage.extract_key(normalized_path)
+                file_bytes = await storage.download(object_key)
+                if not file_bytes:
+                    return ""
+
+                with tempfile.NamedTemporaryFile(delete=False, suffix=extension or ".tmp") as temp_file:
+                    temp_file.write(file_bytes)
+                    temp_path = Path(temp_file.name)
+                source_path = temp_path
+            else:
+                relative_path = normalized_path.lstrip("/")
+                if relative_path.startswith("static/"):
+                    relative_path = relative_path[len("static/") :]
+                source_path = resolve_static_path(relative_path)
+                if not source_path.exists() or not source_path.is_file():
+                    log.warning("Resume source file not found: %s", file_path)
+                    return ""
+
+            extractor = extract_text_from_pdf if extension == ".pdf" else extract_text_from_image
+            extracted_text = await loop.run_in_executor(None, extractor, str(source_path))
+            return sanitize_resume_text(extracted_text, max_length=OCR_TEXT_LIMIT)
+        except Exception:
+            log.exception("Failed to extract OCR text for %s", file_path)
+            return ""
+        finally:
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError as exc:
+                    log.warning("Failed to remove temporary OCR file %s: %s", temp_path, exc)
+
+    def _is_external_ai_configured(self) -> bool:
         api_key = settings.YANDEX_API_KEY or ""
         folder_id = settings.YANDEX_FOLDER_ID or ""
-        is_placeholder = not api_key or api_key.startswith("ваш") or not folder_id or folder_id.startswith("ваш")
+        has_placeholders = api_key.lower().startswith("your") or folder_id.lower().startswith("your")
+        return bool(settings.RESUME_EXTERNAL_AI_ENABLED and api_key and folder_id and not has_placeholders)
 
-        if settings.RESUME_EXTERNAL_AI_ENABLED and not is_placeholder:
-            combined_text = self._build_combined_text(student_name, docs_data)
-            resume_result = await self._call_yandex_gpt(combined_text, student_name)
+    def _build_combined_text(self, student_name: str, docs_data: list[dict[str, object]]) -> str:
+        parts = [f"Студент: {student_name}"]
 
-        # Если AI не сработал или не настроен — локальная генерация
-        if not resume_result:
-            resume_result = self._generate_local_resume(student_name, user, docs_data)
+        for document in docs_data:
+            parts.append("--- Документ ---")
+            parts.append(f"Название: {document['title']}")
+            parts.append(f"Категория: {document['category']}")
+            parts.append(f"Уровень: {document['level']}")
 
-        user.resume_text = resume_result
-        user.resume_generated_at = datetime.now(timezone.utc)
-        await self.db.commit()
+            description = sanitize_resume_text(str(document.get("description", "")), max_length=800)
+            if description:
+                parts.append(f"Описание: {description}")
 
-        return {"success": True, "resume": resume_result}
+            ocr_text = sanitize_resume_text(str(document.get("ocr_text", "")), max_length=1200)
+            if ocr_text:
+                parts.append(f"Распознанный текст: {ocr_text}")
 
-    def _build_combined_text(self, student_name: str, docs_data: list) -> str:
-        """Собирает текст для отправки в AI."""
-        combined = f"Студент: {student_name}\n\n"
-        for doc in docs_data:
-            combined += f"--- Документ ---\n"
-            combined += f"Название: {doc['title']}\n"
-            combined += f"Категория: {doc['category']}\n"
-            combined += f"Уровень: {doc['level']}\n"
-            if doc['description']:
-                combined += f"Описание: {doc['description']}\n"
-            if doc['ocr_text']:
-                combined += f"Распознанный текст:\n{doc['ocr_text']}\n"
-            combined += "\n"
-        return combined
+        return sanitize_resume_text("\n".join(parts), max_length=PROMPT_TEXT_LIMIT)
 
     async def _call_yandex_gpt(self, combined_text: str, target_name: str) -> str | None:
-        """Вызывает YandexGPT API. Возвращает None при ошибке."""
         api_key = settings.YANDEX_API_KEY
         folder_id = settings.YANDEX_FOLDER_ID
+        if not api_key or not folder_id:
+            return None
 
         prompt = {
             "modelUri": f"gpt://{folder_id}/yandexgpt",
             "completionOptions": {
                 "stream": False,
                 "temperature": 0.1,
-                "maxTokens": "1000"
+                "maxTokens": "1000",
             },
             "messages": [
                 {
                     "role": "system",
                     "text": (
-                        f"Ты — строгий HR-специалист. "
-                        f"Составь краткое профессиональное резюме для {target_name}. "
-                        f"Игнорируй имена других людей в тексте документов. "
-                        f"Собери достижения, определи сильные стороны и направления. "
-                        f"Напиши связный текст от третьего лица (4-6 предложений). "
-                        f"Не выводи сырой текст документов."
-                    )
+                        f"Ты строгий HR-специалист. Составь краткое профессиональное резюме для {target_name}. "
+                        "Игнорируй имена других людей в тексте документов. "
+                        "Собери достижения, определи сильные стороны и направления развития. "
+                        "Напиши связный текст от третьего лица в 4-6 предложениях. "
+                        "Не выводи сырой текст документов."
+                    ),
                 },
                 {
                     "role": "user",
-                    "text": f"Данные из документов:\n{combined_text}"
-                }
-            ]
+                    "text": f"Данные из документов:\n{combined_text}",
+                },
+            ],
         }
 
         url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
         headers = {"Content-Type": "application/json", "Authorization": f"Api-Key {api_key}"}
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             try:
-                response = await client.post(url, headers=headers, json=prompt, timeout=30.0)
+                response = await client.post(url, headers=headers, json=prompt)
                 response.raise_for_status()
-                result = response.json()['result']['alternatives'][0]['message']['text']
-                log.info("YandexGPT resume generated for %s", target_name)
-                return result
-            except httpx.HTTPStatusError as e:
-                log.error("YandexGPT API HTTP %s: %s", e.response.status_code, e.response.text[:200])
-                return None
-            except Exception as e:
-                log.error("YandexGPT API error: %s", e)
-                return None
+                payload = response.json()
+                result = (
+                    payload.get("result", {})
+                    .get("alternatives", [{}])[0]
+                    .get("message", {})
+                    .get("text", "")
+                )
+                sanitized = sanitize_resume_text(result, max_length=RESUME_TEXT_LIMIT)
+                if sanitized:
+                    log.info("YandexGPT resume generated for %s", target_name)
+                    return sanitized
+            except httpx.HTTPStatusError as exc:
+                response_text = exc.response.text[:200] if exc.response is not None else ""
+                log.error("YandexGPT API HTTP %s: %s", exc.response.status_code, response_text)
+            except Exception:
+                log.exception("YandexGPT API error for %s", target_name)
 
-    def _generate_local_resume(self, student_name: str, user, docs_data: list) -> str:
-        """Генерирует структурированную сводку профиля на основе данных документов и OCR."""
+        return None
+
+    def _generate_local_resume(
+        self,
+        student_name: str,
+        user: Users,
+        docs_data: list[dict[str, object]],
+    ) -> str:
         total = len(docs_data)
-        total_points = sum(d.get("points", 0) for d in docs_data)
+        total_points = sum(int(document.get("points", 0) or 0) for document in docs_data)
 
-        # Статистика по категориям и уровням
-        cat_counter = Counter(d["category"] for d in docs_data)
-        level_counter = Counter(d["level"] for d in docs_data)
-        best_level = max(docs_data, key=lambda d: LEVEL_ORDER.get(d["level"], 0))["level"]
+        category_counter = Counter(str(document.get("category", "Другое")) for document in docs_data)
+        level_counter = Counter(str(document.get("level", "Не указан")) for document in docs_data)
+        best_level = max(
+            docs_data,
+            key=lambda document: LEVEL_ORDER.get(str(document.get("level", "")), 0),
+        ).get("level", AchievementLevel.SCHOOL.value)
 
-        # Образование
-        edu_info = ""
-        if user and hasattr(user, 'education_level') and user.education_level:
-            edu_val = user.education_level.value if hasattr(user.education_level, 'value') else str(user.education_level)
-            course_str = f", {user.course} курс" if user.course else ""
-            edu_info = f"{edu_val}{course_str}"
+        education_info = ""
+        if user and getattr(user, "education_level", None):
+            education_value = _enum_value(user.education_level, "")
+            course_label = f", {user.course} курс" if user.course else ""
+            education_info = f"{education_value}{course_label}"
 
-        parts = []
+        parts = [
+            f"СВОДКА ПРОФИЛЯ: {student_name}",
+            "=" * 40,
+        ]
 
-        # Заголовок
-        parts.append(f"СВОДКА ПРОФИЛЯ: {student_name}")
-        parts.append("=" * 40)
-
-        # Общая информация
-        if edu_info:
-            parts.append(f"Обучение: {edu_info}")
-        parts.append(f"Подтвержденных достижений: {total}")
+        if education_info:
+            parts.append(f"Обучение: {education_info}")
+        parts.append(f"Подтверждённых достижений: {total}")
         parts.append(f"Общий балл: {total_points}")
         parts.append(f"Высший уровень: {best_level}")
         parts.append("")
 
-        # Распределение по категориям
         parts.append("ПО КАТЕГОРИЯМ:")
-        for cat, count in cat_counter.most_common():
-            parts.append(f"  - {cat}: {count} шт.")
+        for category, count in category_counter.most_common():
+            parts.append(f"  - {category}: {count} шт.")
         parts.append("")
 
-        # Распределение по уровням
         parts.append("ПО УРОВНЯМ:")
-        for level_name in sorted(level_counter.keys(), key=lambda x: LEVEL_ORDER.get(x, 0), reverse=True):
-            count = level_counter[level_name]
-            parts.append(f"  - {level_name}: {count}")
+        for level_name in sorted(level_counter.keys(), key=lambda value: LEVEL_ORDER.get(value, 0), reverse=True):
+            parts.append(f"  - {level_name}: {level_counter[level_name]}")
         parts.append("")
 
-        # Список достижений с OCR-данными
         parts.append("ДОСТИЖЕНИЯ:")
         parts.append("-" * 40)
 
-        for i, doc in enumerate(docs_data, 1):
-            parts.append(f"\n{i}. {doc['title']}")
-            parts.append(f"   Категория: {doc['category']} | Уровень: {doc['level']}")
-            if doc.get("points"):
-                parts.append(f"   Баллы: +{doc['points']}")
-            if doc.get("date"):
-                parts.append(f"   Дата: {doc['date']}")
-            if doc.get("description"):
-                parts.append(f"   Описание: {doc['description']}")
+        for index, document in enumerate(docs_data, 1):
+            title = str(document.get("title", "Без названия"))
+            category = str(document.get("category", "Другое"))
+            level = str(document.get("level", "Не указан"))
+            points = int(document.get("points", 0) or 0)
+            date = str(document.get("date", "") or "")
+            description = sanitize_resume_text(str(document.get("description", "")), max_length=600)
+            ocr_text = sanitize_resume_text(str(document.get("ocr_text", "")), max_length=350)
 
-            # OCR-текст
-            ocr = doc.get("ocr_text", "").strip()
-            if ocr and len(ocr) > 10:
-                clean_lines = [line.strip() for line in ocr.split('\n') if line.strip() and len(line.strip()) > 3]
-                if clean_lines:
-                    snippet = " ".join(clean_lines)
-                    if len(snippet) > 300:
-                        snippet = snippet[:300].rsplit(' ', 1)[0] + "..."
-                    parts.append(f"   Из документа: {snippet}")
+            parts.append(f"\n{index}. {title}")
+            parts.append(f"   Категория: {category} | Уровень: {level}")
+            if points:
+                parts.append(f"   Баллы: +{points}")
+            if date:
+                parts.append(f"   Дата: {date}")
+            if description:
+                parts.append(f"   Описание: {description}")
+            if ocr_text and len(ocr_text) > 10:
+                parts.append(f"   Из документа: {ocr_text}")
 
-        parts.append("")
-        parts.append("-" * 40)
+        main_categories = [category for category, _ in category_counter.most_common(2)]
+        categories_text = " и ".join(main_categories) if main_categories else "различных направлениях"
 
-        # Краткий вывод
-        main_cats = [cat for cat, _ in cat_counter.most_common(2)]
-        cats_text = " и ".join(main_cats) if main_cats else "различных направлениях"
-
-        parts.append(
-            f"Итог: {student_name} имеет {total} подтвержденных достижений "
-            f"в области {cats_text.lower()}, "
-            f"с максимальным уровнем \"{best_level}\" "
-            f"и общим баллом {total_points}."
+        parts.extend(
+            [
+                "",
+                "-" * 40,
+                (
+                    f"Итог: {student_name} имеет {total} подтверждённых достижений "
+                    f"в области {categories_text.lower()}, "
+                    f"с максимальным уровнем \"{best_level}\" "
+                    f"и общим баллом {total_points}."
+                ),
+                f"",
+                f"Сводка сгенерирована: {datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')}",
+            ]
         )
 
-        generated_at = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
-        parts.append(f"\nСводка сгенерирована: {generated_at}")
-
-        return "\n".join(parts)
+        return sanitize_resume_text("\n".join(parts), max_length=RESUME_TEXT_LIMIT)

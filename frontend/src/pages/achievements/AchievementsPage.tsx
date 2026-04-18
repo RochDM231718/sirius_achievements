@@ -349,7 +349,7 @@ export function AchievementsPage() {
         <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div>
       ) : null}
 
-      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm">
+      <div className="bg-surface p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm">
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -378,11 +378,11 @@ export function AchievementsPage() {
                 onBlur={() => window.setTimeout(() => setSuggestions([]), 150)}
                 placeholder="Название..."
                 autoComplete="off"
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none text-sm text-slate-800 transition-all h-[38px]"
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none text-sm text-slate-800 transition-all h-[38px]"
               />
             </div>
             {suggestions.length ? (
-              <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
+              <ul className="absolute z-50 w-full bg-surface border border-slate-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
                 {suggestions.map((item) => (
                   <li
                     key={`${item.value}-${item.text}`}
@@ -403,7 +403,7 @@ export function AchievementsPage() {
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px]"
             >
               <option value="">Все статусы</option>
               {Object.values(AchievementStatus)
@@ -421,7 +421,7 @@ export function AchievementsPage() {
             <select
               value={category}
               onChange={(event) => setCategory(event.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px]"
             >
               <option value="">Все виды</option>
               {Object.values(AchievementCategory).map((item) => (
@@ -437,7 +437,7 @@ export function AchievementsPage() {
             <select
               value={level}
               onChange={(event) => setLevel(event.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:border-indigo-600 outline-none h-[38px]"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px]"
             >
               <option value="">Все уровни</option>
               {Object.values(AchievementLevel).map((item) => (
@@ -465,7 +465,7 @@ export function AchievementsPage() {
                 setPage(1)
                 setSuggestions([])
               }}
-              className="w-[38px] flex-shrink-0 bg-white border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center h-[38px]"
+              className="w-[38px] flex-shrink-0 bg-surface border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center h-[38px]"
               title="Сбросить"
             >
               ✕
@@ -474,7 +474,7 @@ export function AchievementsPage() {
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         {isLoading ? (
           <div className="py-16">
             <LoadingSpinner />
@@ -693,7 +693,7 @@ export function AchievementsPage() {
       {showCreateModal ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
           <div
-            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            className="bg-surface rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -706,7 +706,7 @@ export function AchievementsPage() {
               <button
                 type="button"
                 onClick={closeCreateModal}
-                className="text-slate-400 hover:text-slate-600 bg-white p-1.5 rounded-md shadow-sm border border-slate-200"
+                className="text-slate-400 hover:text-slate-600 bg-surface p-1.5 rounded-md shadow-sm border border-slate-200"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -726,7 +726,7 @@ export function AchievementsPage() {
                     onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))}
                     required
                     placeholder="Например: Победитель олимпиады..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all placeholder:text-slate-400"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all placeholder:text-slate-400"
                   />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -739,7 +739,7 @@ export function AchievementsPage() {
                       onChange={(event) =>
                         setCreateForm((current) => ({ ...current, category: event.target.value }))
                       }
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     >
                       {Object.values(AchievementCategory).map((item) => (
                         <option key={item} value={item}>
@@ -755,7 +755,7 @@ export function AchievementsPage() {
                     <select
                       value={createForm.level}
                       onChange={(event) => setCreateForm((current) => ({ ...current, level: event.target.value }))}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     >
                       {Object.values(AchievementLevel).map((item) => (
                         <option key={item} value={item}>
@@ -771,7 +771,7 @@ export function AchievementsPage() {
                     <select
                       value={createForm.result}
                       onChange={(event) => setCreateForm((current) => ({ ...current, result: event.target.value }))}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     >
                       {Object.values(AchievementResult).map((item) => (
                         <option key={item} value={item}>
@@ -792,7 +792,7 @@ export function AchievementsPage() {
                       setCreateForm((current) => ({ ...current, description: event.target.value }))
                     }
                     rows={3}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
                   />
                 </div>
 
@@ -822,7 +822,7 @@ export function AchievementsPage() {
                 <button
                   type="button"
                   onClick={closeCreateModal}
-                  className="w-full sm:w-auto px-6 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 text-center transition-colors bg-white"
+                  className="w-full sm:w-auto px-6 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 text-center transition-colors bg-surface"
                 >
                   Отмена
                 </button>
@@ -845,7 +845,7 @@ export function AchievementsPage() {
       {reviseModalOpen ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
           <div
-            className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
+            className="bg-surface rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -856,7 +856,7 @@ export function AchievementsPage() {
               <button
                 type="button"
                 onClick={closeReviseModal}
-                className="text-slate-400 hover:text-slate-600 bg-white p-1.5 rounded-md shadow-sm border border-slate-200"
+                className="text-slate-400 hover:text-slate-600 bg-surface p-1.5 rounded-md shadow-sm border border-slate-200"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -874,7 +874,7 @@ export function AchievementsPage() {
                     value={reviseTitle}
                     onChange={(event) => setReviseTitle(event.target.value)}
                     required
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                   />
                 </div>
 
@@ -886,7 +886,7 @@ export function AchievementsPage() {
                     value={reviseDesc}
                     onChange={(event) => setReviseDesc(event.target.value)}
                     rows={2}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
                   />
                 </div>
 
@@ -917,7 +917,7 @@ export function AchievementsPage() {
                 <button
                   type="button"
                   onClick={closeReviseModal}
-                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-4 py-2.5 bg-surface border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Отмена
                 </button>
@@ -944,7 +944,7 @@ export function AchievementsPage() {
             onClick={() => setDeleteTarget(null)}
             aria-hidden="true"
           />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100">
+          <div className="relative bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100">
             <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-red-100 mb-4">
               <svg className="h-7 w-7 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path

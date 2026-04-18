@@ -169,18 +169,30 @@ async def register(
     if attempt_count > settings.REGISTER_MAX_ATTEMPTS:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Слишком много попыток регистрации. Попробуйте позже.')
 
+    _GENERIC_MSG = 'Если данные корректны, на почту отправлен код подтверждения.'
     try:
         user = await auth_service.register_user(payload)
-        success, message, retry_after = await auth_service.send_email_verification(user, background_tasks)
-        return {
-            'success': True,
-            'message': message,
-            'retry_after': retry_after if success else 0,
-            'flow_token': _create_flow_token(user.id, 'verify_email', ttl_minutes=24 * 60),
-            'user': serialize_user(user),
-        }
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Ошибка регистрации. Проверьте данные.') from exc
+
+    if user is None:
+        # Existing email — respond with identical-shape generic success to avoid enumeration.
+        return {
+            'success': True,
+            'message': _GENERIC_MSG,
+            'retry_after': 60,
+            'flow_token': _create_flow_token(0, 'verify_email_dummy', ttl_minutes=24 * 60),
+            'user': None,
+        }
+
+    success, message, retry_after = await auth_service.send_email_verification(user, background_tasks)
+    return {
+        'success': True,
+        'message': _GENERIC_MSG,
+        'retry_after': retry_after if success else 0,
+        'flow_token': _create_flow_token(user.id, 'verify_email', ttl_minutes=24 * 60),
+        'user': serialize_user(user),
+    }
 
 
 @router.post('/forgot-password')

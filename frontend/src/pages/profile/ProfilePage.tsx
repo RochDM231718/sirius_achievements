@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Chart, registerables } from 'chart.js'
+import Cropper from 'cropperjs'
+import 'cropperjs/dist/cropper.css'
 import { profileApi, type ProfileResponse } from '@/api/profile'
 import { usersApi } from '@/api/users'
 import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
@@ -22,8 +24,6 @@ function buildStaticUrl(path?: string | null) {
   if (path.startsWith('http') || path.startsWith('/')) return path
   return `/static/${path.replace(/^\/+/, '')}`
 }
-
-type CropperWindow = Window & { Cropper?: unknown }
 
 function docStatusBadge(status: string, points?: number) {
   switch (status) {
@@ -73,16 +73,12 @@ export function ProfilePage() {
   // Avatar + cropper
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const imageToCropRef = useRef<HTMLImageElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cropperRef = useRef<any>(null)
+  const cropperRef = useRef<Cropper | null>(null)
   const avatarBlobUrlRef = useRef<string | null>(null)
   const cropSourceUrlRef = useRef<string | null>(null)
   const [showCropModal, setShowCropModal] = useState(false)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
   const [cropSourceUrl, setCropSourceUrl] = useState<string | null>(null)
-  const [isCropperLibraryReady, setIsCropperLibraryReady] = useState(
-    () => typeof window !== 'undefined' && Boolean((window as CropperWindow).Cropper),
-  )
   const [isCropperReady, setIsCropperReady] = useState(false)
   const [croppedFile, setCroppedFile] = useState<File | null>(null)
 
@@ -166,51 +162,6 @@ export function ProfilePage() {
       revokeCropSourceUrl()
     }
   }, [revokeAvatarBlobUrl, revokeCropSourceUrl])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if ((window as CropperWindow).Cropper) {
-      setIsCropperLibraryReady(true)
-      return
-    }
-
-    const linkSelector = 'link[data-cropper-style="true"]'
-    if (!document.querySelector(linkSelector)) {
-      const style = document.createElement('link')
-      style.rel = 'stylesheet'
-      style.href = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css'
-      style.setAttribute('data-cropper-style', 'true')
-      document.head.appendChild(style)
-    }
-
-    let disposed = false
-    const existingScript = document.querySelector('script[data-cropper-script="true"]') as HTMLScriptElement | null
-    const handleLoad = () => {
-      if (!disposed && (window as CropperWindow).Cropper) {
-        setIsCropperLibraryReady(true)
-      }
-    }
-
-    if (existingScript) {
-      existingScript.addEventListener('load', handleLoad, { once: true })
-      return () => {
-        disposed = true
-        existingScript.removeEventListener('load', handleLoad)
-      }
-    }
-
-    const script = document.createElement('script')
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js'
-    script.async = true
-    script.setAttribute('data-cropper-script', 'true')
-    script.addEventListener('load', handleLoad, { once: true })
-    document.body.appendChild(script)
-
-    return () => {
-      disposed = true
-      script.removeEventListener('load', handleLoad)
-    }
-  }, [])
 
   // Chart init
   useEffect(() => {
@@ -416,21 +367,11 @@ export function ProfilePage() {
   // Cropper init when modal opens
   useEffect(() => {
     if (!showCropModal || !imageToCropRef.current || !cropSourceUrl) return
-    if (!isCropperLibraryReady) {
-      setIsCropperReady(false)
-      return
-    }
-    // @ts-expect-error Cropper loaded from CDN
-    const CropperClass = window.Cropper
-    if (!CropperClass) {
-      setIsCropperReady(false)
-      return
-    }
     const image = imageToCropRef.current
-    let inst: any = null
+    let inst: Cropper | null = null
     const initCropper = () => {
       inst?.destroy()
-      inst = new CropperClass(image, {
+      inst = new Cropper(image, {
         aspectRatio: 1,
         viewMode: 1,
         dragMode: 'move',
@@ -456,7 +397,7 @@ export function ProfilePage() {
       cropperRef.current = null
       setIsCropperReady(false)
     }
-  }, [cropSourceUrl, isCropperLibraryReady, showCropModal])
+  }, [cropSourceUrl, showCropModal])
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -641,7 +582,7 @@ export function ProfilePage() {
                 e.preventDefault()
                 navigate(`/students/${user?.id}`)
               }}
-              className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg"
+              className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg"
             >
               <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -655,13 +596,13 @@ export function ProfilePage() {
         <div className="flex p-1 bg-slate-100 rounded-lg mb-6 w-max">
           <button
             onClick={() => setActiveTab('profile')}
-            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === 'profile' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === 'profile' ? 'bg-surface text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
             Основное
           </button>
           <button
             onClick={() => setActiveTab('security')}
-            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === 'security' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === 'security' ? 'bg-surface text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
             Безопасность
           </button>
@@ -671,7 +612,7 @@ export function ProfilePage() {
           <div className="mb-6 bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div>
         )}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden">
           {/* ===== PROFILE TAB ===== */}
           {activeTab === 'profile' && (
             <div className="p-5 sm:p-6">
@@ -694,7 +635,7 @@ export function ProfilePage() {
                       )}
                     </p>
                   </div>
-                  <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center border border-slate-100 shadow-sm">
+                  <div className="h-10 w-10 bg-surface rounded-full flex items-center justify-center border border-slate-100 shadow-sm">
                     <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14v7" />
@@ -706,7 +647,7 @@ export function ProfilePage() {
               {/* GPA cards */}
               {isStudent && (
                 <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="bg-white border border-slate-200 rounded-xl p-4">
+                  <div className="bg-surface border border-slate-200 rounded-xl p-4">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Оценка модератора</p>
                     <div className="flex items-end gap-2">
                       <span className="text-2xl font-bold text-slate-800">{profile.user.session_gpa || '—'}</span>
@@ -740,7 +681,7 @@ export function ProfilePage() {
                     )}
                   </div>
                   <div>
-                    <label className="inline-block bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors">
+                    <label className="inline-block bg-surface border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors">
                       Загрузить фото
                       <input
                         ref={avatarInputRef}
@@ -762,7 +703,7 @@ export function ProfilePage() {
                       value={firstName}
                       onChange={(e) => setFirstName(stripEmoji(e.target.value))}
                       required
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     />
                   </div>
                   <div>
@@ -772,7 +713,7 @@ export function ProfilePage() {
                       value={lastName}
                       onChange={(e) => setLastName(stripEmoji(e.target.value))}
                       required
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -793,7 +734,7 @@ export function ProfilePage() {
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     placeholder="+7 (999) 123-45-67"
                     pattern="[\d\s\+\-\(\)]{0,20}"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                   />
                 </div>
                 <div className="pt-2">
@@ -848,11 +789,11 @@ export function ProfilePage() {
                     )}
 
                     {resumeText ? (
-                      <div className="bg-white border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">
+                      <div className="bg-surface border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">
                         {resumeText}
                       </div>
                     ) : !isGeneratingResume ? (
-                      <div className="text-center py-6 bg-white/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">
+                      <div className="text-center py-6 bg-surface/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">
                         Здесь появится ваше профессиональное резюме.<br />Нажмите кнопку выше, чтобы ИИ проанализировал ваши грамоты.
                       </div>
                     ) : null}
@@ -891,7 +832,7 @@ export function ProfilePage() {
                         value={passwordCode}
                         onChange={(e) => setPasswordCode(e.target.value)}
                         required
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                       />
                     </div>
                     <div className="flex flex-wrap gap-3">
@@ -906,7 +847,7 @@ export function ProfilePage() {
                         type="button"
                         onClick={() => void handleResendPasswordCode()}
                         disabled={isSendingCode || resendCooldown > 0}
-                        className="w-full sm:w-auto bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        className="w-full sm:w-auto bg-surface border border-slate-200 text-slate-600 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
                       >
                         {resendCooldown > 0 ? `Повторно (${resendCooldown}с)` : 'Отправить повторно'}
                       </button>
@@ -923,7 +864,7 @@ export function ProfilePage() {
                           onChange={(e) => setNewPassword(e.target.value)}
                           required
                           minLength={8}
-                          className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                          className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                         />
                         <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                           {showNewPassword ? (
@@ -943,7 +884,7 @@ export function ProfilePage() {
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           required
                           minLength={8}
-                          className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                          className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                         />
                         <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                           {showConfirmPassword ? (
@@ -972,7 +913,7 @@ export function ProfilePage() {
       {/* ===== MY DOCS GRID ===== */}
       {activeTab === 'profile' && docs.length > 0 && (
         <div className="max-w-2xl mx-auto mt-6">
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="bg-surface rounded-xl border border-slate-200 p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-semibold text-slate-700">Мои документы</h3>
               <a
@@ -1051,7 +992,7 @@ export function ProfilePage() {
       {/* ===== DYNAMICS CHART (students only) ===== */}
       {activeTab === 'profile' && isStudent && (
         <div className="max-w-2xl mx-auto mt-6">
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="bg-surface rounded-xl border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-slate-700">Динамика достижений</h3>
               {profile.user.session_gpa && (
@@ -1083,7 +1024,7 @@ export function ProfilePage() {
         const activeCats = RADAR_CATS.filter((c) => (pointsMap[c] ?? 0) > 0)
         return (
           <div className="max-w-2xl mx-auto mt-6">
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="bg-surface rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
               <div className="h-64 sm:h-72">
                 <canvas ref={radarChartRef} />
@@ -1104,7 +1045,7 @@ export function ProfilePage() {
                           else next.add(cat)
                           return next
                         })}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-white border-slate-200 text-slate-700'}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${isHidden ? 'opacity-40 bg-slate-50 border-slate-200 text-slate-400' : 'bg-surface border-slate-200 text-slate-700'}`}
                       >
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
                         {cat}
@@ -1129,17 +1070,12 @@ export function ProfilePage() {
               className="fixed inset-0 bg-slate-900 bg-opacity-70 backdrop-blur-sm transition-opacity"
               onClick={closeCropModal}
             />
-            <div className="relative bg-white rounded-xl text-left overflow-hidden shadow-sm transform transition-all w-full max-w-lg flex flex-col">
+            <div className="relative bg-surface rounded-xl text-left overflow-hidden shadow-sm transform transition-all w-full max-w-lg flex flex-col">
               <div className="p-5 border-b border-slate-100 flex justify-between items-center">
                 <h3 className="text-sm font-bold text-slate-800">Фото профиля</h3>
               </div>
               <div className="p-4 bg-slate-50">
                 <div className="relative w-full h-64 bg-slate-200 rounded-lg overflow-hidden">
-                  {!isCropperLibraryReady && (
-                    <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
-                      Загрузка редактора...
-                    </div>
-                  )}
                   <img ref={imageToCropRef} src={cropSourceUrl ?? ''} className="max-w-full h-full object-contain" alt="" />
                 </div>
               </div>
@@ -1147,7 +1083,7 @@ export function ProfilePage() {
                 <button
                   type="button"
                   onClick={closeCropModal}
-                  className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-4 py-2 bg-surface border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Отмена
                 </button>

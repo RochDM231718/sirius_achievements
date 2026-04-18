@@ -77,13 +77,22 @@ async def _notify_support_user(db: AsyncSession, user_id: int, title: str, messa
 @router.get('/')
 async def moderation_support_queue(
     page: int = Query(default=1, ge=1, le=1000),
+    query: str = '',
+    sort_by: str = 'created_at',
+    sort_order: str = 'desc',
     current_user=Depends(require_moderator),
     db: AsyncSession = Depends(get_db),
 ):
     ticket_repo = SupportTicketRepository(db)
     education_level = _moderator_zone(current_user)
-    tickets = await ticket_repo.get_new_tickets(page, education_level=education_level)
-    total = await ticket_repo.count_new_tickets(education_level=education_level)
+    tickets = await ticket_repo.get_new_tickets(
+        page,
+        education_level=education_level,
+        query=query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    total = await ticket_repo.count_new_tickets(education_level=education_level, query=query)
     total_pages = math.ceil(total / settings.SUPPORT_ITEMS_PER_PAGE) if total > 0 else 1
     return {
         'tickets': [serialize_support_ticket(ticket) for ticket in tickets],

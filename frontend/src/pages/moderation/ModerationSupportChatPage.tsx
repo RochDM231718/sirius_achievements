@@ -229,7 +229,7 @@ export function ModerationSupportChatPage() {
     <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-4" style={{ height: 'calc(100dvh - 120px)' }}>
 
       {/* Sidebar */}
-      <div className="md:w-80 shrink-0 bg-white rounded-xl border border-slate-200 p-4 space-y-4 overflow-y-auto md:h-full order-2 md:order-1">
+      <div className="md:w-80 shrink-0 bg-surface rounded-xl border border-slate-200 p-4 space-y-4 overflow-y-auto md:h-full order-2 md:order-1">
         <div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Обращение</p>
           <h3 className="text-sm font-bold text-slate-800">{chat.ticket.subject}</h3>
@@ -307,7 +307,7 @@ export function ModerationSupportChatPage() {
             <div className="space-y-2">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Срок сессии</label>
-                <select value={reopenDuration} onChange={(e) => setReopenDuration(e.target.value)} className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                <select value={reopenDuration} onChange={(e) => setReopenDuration(e.target.value)} className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                   <option value="day">1 день</option>
                   <option value="week">1 неделя</option>
                   <option value="month">1 месяц</option>
@@ -324,7 +324,7 @@ export function ModerationSupportChatPage() {
 
       {/* Chat area */}
       <div className="flex-1 flex flex-col min-w-0 order-1 md:order-2">
-        <div className="bg-white rounded-t-xl border border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
+        <div className="bg-surface rounded-t-xl border border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <Link to={backHref} className="text-slate-400 hover:text-indigo-600 transition-colors shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
@@ -347,7 +347,7 @@ export function ModerationSupportChatPage() {
         <div ref={messagesRef} className="flex-1 overflow-y-auto bg-slate-50 border-x border-slate-200 px-4 py-4 space-y-4">
           {chat.messages.map((msg) => (
             <div key={msg.id} className={`flex ${!msg.is_from_moderator ? 'justify-start' : 'justify-end'}`}>
-              <div className={`max-w-[80%] ${msg.is_from_moderator ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl px-4 py-3 shadow-sm`}>
+              <div className={`max-w-[80%] ${msg.is_from_moderator ? 'bg-indigo-600 text-white' : 'bg-surface border border-slate-200 text-slate-800'} rounded-2xl px-4 py-3 shadow-sm`}>
                 {!msg.is_from_moderator ? (
                   <div className="text-[10px] font-bold text-slate-500 mb-1">
                     {msg.sender ? `${msg.sender.first_name} ${msg.sender.last_name}` : 'Пользователь'}
@@ -364,7 +364,7 @@ export function ModerationSupportChatPage() {
                           <button
                             type="button"
                             onClick={() => setPdfOverlay(attachmentUrls[msg.id])}
-                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors font-medium"
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-surface/20 hover:bg-surface/30 transition-colors font-medium"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                             Открыть PDF
@@ -380,7 +380,7 @@ export function ModerationSupportChatPage() {
                         <a
                           href={attachmentUrls[msg.id]}
                           download={msg.file_path.split('/').pop() ?? 'attachment'}
-                          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors"
+                          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-surface/20 hover:bg-surface/30 transition-colors"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                           Скачать
@@ -405,7 +405,7 @@ export function ModerationSupportChatPage() {
             <p className="text-sm text-slate-500">Архивное обращение</p>
           </div>
         ) : !isClosed && chat.can_manage_ticket ? (
-          <div className="bg-white rounded-b-xl border border-slate-200 border-t-0 p-3 shrink-0">
+          <div className="bg-surface rounded-b-xl border border-slate-200 border-t-0 p-3 shrink-0">
             <form onSubmit={handleSend} className="flex items-end gap-2">
               <label className="shrink-0 cursor-pointer text-slate-400 hover:text-indigo-600 transition-colors p-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
@@ -420,7 +420,7 @@ export function ModerationSupportChatPage() {
                   onKeyDown={handleKeyDown}
                   rows={1}
                   placeholder="Ответ модератора..."
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
                 />
                 {file ? (
                   <div className="flex items-center gap-1 mt-0.5 min-w-0">
@@ -434,7 +434,7 @@ export function ModerationSupportChatPage() {
               </div>
 
               <div className="hidden sm:block shrink-0 w-36">
-                <select value={sessionDuration} onChange={(e) => setSessionDuration(e.target.value)} className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
+                <select value={sessionDuration} onChange={(e) => setSessionDuration(e.target.value)} className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                   <option value="day">1 день</option>
                   <option value="week">1 неделя</option>
                   <option value="month">1 месяц</option>
@@ -461,7 +461,7 @@ export function ModerationSupportChatPage() {
 
       {pdfOverlay ? (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
-          <div className="relative bg-white rounded-xl w-full max-w-3xl h-[85dvh] flex flex-col overflow-hidden shadow-2xl">
+          <div className="relative bg-surface rounded-xl w-full max-w-3xl h-[85dvh] flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
               <span className="text-sm font-bold text-slate-800">Просмотр PDF</span>
               <div className="flex items-center gap-2">

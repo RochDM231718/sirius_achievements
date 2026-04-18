@@ -19,6 +19,7 @@ __pycache__/
 *.pyc
 
 .idea/
+.vs/
 
 # Database backups
 *.sql
@@ -85,4 +86,3 @@ static/spa/
 
 # GitHub Copilot / AI assistant configs
 .github/
-

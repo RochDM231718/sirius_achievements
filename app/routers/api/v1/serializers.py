@@ -144,6 +144,8 @@ def serialize_user_public(user):
         'education_level': _enum_value(user.education_level),
         'course': user.course,
         'study_group': user.study_group,
+        'session_gpa': getattr(user, 'session_gpa', None),
+        'resume_text': getattr(user, 'resume_text', None),
     }
 
 

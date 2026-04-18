@@ -1,4 +1,9 @@
-﻿:root,
+﻿@import 'tailwindcss';
+@config '../../tailwind.config.js';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root,
 [data-theme='light'] {
   --color-bg: #f4f5fb;
   --color-surface: #ffffff;
@@ -57,63 +62,70 @@
   --color-shadow: 0 24px 64px rgba(6, 8, 14, 0.44);
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-html,
-body,
-#root {
-  min-height: 100%;
-}
+  html,
+  body {
+    min-height: 100%;
+  }
 
-html {
-  font-size: 16px;
-}
+  #root {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
 
-body {
-  margin: 0;
-  color: var(--color-text);
-  font-family: 'Segoe UI', Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  line-height: 1.5;
-  background:
-    radial-gradient(circle at top left, rgba(109, 94, 243, 0.05), transparent 28%),
-    radial-gradient(circle at top right, rgba(148, 163, 184, 0.08), transparent 24%),
-    var(--color-bg);
-}
+  html {
+    font-size: 16px;
+  }
 
-[data-theme='dark'] body {
-  background:
-    radial-gradient(circle at 18% 10%, rgba(159, 131, 255, 0.17), transparent 28%),
-    radial-gradient(circle at 82% 0%, rgba(116, 92, 201, 0.14), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
-    var(--color-bg);
-}
+  body {
+    margin: 0;
+    color: var(--color-text);
+    font-family: 'Segoe UI', Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.5;
+    background:
+      radial-gradient(circle at top left, rgba(109, 94, 243, 0.05), transparent 28%),
+      radial-gradient(circle at top right, rgba(148, 163, 184, 0.08), transparent 24%),
+      var(--color-bg);
+  }
 
-body,
-a,
-button,
-input,
-select,
-textarea {
-  color: inherit;
-  font: inherit;
-}
+  [data-theme='dark'] body {
+    background:
+      radial-gradient(circle at 18% 10%, rgba(159, 131, 255, 0.17), transparent 28%),
+      radial-gradient(circle at 82% 0%, rgba(116, 92, 201, 0.14), transparent 24%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
+      var(--color-bg);
+  }
 
-a {
-  text-decoration: none;
-}
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
 
-button {
-  cursor: pointer;
-}
+  button {
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
 
-::selection {
-  background: rgba(109, 94, 243, 0.18);
-}
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 
-[data-theme='dark'] ::selection {
-  background: rgba(159, 131, 255, 0.24);
+  ::selection {
+    background: rgba(109, 94, 243, 0.18);
+  }
+
+  [data-theme='dark'] ::selection {
+    background: rgba(159, 131, 255, 0.24);
+  }
 }
 
 /* Auth pages — dark mode overrides for Tailwind hardcoded colors */

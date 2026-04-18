@@ -261,6 +261,10 @@ async def list_users(
 
     if sort_by == 'oldest':
         stmt = stmt.order_by(Users.created_at.asc())
+    elif sort_by == 'name_asc':
+        stmt = stmt.order_by(Users.last_name.asc(), Users.first_name.asc(), Users.created_at.desc())
+    elif sort_by == 'name_desc':
+        stmt = stmt.order_by(Users.last_name.desc(), Users.first_name.desc(), Users.created_at.desc())
     else:
         stmt = stmt.order_by(Users.created_at.desc())
 
@@ -428,10 +432,14 @@ async def generate_resume(
     service = ResumeService(db)
     result = await service.generate_resume(user_id, force_regenerate=True, bypass_check=current_user.is_staff)
     if not result['success']:
-        check = await service.can_generate(user_id)
+        status_code = int(result.get('status_code') or 429)
+        detail = result.get('error')
+        if status_code == 429 and not detail:
+            check = await service.can_generate(user_id)
+            detail = check.get('reason')
         raise HTTPException(
-            status_code=429,
-            detail=result['error'] or check.get('reason') or 'Resume generation is unavailable.',
+            status_code=status_code,
+            detail=detail or 'Resume generation is unavailable.',
         )
 
     refreshed_user = await _get_target_user_or_404(db, user_id)

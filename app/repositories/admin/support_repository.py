@@ -29,7 +29,14 @@ class SupportTicketRepository(CrudRepository):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def get_new_tickets(self, page: int = 1, education_level=None):
+    async def get_new_tickets(
+        self,
+        page: int = 1,
+        education_level=None,
+        query: str = '',
+        sort_by: str = 'created_at',
+        sort_order: str = 'desc',
+    ):
         stmt = (
             select(SupportTicket)
             .filter(
@@ -41,22 +48,69 @@ class SupportTicketRepository(CrudRepository):
                 selectinload(SupportTicket.messages),
                 selectinload(SupportTicket.moderator),
             )
-            .order_by(desc(SupportTicket.created_at))
         )
+
+        joined_users = False
+
+        if query:
+            like_term = f"%{escape_like(query)}%"
+            stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+            joined_users = True
+            stmt = stmt.filter(
+                or_(
+                    SupportTicket.subject.ilike(like_term),
+                    Users.first_name.ilike(like_term),
+                    Users.last_name.ilike(like_term),
+                    Users.email.ilike(like_term),
+                    (Users.first_name + ' ' + Users.last_name).ilike(like_term),
+                )
+            )
+
         if education_level is not None:
-            stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(Users.education_level == education_level)
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            stmt = stmt.filter(Users.education_level == education_level)
+
+        allowed_sort = {'created_at', 'updated_at', 'subject', 'id'}
+        if sort_by in allowed_sort and hasattr(SupportTicket, sort_by):
+            sort_attr = getattr(SupportTicket, sort_by)
+            stmt = stmt.order_by(asc(sort_attr) if sort_order == 'asc' else desc(sort_attr))
+        else:
+            stmt = stmt.order_by(desc(SupportTicket.created_at))
+
         if page > 0:
             stmt = stmt.limit(self.ITEMS_PER_PAGE).offset(self.ITEMS_PER_PAGE * (page - 1))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def count_new_tickets(self, education_level=None):
+    async def count_new_tickets(self, education_level=None, query: str = ''):
         stmt = select(func.count()).select_from(SupportTicket).filter(
             SupportTicket.status.in_([SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS]),
             SupportTicket.archived_at.is_(None),
         )
+
+        joined_users = False
+
+        if query:
+            like_term = f"%{escape_like(query)}%"
+            stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+            joined_users = True
+            stmt = stmt.filter(
+                or_(
+                    SupportTicket.subject.ilike(like_term),
+                    Users.first_name.ilike(like_term),
+                    Users.last_name.ilike(like_term),
+                    Users.email.ilike(like_term),
+                    (Users.first_name + ' ' + Users.last_name).ilike(like_term),
+                )
+            )
+
         if education_level is not None:
-            stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(Users.education_level == education_level)
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+            stmt = stmt.filter(Users.education_level == education_level)
+
         result = await self.db.execute(stmt)
         return result.scalar()
 

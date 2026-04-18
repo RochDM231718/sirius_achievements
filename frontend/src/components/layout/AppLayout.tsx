@@ -239,7 +239,7 @@ export function AppLayout() {
 
       {preview.show ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
-          <div className="relative bg-white rounded-xl w-full max-w-4xl h-[85dvh] flex flex-col overflow-hidden shadow-2xl">
+          <div className="relative bg-surface rounded-xl w-full max-w-4xl h-[85dvh] flex flex-col overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center p-4 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-800">Просмотр документа</h3>
               <button
@@ -257,7 +257,7 @@ export function AppLayout() {
                 <button
                   type="button"
                   onClick={openPreviewInNewTab}
-                  className="inline-flex items-center gap-1.5 justify-center px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors"
+                  className="inline-flex items-center gap-1.5 justify-center px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-surface border border-indigo-200 hover:bg-indigo-50 transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   Открыть в новой вкладке
@@ -265,7 +265,7 @@ export function AppLayout() {
                 <button
                   type="button"
                   onClick={() => void downloadPreviewDocument()}
-                  className="inline-flex items-center gap-1.5 justify-center px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
+                  className="inline-flex items-center gap-1.5 justify-center px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-surface border border-slate-200 hover:bg-slate-100 transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   Скачать
@@ -278,7 +278,7 @@ export function AppLayout() {
                   <LoadingSpinner />
                 </div>
               ) : preview.error ? (
-                <div className="rounded-xl border border-red-100 bg-white px-6 py-5 text-sm text-red-600 shadow-sm mx-4">
+                <div className="rounded-xl border border-red-100 bg-surface px-6 py-5 text-sm text-red-600 shadow-sm mx-4">
                   {preview.error}
                 </div>
               ) : preview.type === 'image' ? (
@@ -295,7 +295,7 @@ export function AppLayout() {
 
       {deleteState.open ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-sm overflow-hidden">
+          <div className="bg-surface rounded-xl shadow-lg w-full max-w-sm overflow-hidden">
             <div className="p-5 md:p-6 text-center md:text-left">
               <h3 className="text-lg font-bold text-slate-800 mb-1.5">{deleteState.title || 'Вы уверены?'}</h3>
               <p className="text-sm text-slate-500">{deleteState.desc || 'Это действие нельзя отменить.'}</p>
@@ -304,7 +304,7 @@ export function AppLayout() {
               <button
                 type="button"
                 onClick={() => setDeleteState({ open: false, title: '', desc: '', onConfirm: null })}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors order-2 md:order-1"
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-surface border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors order-2 md:order-1"
               >
                 Отмена
               </button>

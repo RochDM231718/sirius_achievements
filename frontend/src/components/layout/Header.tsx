@@ -73,7 +73,7 @@ export function Header({ user }: HeaderProps) {
   }
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 z-20 shrink-0">
+    <header className="h-14 bg-surface border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 z-20 shrink-0">
       <div className="md:hidden text-lg font-bold text-indigo-600">Sirius.Achievements</div>
       <div className="hidden md:block flex-1" />
 
@@ -102,7 +102,7 @@ export function Header({ user }: HeaderProps) {
           </button>
 
           {notificationOpen ? (
-            <div className="absolute right-0 mt-2 w-72 max-w-[90vw] bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+            <div className="absolute right-0 mt-2 w-72 max-w-[90vw] bg-surface rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
               <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase">Уведомления</h3>
               </div>
@@ -149,7 +149,7 @@ export function Header({ user }: HeaderProps) {
           </button>
 
           {profileOpen ? (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50">
+            <div className="absolute right-0 mt-2 w-48 bg-surface rounded-lg shadow-lg border border-slate-200 py-1 z-50">
               <div className="px-4 py-2 border-b border-slate-100 md:hidden">
                 <span className="block text-sm font-medium text-slate-700 truncate">{fullName}</span>
               </div>

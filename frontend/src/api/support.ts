@@ -27,8 +27,8 @@ export const supportApi = {
   },
 
   // Moderation support
-  getNewTickets(page?: number) {
-    return client.get<SupportListResponse>('/moderation/support', { params: { page } })
+  getNewTickets(params?: { page?: number; query?: string; sort_by?: string; sort_order?: string }) {
+    return client.get<SupportListResponse>('/moderation/support', { params })
   },
 
   getMyChats(params?: { page?: number; status?: string; query?: string; sort_by?: string; sort_order?: string }) {

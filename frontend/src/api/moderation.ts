@@ -7,9 +7,20 @@ export interface AchievementMetadataPayload {
   description?: string
 }
 
+export interface ModerationUsersParams {
+  query?: string
+  sort_by?: string
+}
+
+export interface ModerationAchievementsParams {
+  page?: number
+  query?: string
+  sort_by?: string
+}
+
 export const moderationApi = {
-  getUsers() {
-    return client.get<{ users: User[]; total_count: number }>('/moderation/users')
+  getUsers(params?: ModerationUsersParams) {
+    return client.get<{ users: User[]; total_count: number }>('/moderation/users', { params })
   },
 
   approveUser(id: number) {
@@ -20,8 +31,8 @@ export const moderationApi = {
     return client.post<{ success: boolean; user: User }>(`/moderation/users/${id}/reject`)
   },
 
-  getAchievements(page?: number) {
-    return client.get<ModerationAchievementsResponse>('/moderation/achievements', { params: { page } })
+  getAchievements(params?: ModerationAchievementsParams) {
+    return client.get<ModerationAchievementsResponse>('/moderation/achievements', { params })
   },
 
   updateAchievement(id: number, status: string, rejectionReason?: string) {

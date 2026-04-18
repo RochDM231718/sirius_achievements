@@ -177,7 +177,7 @@ export function SupportPage() {
           </button>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-2 inline-flex gap-1">
+        <div className="bg-surface rounded-xl border border-slate-200 p-2 inline-flex gap-1">
           <a href="?view=active" onClick={(event) => { event.preventDefault(); setListView('active') }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${view !== 'archived' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
             Активные
           </a>
@@ -189,11 +189,11 @@ export function SupportPage() {
         {error ? <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
         {isLoading ? (
-          <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">Загрузка обращений…</div>
+          <div className="bg-surface rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">Загрузка обращений…</div>
         ) : tickets.length ? (
           <div className="space-y-3">
             {tickets.map((ticket) => (
-              <Link key={ticket.id} to={`/support/${ticket.id}`} className="block bg-white rounded-xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition-all group">
+              <Link key={ticket.id} to={`/support/${ticket.id}`} className="block bg-surface rounded-xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition-all group">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -213,7 +213,7 @@ export function SupportPage() {
             ))}
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+          <div className="bg-surface rounded-xl border border-slate-200 p-12 text-center">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
             </div>
@@ -234,7 +234,7 @@ export function SupportPage() {
           }
         }}
       >
-        <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
+        <div className="bg-surface rounded-xl shadow-lg w-full max-w-md overflow-hidden">
           <div className="p-5 border-b border-slate-100 flex justify-between items-center">
             <h3 className="text-lg font-bold text-slate-800">Новое обращение</h3>
             <button type="button" data-close-ticket-modal onClick={closeModal} className="text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full">
@@ -253,7 +253,7 @@ export function SupportPage() {
                 placeholder="Опишите проблему кратко..."
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
-                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
               />
             </div>
 
@@ -266,7 +266,7 @@ export function SupportPage() {
                 placeholder="Подробно опишите вашу проблему..."
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
-                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
+                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
               ></textarea>
             </div>
 

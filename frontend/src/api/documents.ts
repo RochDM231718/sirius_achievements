@@ -25,6 +25,10 @@ export const documentsApi = {
     return client.get<DocumentsResponse>('/documents', { params })
   },
 
+  search(q: string) {
+    return client.get<Array<{ value: string; text: string }>>('/documents/search', { params: { q } })
+  },
+
   preview(id: number) {
     return client.get(`/documents/${id}/preview`, { responseType: 'blob' })
   },
