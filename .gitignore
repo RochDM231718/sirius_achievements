@@ -82,3 +82,7 @@ static/spa/
 
 # Claude Code
 .claude/
+
+# GitHub Copilot / AI assistant configs
+.github/
+
