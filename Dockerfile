@@ -27,7 +27,6 @@ ENV TZ=Europe/Moscow
 COPY requirements.txt .
 
 RUN pip install --upgrade pip
-RUN pip install --default-timeout=1000 --no-cache-dir torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
 RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 
 COPY . .
@@ -40,8 +39,6 @@ RUN addgroup --system appgroup \
     && mkdir -p /app/static/uploads/achievements \
                 /app/static/uploads/avatars \
                 /app/static/uploads/support \
-                /app/easyocr_models \
-                /home/appuser/.EasyOCR \
     && chown -R appuser:appgroup /app /home/appuser \
     && chmod +x /app/entrypoint.sh
 

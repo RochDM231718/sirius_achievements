@@ -55,6 +55,25 @@ services:
     networks:
       - prod_net
 
+  ai_service:
+    build: ./ai-service
+    container_name: sirius_ai_service
+    restart: always
+    environment:
+      - TZ=Europe/Moscow
+      - EASYOCR_MODEL_DIR=/app/easyocr_models
+      - RESUME_OCR_MODEL_DOWNLOAD_ENABLED=${RESUME_OCR_MODEL_DOWNLOAD_ENABLED:-false}
+    volumes:
+      - ./models:/app/easyocr_models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - prod_net
+
   web:
     build: .
     container_name: sirius_app_new
@@ -67,6 +86,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_started
+      ai_service:
         condition: service_started
     env_file:
       - .env
@@ -81,10 +102,10 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin123}
       - MINIO_BUCKET=${MINIO_BUCKET:-sirius-files}
+      - AI_SERVICE_URL=http://ai_service:8001
       - TZ=Europe/Moscow
     volumes:
       - uploads_data:/app/static/uploads
-      - ./models:/app/easyocr_models
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

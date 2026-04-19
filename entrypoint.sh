@@ -5,10 +5,9 @@ set -e
 # and are writable by appuser (volume may have been created by root)
 mkdir -p /app/static/uploads/achievements \
          /app/static/uploads/avatars \
-         /app/static/uploads/support \
-         /home/appuser/.EasyOCR
+         /app/static/uploads/support
 
-chown -R appuser:appgroup /app/static/uploads /app/easyocr_models /home/appuser
+chown -R appuser:appgroup /app/static/uploads /home/appuser
 
 # Run database migrations as appuser before starting the app.
 # Non-fatal: if migrations fail, the lifespan safety-net will still try

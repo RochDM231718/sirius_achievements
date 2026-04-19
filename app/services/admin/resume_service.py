@@ -1,26 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import os
 import re
-import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-import fitz
 import httpx
 from sqlalchemy import func as sql_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-try:
-    import easyocr
-
-    _EASYOCR_AVAILABLE = True
-except ImportError:
-    easyocr = None  # type: ignore[assignment]
-    _EASYOCR_AVAILABLE = False
 
 from app.config import settings
 from app.models.achievement import Achievement
@@ -31,7 +19,6 @@ from app.utils.media_paths import resolve_static_path
 
 log = logging.getLogger("resume_service")
 
-_ocr_reader = None
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 SUPPORTED_OCR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
 OCR_TEXT_LIMIT = 6000
@@ -72,75 +59,23 @@ def _enum_value(value: object | None, default: str) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 
-def get_ocr_reader():
-    global _ocr_reader
-
-    if not _EASYOCR_AVAILABLE:
-        return None
-    if _ocr_reader is not None:
-        return _ocr_reader
-
-    model_dir = os.getenv("EASYOCR_MODEL_DIR", "/app/easyocr_models")
-    download_enabled = settings.RESUME_OCR_MODEL_DOWNLOAD_ENABLED
-
+async def _ocr_via_service(file_bytes: bytes, filename: str) -> str:
+    url = f"{settings.AI_SERVICE_URL.rstrip('/')}/ocr"
     try:
-        _ocr_reader = easyocr.Reader(
-            ["ru", "en"],
-            gpu=False,
-            model_storage_directory=model_dir,
-            download_enabled=download_enabled,
-            verbose=False,
-        )
-        log.info("EasyOCR initialized, model_dir=%s", model_dir)
-    except Exception as exc:
-        log.warning("EasyOCR init failed (%s), retrying offline", exc)
-        try:
-            _ocr_reader = easyocr.Reader(
-                ["ru", "en"],
-                gpu=False,
-                model_storage_directory=model_dir,
-                download_enabled=False,
-                verbose=False,
+        async with httpx.AsyncClient(timeout=settings.AI_SERVICE_TIMEOUT) as client:
+            response = await client.post(
+                url,
+                files={"file": (filename, file_bytes)},
             )
-            log.info("EasyOCR initialized (offline mode)")
-        except Exception as offline_exc:
-            log.error("EasyOCR init completely failed: %s", offline_exc)
-            _ocr_reader = None
-
-    return _ocr_reader
-
-
-def extract_text_from_pdf(filepath: str) -> str:
-    text_chunks: list[str] = []
-
-    with fitz.open(filepath) as document:
-        for page in document:
-            page_text = sanitize_resume_text(page.get_text())
-            if page_text:
-                text_chunks.append(page_text)
-                continue
-
-            reader = get_ocr_reader()
-            if reader is None:
-                continue
-
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-            image_bytes = pixmap.tobytes("png")
-            ocr_results = reader.readtext(image_bytes, detail=0, paragraph=True)
-            ocr_text = sanitize_resume_text("\n".join(ocr_results))
-            if ocr_text:
-                text_chunks.append(ocr_text)
-
-    return sanitize_resume_text("\n".join(text_chunks), max_length=OCR_TEXT_LIMIT)
-
-
-def extract_text_from_image(filepath: str) -> str:
-    reader = get_ocr_reader()
-    if reader is None:
-        return ""
-
-    ocr_results = reader.readtext(filepath, detail=0, paragraph=True)
-    return sanitize_resume_text("\n".join(ocr_results), max_length=OCR_TEXT_LIMIT)
+            response.raise_for_status()
+            payload = response.json()
+            return sanitize_resume_text(str(payload.get("text", "")), max_length=OCR_TEXT_LIMIT)
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:200] if exc.response is not None else ""
+        log.error("AI service OCR HTTP %s for %s: %s", exc.response.status_code, filename, body)
+    except Exception:
+        log.exception("AI service OCR call failed for %s", filename)
+    return ""
 
 
 class ResumeService:
@@ -223,14 +158,13 @@ class ResumeService:
                 max_length=200,
             ) or "Пользователь"
 
-            loop = asyncio.get_running_loop()
             docs_data: list[dict[str, object]] = []
 
             for achievement in achievements:
                 document_data = self._build_document_data(achievement)
                 file_path = document_data.get("file_path")
                 if isinstance(file_path, str) and file_path:
-                    document_data["ocr_text"] = await self._extract_ocr_text(file_path, loop)
+                    document_data["ocr_text"] = await self._extract_ocr_text(file_path)
                 docs_data.append(document_data)
 
             resume_result: str | None = None
@@ -280,7 +214,7 @@ class ResumeService:
             "file_path": achievement.file_path or "",
         }
 
-    async def _extract_ocr_text(self, file_path: str, loop: asyncio.AbstractEventLoop) -> str:
+    async def _extract_ocr_text(self, file_path: str) -> str:
         normalized_path = file_path.replace("\\", "/")
         source_for_extension = (
             storage.extract_key(normalized_path) if storage.is_minio_path(normalized_path) else normalized_path
@@ -289,19 +223,11 @@ class ResumeService:
         if extension not in SUPPORTED_OCR_EXTENSIONS:
             return ""
 
-        temp_path: Path | None = None
-
         try:
             if storage.is_minio_path(normalized_path):
                 object_key = storage.extract_key(normalized_path)
                 file_bytes = await storage.download(object_key)
-                if not file_bytes:
-                    return ""
-
-                with tempfile.NamedTemporaryFile(delete=False, suffix=extension or ".tmp") as temp_file:
-                    temp_file.write(file_bytes)
-                    temp_path = Path(temp_file.name)
-                source_path = temp_path
+                filename = Path(object_key).name or f"file{extension}"
             else:
                 relative_path = normalized_path.lstrip("/")
                 if relative_path.startswith("static/"):
@@ -310,19 +236,16 @@ class ResumeService:
                 if not source_path.exists() or not source_path.is_file():
                     log.warning("Resume source file not found: %s", file_path)
                     return ""
+                file_bytes = source_path.read_bytes()
+                filename = source_path.name
 
-            extractor = extract_text_from_pdf if extension == ".pdf" else extract_text_from_image
-            extracted_text = await loop.run_in_executor(None, extractor, str(source_path))
-            return sanitize_resume_text(extracted_text, max_length=OCR_TEXT_LIMIT)
+            if not file_bytes:
+                return ""
+
+            return await _ocr_via_service(file_bytes, filename)
         except Exception:
             log.exception("Failed to extract OCR text for %s", file_path)
             return ""
-        finally:
-            if temp_path and temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except OSError as exc:
-                    log.warning("Failed to remove temporary OCR file %s: %s", temp_path, exc)
 
     def _is_external_ai_configured(self) -> bool:
         api_key = settings.YANDEX_API_KEY or ""

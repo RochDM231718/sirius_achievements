@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import { achievementsApi } from '@/api/achievements'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { Pagination } from '@/components/ui/Pagination'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useToast } from '@/hooks/useToast'
 import { Achievement } from '@/types/achievement'
 import {
@@ -31,6 +31,7 @@ interface AchievementFormState {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const FILE_ACCEPT = 'image/*,application/pdf,.pdf,.doc,.docx,.pptx,.xlsx'
+const ACHIEVEMENTS_PAGE_SIZE = 10
 
 function getDefaultForm(): AchievementFormState {
   return {
@@ -688,7 +689,13 @@ export function AchievementsPage() {
         )}
       </div>
 
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      <PaginationFooter
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        pageSize={ACHIEVEMENTS_PAGE_SIZE}
+        className="rounded-xl border border-slate-200 bg-surface"
+      />
 
       {showCreateModal ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">

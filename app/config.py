@@ -106,5 +106,9 @@ class Settings:
     RESUME_EXTERNAL_AI_ENABLED: bool = _env_bool("RESUME_EXTERNAL_AI_ENABLED", False)
     RESUME_OCR_MODEL_DOWNLOAD_ENABLED: bool = _env_bool("RESUME_OCR_MODEL_DOWNLOAD_ENABLED", False)
 
+    # ── AI OCR microservice ──
+    AI_SERVICE_URL: str = os.getenv("AI_SERVICE_URL", "http://ai_service:8001")
+    AI_SERVICE_TIMEOUT: float = float(os.getenv("AI_SERVICE_TIMEOUT", "120"))
+
 
 settings = Settings()
