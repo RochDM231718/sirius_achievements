@@ -56,6 +56,7 @@ services:
       - prod_net
 
   ai_service:
+    image: ${AI_IMAGE:-project-ai_service:latest}
     build: ./ai-service
     container_name: sirius_ai_service
     restart: always
@@ -75,6 +76,7 @@ services:
       - prod_net
 
   web:
+    image: ${APP_IMAGE:-project-web:latest}
     build: .
     container_name: sirius_app_new
     restart: always

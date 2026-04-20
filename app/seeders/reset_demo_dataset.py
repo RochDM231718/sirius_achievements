@@ -1,17 +1,18 @@
 import asyncio
 import base64
+import os
 import shutil
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.utils.password import hash_password
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 if "/app" not in sys.path:
     sys.path.insert(0, "/app")
 
-from app.infrastructure.database import async_session_maker
+from app.infrastructure.database import Base, async_session_maker, engine
 from app.models.achievement import Achievement
 from app.models.audit_log import AuditLog
 from app.models.enums import (
@@ -29,6 +30,7 @@ from app.models.season_result import SeasonResult
 from app.models.support_message import SupportMessage
 from app.models.support_ticket import SupportTicket
 from app.models.user import Users
+from app.models.user_note import UserNote
 from app.models.user_token import UserToken
 
 
@@ -42,6 +44,8 @@ PENDING_DOCUMENTS_COUNT = 20
 ACTIVE_SUPPORT_TICKETS_COUNT = 10
 CLOSED_SUPPORT_TICKETS_COUNT = 20
 
+DEMO_EMAIL_DOMAIN = (os.getenv("DEMO_EMAIL_DOMAIN", "example.com") or "example.com").strip().lstrip("@")
+PENDING_EMAIL_DOMAIN = (os.getenv("DEMO_PENDING_EMAIL_DOMAIN", DEMO_EMAIL_DOMAIN) or DEMO_EMAIL_DOMAIN).strip().lstrip("@")
 
 ACHIEVEMENTS_DIR = Path("/app/static/uploads/achievements/demo_seed")
 
@@ -220,10 +224,53 @@ POINTS_BY_RESULT = {
     AchievementResult.WINNER: 30,
 }
 
+ALTER_STATEMENTS = [
+    "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS moderator_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ",
+    "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ",
+    "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ",
+    "ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS api_access_version INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS api_refresh_version INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE user_tokens ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ",
+    "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS moderator_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS reviewed_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS study_group VARCHAR",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_gpa VARCHAR",
+    "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'achievementresult') THEN CREATE TYPE achievementresult AS ENUM ('PARTICIPANT', 'PRIZEWINNER', 'WINNER'); END IF; END $$",
+    "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS result achievementresult",
+]
+
+ENUM_ADDITIONS = [
+    "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'HACKATHON'",
+    "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'PATRIOTISM'",
+    "ALTER TYPE achievementcategory ADD VALUE IF NOT EXISTS 'PROJECTS'",
+    "ALTER TYPE achievementstatus ADD VALUE IF NOT EXISTS 'REVISION'",
+    "ALTER TYPE achievementstatus ADD VALUE IF NOT EXISTS 'ARCHIVED'",
+    "ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'REJECTED'",
+    "ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'DELETED'",
+    "ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'GUEST'",
+    "ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'STUDENT'",
+    "ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'MODERATOR'",
+    "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'PARTICIPANT'",
+    "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'PRIZEWINNER'",
+    "ALTER TYPE achievementresult ADD VALUE IF NOT EXISTS 'WINNER'",
+]
+
 
 def write_demo_png(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(PNG_BYTES)
+
+
+def build_active_user_email(level: EducationLevel, index: int) -> str:
+    slug = LEVEL_SLUGS[level]
+    return f"{slug}.student{index:03d}@{DEMO_EMAIL_DOMAIN}"
+
+
+def build_pending_user_email(index: int) -> str:
+    return f"registration.request{index:02d}@{PENDING_EMAIL_DOMAIN}"
 
 
 def db_user_role(role: UserRole) -> str:
@@ -239,7 +286,7 @@ def db_education_level(level: EducationLevel | None) -> str | None:
 
 
 def db_achievement_category(category: AchievementCategory) -> str:
-    return category.value if category == AchievementCategory.HACKATHON else category.name
+    return category.name
 
 
 def db_achievement_level(level: AchievementLevel) -> str:
@@ -265,6 +312,48 @@ def calc_points(level: AchievementLevel, result: AchievementResult) -> int:
 def build_document_title(user_index: int, doc_index: int, category: AchievementCategory) -> str:
     topic = DOCUMENT_TEMPLATES[(user_index + doc_index) % len(DOCUMENT_TEMPLATES)]
     return f"{topic} - {category.value} #{doc_index + 1}"
+
+
+async def ensure_demo_schema() -> None:
+    async with engine.begin() as conn:
+        for stmt in ENUM_ADDITIONS:
+            try:
+                async with conn.begin_nested():
+                    await conn.execute(text(stmt))
+            except Exception:
+                pass
+
+        enum_check = await conn.execute(
+            text(
+                "SELECT enumlabel FROM pg_enum "
+                "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid "
+                "WHERE pg_type.typname = 'supportticketstatus' ORDER BY enumsortorder"
+            )
+        )
+        existing_labels = [row[0] for row in enum_check.fetchall()]
+        expected_labels = ["open", "in_progress", "closed"]
+        if existing_labels and existing_labels != expected_labels:
+            await conn.execute(text("ALTER TABLE support_tickets ALTER COLUMN status DROP DEFAULT"))
+            await conn.execute(text("ALTER TABLE support_tickets ALTER COLUMN status TYPE VARCHAR(20)"))
+            await conn.execute(text("UPDATE support_tickets SET status = LOWER(status)"))
+            await conn.execute(text("DROP TYPE IF EXISTS supportticketstatus"))
+            await conn.execute(text("CREATE TYPE supportticketstatus AS ENUM ('open', 'in_progress', 'closed')"))
+            await conn.execute(
+                text(
+                    "ALTER TABLE support_tickets ALTER COLUMN status TYPE supportticketstatus "
+                    "USING status::supportticketstatus"
+                )
+            )
+            await conn.execute(text("ALTER TABLE support_tickets ALTER COLUMN status SET DEFAULT 'open'"))
+
+        await conn.run_sync(Base.metadata.create_all)
+
+        for stmt in ALTER_STATEMENTS:
+            try:
+                async with conn.begin_nested():
+                    await conn.execute(text(stmt))
+            except Exception:
+                pass
 
 
 async def ensure_staff_users(db, password_hash: str, now: datetime) -> tuple[Users, Users]:
@@ -320,6 +409,8 @@ async def ensure_staff_users(db, password_hash: str, now: datetime) -> tuple[Use
 
 
 async def main():
+    await ensure_demo_schema()
+
     common_hash = hash_password(COMMON_PASSWORD)
     now = datetime.now(timezone.utc)
 
@@ -338,6 +429,7 @@ async def main():
         await db.execute(delete(SupportTicket))
         await db.execute(delete(Achievement))
         await db.execute(delete(AuditLog))
+        await db.execute(delete(UserNote))
         await db.execute(delete(Users).where(~Users.id.in_(staff_ids)))
         await db.flush()
 
@@ -358,7 +450,7 @@ async def main():
                 user = Users(
                     first_name=FIRST_NAMES[global_index % len(FIRST_NAMES)],
                     last_name=LAST_NAMES[(global_index * 3) % len(LAST_NAMES)],
-                    email=f"{slug}.student{index + 1:03d}@sirius.local",
+                    email=build_active_user_email(level, index + 1),
                     education_level=db_education_level(level),
                     course=course,
                     study_group=group,
@@ -382,7 +474,7 @@ async def main():
                 Users(
                     first_name=FIRST_NAMES[(index + 9) % len(FIRST_NAMES)],
                     last_name=LAST_NAMES[(index * 5 + 7) % len(LAST_NAMES)],
-                    email=f"registration.request{index + 1:02d}@sirius.local",
+                    email=build_pending_user_email(index + 1),
                     education_level=db_education_level(level),
                     course=(index % course_limit) + 1,
                     study_group=group,
@@ -589,6 +681,8 @@ async def main():
         print(f"Super admin: {SUPER_ADMIN_EMAIL} / {COMMON_PASSWORD}")
         print(f"Moderator: {MODERATOR_EMAIL} / {COMMON_PASSWORD}")
         print(f"All demo users password: {COMMON_PASSWORD}")
+        print(f"Active demo email domain: {DEMO_EMAIL_DOMAIN}")
+        print(f"Pending demo email domain: {PENDING_EMAIL_DOMAIN}")
 
 
 if __name__ == "__main__":

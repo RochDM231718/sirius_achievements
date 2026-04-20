@@ -9,11 +9,19 @@ pipeline {
   environment {
     DOCKERHUB_USER = 'sh1tc0derdocker'
     IMAGE_APP      = "${DOCKERHUB_USER}/sirius-app"
+    IMAGE_AI       = "${DOCKERHUB_USER}/sirius-ai-service"
     DEPLOY_DIR     = '/root/sirius_achievements'
     NOTIFY_EMAIL   = 'efirkoumir@gmail.com,yaroslavroch2@gmail.com,matveys909@gmail.com,sh1tc0der@yandex.ru'
   }
 
   stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+        echo "Repository cloned, branch: prod"
+      }
+    }
 
     stage('Check Tag') {
       steps {
@@ -25,35 +33,39 @@ pipeline {
 
           if (env.IMAGE_TAG == '') {
             currentBuild.result = 'NOT_BUILT'
-            error('No tag on this commit — skipping deployment')
+            error('No tag on this commit - skipping deployment')
           }
 
-          echo "Tag found: ${env.IMAGE_TAG} — starting deployment"
+          env.DEPLOY_REF = "tag ${env.IMAGE_TAG}"
+          echo "Using ${env.DEPLOY_REF}"
         }
       }
     }
 
-    stage('Checkout') {
+    stage('Build') {
       steps {
-        checkout scm
-        echo "Repository cloned, branch: prod, tag: ${env.IMAGE_TAG}"
+        script {
+          sh """
+            docker pull ${IMAGE_APP}:latest || true
+            docker pull ${IMAGE_AI}:latest || true
+
+            docker build \
+              --cache-from ${IMAGE_APP}:latest \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              -t ${IMAGE_APP}:${env.IMAGE_TAG} \
+              -t ${IMAGE_APP}:latest \
+              .
+
+            docker build \
+              --cache-from ${IMAGE_AI}:latest \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              -t ${IMAGE_AI}:${env.IMAGE_TAG} \
+              -t ${IMAGE_AI}:latest \
+              ./ai-service
+          """
+        }
       }
     }
-stage('Build') {
-  steps {
-    script {
-      sh """
-        docker pull ${IMAGE_APP}:latest || true
-        docker build \
-          --cache-from ${IMAGE_APP}:latest \
-          --build-arg BUILDKIT_INLINE_CACHE=1 \
-          -t ${IMAGE_APP}:${env.IMAGE_TAG} \
-          -t ${IMAGE_APP}:latest \
-          .
-      """
-    }
-  }
-}
 
     stage('Push to Docker Hub') {
       steps {
@@ -66,6 +78,8 @@ stage('Build') {
             echo "\$DH_PASS" | docker login -u "\$DH_USER" --password-stdin
             docker push ${IMAGE_APP}:${env.IMAGE_TAG}
             docker push ${IMAGE_APP}:latest
+            docker push ${IMAGE_AI}:${env.IMAGE_TAG}
+            docker push ${IMAGE_AI}:latest
             docker logout
           """
         }
@@ -76,9 +90,12 @@ stage('Build') {
       steps {
         script {
           sh """
-            PREV=\$(docker inspect --format='{{index .RepoTags 0}}' sirius_app_new 2>/dev/null || echo '')
-            echo "\$PREV" > /tmp/sirius_prev_tag.txt
-            echo "Current running version: \$PREV"
+            PREV_APP=\$(docker inspect --format='{{.Config.Image}}' sirius_app_new 2>/dev/null || echo '')
+            PREV_AI=\$(docker inspect --format='{{.Config.Image}}' sirius_ai_service 2>/dev/null || echo '')
+            echo "\$PREV_APP" > /tmp/sirius_prev_app_image.txt
+            echo "\$PREV_AI" > /tmp/sirius_prev_ai_image.txt
+            echo "Current running web image: \$PREV_APP"
+            echo "Current running ai image: \$PREV_AI"
           """
         }
       }
@@ -90,14 +107,15 @@ stage('Build') {
           sh """
             cd ${DEPLOY_DIR}
 
-            echo "Stopping current web service..."
-            docker compose stop web
+            echo "Stopping current web and ai services..."
+            docker compose stop web ai_service || true
 
             echo "Starting new version ${env.IMAGE_TAG}..."
+            AI_IMAGE=${IMAGE_AI}:${env.IMAGE_TAG} \
             APP_IMAGE=${IMAGE_APP}:${env.IMAGE_TAG} \
-            docker compose up -d --no-deps --pull always web
+            docker compose up -d --no-deps --pull always ai_service web
 
-            echo "Waiting for container to start..."
+            echo "Waiting for containers to start..."
             sleep 100
           """
         }
@@ -108,10 +126,16 @@ stage('Build') {
       steps {
         script {
           sh """
-            STATUS=\$(docker inspect --format='{{.State.Status}}' sirius_app_new 2>/dev/null || echo 'missing')
-            echo "Container status: \$STATUS"
-            if [ "\$STATUS" != "running" ]; then
-              echo "Container is not running!"
+            APP_STATUS=\$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' sirius_app_new 2>/dev/null || echo 'missing')
+            AI_STATUS=\$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' sirius_ai_service 2>/dev/null || echo 'missing')
+            echo "Web status: \$APP_STATUS"
+            echo "AI status: \$AI_STATUS"
+            if [ "\$APP_STATUS" != "healthy" ]; then
+              echo "Web container is not healthy!"
+              exit 1
+            fi
+            if [ "\$AI_STATUS" != "healthy" ]; then
+              echo "AI container is not healthy!"
               exit 1
             fi
           """
@@ -134,36 +158,38 @@ stage('Build') {
 
     failure {
       script {
-        echo "Deployment failed — starting rollback..."
+        echo "Deployment failed - starting rollback..."
         sh """
-          PREV=\$(cat /tmp/sirius_prev_tag.txt 2>/dev/null || echo '')
-          if [ -n "\$PREV" ]; then
-            echo "Rolling back to: \$PREV"
+          PREV_APP=\$(cat /tmp/sirius_prev_app_image.txt 2>/dev/null || echo '')
+          PREV_AI=\$(cat /tmp/sirius_prev_ai_image.txt 2>/dev/null || echo '')
+          if [ -n "\$PREV_APP" ] && [ -n "\$PREV_AI" ]; then
+            echo "Rolling back web to: \$PREV_APP"
+            echo "Rolling back ai to: \$PREV_AI"
             cd ${DEPLOY_DIR}
-            docker compose stop web
-            docker tag "\$PREV" ${IMAGE_APP}:latest
-            docker compose up -d --no-deps web
+            docker compose stop web ai_service || true
+            AI_IMAGE="\$PREV_AI" \
+            APP_IMAGE="\$PREV_APP" \
+            docker compose up -d --no-deps ai_service web
             echo "Rollback complete"
           else
-            echo "No previous version found — skipping rollback"
+            echo "No previous images found - skipping rollback"
           fi
         """
       }
 
       mail(
         to: "${env.NOTIFY_EMAIL}",
-        subject: "Что-то пошло плохо! — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
+        subject: "Deployment failed - ${env.IMAGE_TAG} - ${env.JOB_NAME}",
         body: """
-Деплой завершился с ошибкой.
+Deployment failed.
 
-Проект:  ${env.JOB_NAME}
-Тег:     ${env.IMAGE_TAG}
-Ветка:   prod
-Сборка:  #${env.BUILD_NUMBER}
+Project: ${env.JOB_NAME}
+Ref:     ${env.DEPLOY_REF}
+Tag:     ${env.IMAGE_TAG}
+Branch:  prod
+Build:   #${env.BUILD_NUMBER}
 
-Был выполнен автоматический откат на предыдущую версию.
-
-Подробные логи:
+Logs:
 ${env.BUILD_URL}console
         """.stripIndent()
       )
@@ -172,16 +198,17 @@ ${env.BUILD_URL}console
     success {
       mail(
         to: "${env.NOTIFY_EMAIL}",
-        subject: "Все прошло успешно — ${env.IMAGE_TAG} — ${env.JOB_NAME}",
+        subject: "Deployment succeeded - ${env.IMAGE_TAG} - ${env.JOB_NAME}",
         body: """
-Деплой успешно завершён.
+Deployment succeeded.
 
-Проект:  ${env.JOB_NAME}
-Тег:     ${env.IMAGE_TAG}
-Ветка:   prod
-Сборка:  #${env.BUILD_NUMBER}
+Project: ${env.JOB_NAME}
+Ref:     ${env.DEPLOY_REF}
+Tag:     ${env.IMAGE_TAG}
+Branch:  prod
+Build:   #${env.BUILD_NUMBER}
 
-Подробные логи:
+Logs:
 ${env.BUILD_URL}console
         """.stripIndent()
       )
