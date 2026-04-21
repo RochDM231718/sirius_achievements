@@ -5,10 +5,14 @@ import { moderationApi } from '@/api/moderation'
 import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
 import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { User } from '@/types/user'
 import { getErrorMessage } from '@/utils/http'
+import { getTotalPages, paginateItems } from '@/utils/pagination'
+
+const MODERATION_USERS_PAGE_SIZE = 20
 
 function normalize(text: string) {
   return text.trim().toLocaleLowerCase('ru-RU')
@@ -46,6 +50,7 @@ export function ModerationUsersPage() {
   const [totalCount, setTotalCount] = useState(0)
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('free_first')
+  const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
@@ -121,6 +126,26 @@ export function ModerationUsersPage() {
     return nextUsers
   }, [currentUser?.id, query, sortBy, users])
 
+  const totalPages = useMemo(
+    () => getTotalPages(filteredUsers.length, MODERATION_USERS_PAGE_SIZE),
+    [filteredUsers.length],
+  )
+
+  const paginatedUsers = useMemo(
+    () => paginateItems(filteredUsers, page, MODERATION_USERS_PAGE_SIZE),
+    [filteredUsers, page],
+  )
+
+  useEffect(() => {
+    setPage(1)
+  }, [query, sortBy])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
+
   const handleTake = async (user: User) => {
     try {
       await moderationApi.takeUser(user.id)
@@ -135,6 +160,7 @@ export function ModerationUsersPage() {
     setQuery('')
     setSortBy('free_first')
     setSuggestions([])
+    setPage(1)
   }
 
   return (
@@ -221,7 +247,7 @@ export function ModerationUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredUsers.map((user) => (
+                {paginatedUsers.map((user) => (
                   <tr key={user.id} className="transition-colors hover:bg-slate-50">
                     <td className="px-5 py-3 text-xs text-slate-400">{user.id}</td>
                     <td className="px-5 py-3">
@@ -315,6 +341,13 @@ export function ModerationUsersPage() {
               </tbody>
             </table>
           </div>
+
+          <PaginationFooter
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            pageSize={MODERATION_USERS_PAGE_SIZE}
+          />
         </div>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">

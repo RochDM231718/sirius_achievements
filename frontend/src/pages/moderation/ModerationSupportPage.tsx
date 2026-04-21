@@ -5,13 +5,14 @@ import { supportApi } from '@/api/support'
 import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
 import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { Pagination } from '@/components/ui/Pagination'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { SupportListResponse, SupportTicket } from '@/types/support'
 import { getErrorMessage } from '@/utils/http'
 
 type SupportTab = 'new' | 'chats' | 'all'
+const MODERATION_SUPPORT_PAGE_SIZE = 20
 
 function normalizeSupportTab(value: string | null): SupportTab {
   if (value === 'chats' || value === 'all') {
@@ -456,9 +457,13 @@ export function ModerationSupportPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationFooter
+              currentPage={page}
+              totalPages={data?.total_pages ?? 1}
+              onPageChange={setPage}
+              pageSize={MODERATION_SUPPORT_PAGE_SIZE}
+            />
           </div>
-
-          <Pagination currentPage={page} totalPages={data?.total_pages ?? 1} onPageChange={setPage} />
         </>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">

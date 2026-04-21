@@ -7,12 +7,14 @@ import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components
 import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { Pagination } from '@/components/ui/Pagination'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { Achievement } from '@/types/achievement'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
+
+const MODERATION_ACHIEVEMENTS_PAGE_SIZE = 10
 
 export function ModerationAchievementsPage() {
   const { user: currentUser } = useAuth()
@@ -362,9 +364,13 @@ export function ModerationAchievementsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationFooter
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              pageSize={MODERATION_ACHIEVEMENTS_PAGE_SIZE}
+            />
           </div>
-
-          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">

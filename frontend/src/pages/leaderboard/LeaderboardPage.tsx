@@ -2,9 +2,36 @@ import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'r
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { leaderboardApi, type LeaderboardResponse, type LeaderboardRow } from '@/api/leaderboard'
+import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { getErrorMessage } from '@/utils/http'
+import { getTotalPages, paginateItems } from '@/utils/pagination'
+
+const LEADERBOARD_PAGE_SIZE = 20
+
+function normalizeLeaderboardSearch(value: string) {
+  return value.trim().toLocaleLowerCase('ru-RU')
+}
+
+function matchesLeaderboardRow(row: LeaderboardRow, query: string) {
+  const normalizedQuery = normalizeLeaderboardSearch(query)
+  if (!normalizedQuery) {
+    return true
+  }
+
+  return [
+    row.user.first_name,
+    row.user.last_name,
+    row.user.email,
+    `${row.user.first_name} ${row.user.last_name}`,
+    `${row.user.last_name} ${row.user.first_name}`,
+  ]
+    .join(' ')
+    .toLocaleLowerCase('ru-RU')
+    .includes(normalizedQuery)
+}
 
 function leagueDescription(data: LeaderboardResponse | null, isStaff: boolean) {
   if (!data) return ''
@@ -28,6 +55,9 @@ export function LeaderboardPage() {
   const { pushToast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<LeaderboardResponse | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [seasonModalOpen, setSeasonModalOpen] = useState(false)
@@ -35,16 +65,19 @@ export function LeaderboardPage() {
   const [isEndingSeason, setIsEndingSeason] = useState(false)
 
   const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
-  const queryKey = searchParams.toString()
+  const educationLevel = searchParams.get('education_level') ?? undefined
+  const course = searchParams.get('course') ?? undefined
+  const category = searchParams.get('category') ?? undefined
+  const group = searchParams.get('group') ?? undefined
 
   const filters = useMemo(
     () => ({
-      education_level: searchParams.get('education_level') ?? undefined,
-      course: searchParams.get('course') ?? undefined,
-      category: searchParams.get('category') ?? undefined,
-      group: searchParams.get('group') ?? undefined,
+      education_level: educationLevel,
+      course,
+      category,
+      group,
     }),
-    [queryKey]
+    [category, course, educationLevel, group]
   )
 
   useEffect(() => {
@@ -64,8 +97,67 @@ export function LeaderboardPage() {
     void load()
   }, [filters])
 
+  const filteredLeaderboard = useMemo(
+    () => (data?.leaderboard ?? []).filter((row) => matchesLeaderboardRow(row, searchQuery)),
+    [data?.leaderboard, searchQuery],
+  )
+  const podium = filteredLeaderboard.slice(0, 3)
+  const rest = filteredLeaderboard.slice(3)
+  const totalPages = getTotalPages(rest.length, LEADERBOARD_PAGE_SIZE)
+  const paginatedRest = paginateItems(rest, page, LEADERBOARD_PAGE_SIZE)
+
+  useEffect(() => {
+    setPage(1)
+  }, [filters, searchQuery])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim()
+    if (!trimmed) {
+      setSuggestions([])
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuggestions(
+        (data?.leaderboard ?? [])
+          .filter((row) => matchesLeaderboardRow(row, trimmed))
+          .slice(0, 5)
+          .map((row) => ({
+            value: `${row.user.first_name} ${row.user.last_name}`,
+            text: `${row.user.first_name} ${row.user.last_name}`,
+          })),
+      )
+    }, 150)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [data?.leaderboard, searchQuery])
+
   useEffect(() => {
     if (!data || searchParams.get('focus_me') !== '1') return
+
+    const myIndex = filteredLeaderboard.findIndex((row) => row.is_me)
+    if (myIndex === -1) {
+      const next = new URL(window.location.href)
+      next.searchParams.delete('focus_me')
+      window.history.replaceState({}, document.title, `${next.pathname}${next.search}${next.hash}`)
+      return
+    }
+
+    if (myIndex >= 3) {
+      const targetPage = Math.floor((myIndex - 3) / LEADERBOARD_PAGE_SIZE) + 1
+      if (page !== targetPage) {
+        setPage(targetPage)
+        return
+      }
+    }
 
     const target = document.querySelector<HTMLElement>('[data-leaderboard-self="true"]')
     if (!target) return
@@ -105,7 +197,7 @@ export function LeaderboardPage() {
     const next = new URL(window.location.href)
     next.searchParams.delete('focus_me')
     window.history.replaceState({}, document.title, `${next.pathname}${next.search}${next.hash}`)
-  }, [data, searchParams])
+  }, [data, filteredLeaderboard, page, searchParams])
 
   const updateFilter = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams)
@@ -118,6 +210,7 @@ export function LeaderboardPage() {
     }
 
     setSearchParams(next)
+    setPage(1)
   }
 
   const handleExport = async (event: MouseEvent<HTMLAnchorElement>) => {
@@ -167,8 +260,6 @@ export function LeaderboardPage() {
     next.set('focus_me', '1')
     return `?${next.toString()}`
   })()
-  const podium = data?.leaderboard.slice(0, 3) ?? []
-  const rest = data?.leaderboard.slice(3) ?? []
 
   return (
     <div className="max-w-4xl mx-auto space-y-6" data-focus-me={searchParams.get('focus_me') === '1' ? 'true' : 'false'}>
@@ -242,6 +333,18 @@ export function LeaderboardPage() {
 
       <div className="bg-surface p-4 rounded-xl border border-slate-200">
         <form action="/sirius.achievements/leaderboard" method="GET" className="flex flex-wrap gap-4 items-end">
+          <SearchAutocompleteInput
+            label="Ð ÑŸÐ Ñ•Ð Ñ‘Ð¡ÐƒÐ Ñ”"
+            value={searchQuery}
+            placeholder="Ð Â˜Ð Ñ˜Ð¡Ð Ð Ñ‘Ð Â»Ð Ñ‘ Ð¡â€žÐ Â°Ð Ñ˜Ð Ñ‘Ð Â»Ð Ñ‘Ð¡Ð..."
+            suggestions={suggestions}
+            onChange={setSearchQuery}
+            onSelectSuggestion={(item) => {
+              setSearchQuery(item.value || item.text)
+              setSuggestions([])
+            }}
+            className="min-w-[240px] flex-1"
+          />
           <div className="w-full sm:w-[180px]">
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Направление</label>
             <select value={data?.current_category || 'all'} onChange={(event) => updateFilter('category', event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px] transition-all cursor-pointer">
@@ -316,7 +419,7 @@ export function LeaderboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left whitespace-nowrap">
               <tbody className="divide-y divide-slate-100">
-                {rest.map((row) => (
+                {paginatedRest.map((row) => (
                   <tr key={row.user.id} data-leaderboard-self={row.is_me ? 'true' : undefined} className={`transition-all duration-500 ${row.is_me ? 'bg-indigo-50/50 hover:bg-indigo-50' : 'hover:bg-slate-50'}`}>
                     <td className="px-5 py-3 w-12 text-center"><span className={`text-sm font-medium ${row.is_me ? 'text-indigo-600' : 'text-slate-400'}`}>{row.rank}</span></td>
                     <td className="px-5 py-3">
@@ -337,10 +440,16 @@ export function LeaderboardPage() {
               </tbody>
             </table>
           </div>
+          <PaginationFooter
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            pageSize={LEADERBOARD_PAGE_SIZE}
+          />
         </div>
       ) : null}
 
-      {!isLoading && !data?.leaderboard.length ? (
+      {!isLoading && !filteredLeaderboard.length ? (
         <div className="text-center py-16 bg-surface rounded-xl border border-slate-200">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 mb-3">
             <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>

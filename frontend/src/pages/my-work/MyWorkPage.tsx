@@ -8,15 +8,18 @@ import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components
 import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { DocumentPreviewImage } from '@/components/ui/DocumentPreviewImage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useToast } from '@/hooks/useToast'
 import type { Achievement } from '@/types/achievement'
 import type { User } from '@/types/user'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { getTotalPages, paginateItems } from '@/utils/pagination'
 
 type WorkTab = 'users' | 'achievements'
 type DecisionStatus = 'revision' | 'rejected'
+const MY_WORK_PAGE_SIZE = 10
 
 const successActionClass =
   'inline-flex items-center justify-center rounded-md bg-green-600 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-green-700'
@@ -82,6 +85,7 @@ export function MyWorkPage() {
   const [query, setQuery] = useState('')
   const [userSortBy, setUserSortBy] = useState('newest')
   const [achievementSortBy, setAchievementSortBy] = useState('oldest')
+  const [page, setPage] = useState(1)
   const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -100,6 +104,7 @@ export function MyWorkPage() {
   useEffect(() => {
     setQuery('')
     setSuggestions([])
+    setPage(1)
   }, [tab])
 
   const load = async () => {
@@ -200,6 +205,34 @@ export function MyWorkPage() {
 
     return nextAchievements
   }, [achievementSortBy, achievements, query])
+
+  const usersTotalPages = useMemo(
+    () => getTotalPages(filteredUsers.length, MY_WORK_PAGE_SIZE),
+    [filteredUsers.length],
+  )
+  const achievementsTotalPages = useMemo(
+    () => getTotalPages(filteredAchievements.length, MY_WORK_PAGE_SIZE),
+    [filteredAchievements.length],
+  )
+  const paginatedUsers = useMemo(
+    () => paginateItems(filteredUsers, page, MY_WORK_PAGE_SIZE),
+    [filteredUsers, page],
+  )
+  const paginatedAchievements = useMemo(
+    () => paginateItems(filteredAchievements, page, MY_WORK_PAGE_SIZE),
+    [filteredAchievements, page],
+  )
+  const currentTotalPages = tab === 'users' ? usersTotalPages : achievementsTotalPages
+
+  useEffect(() => {
+    setPage(1)
+  }, [achievementSortBy, query, tab, userSortBy])
+
+  useEffect(() => {
+    if (page > currentTotalPages) {
+      setPage(currentTotalPages)
+    }
+  }, [currentTotalPages, page])
 
   const closeDecisionModal = () => {
     setDecisionTarget(null)
@@ -391,6 +424,7 @@ export function MyWorkPage() {
   const resetFilters = () => {
     setQuery('')
     setSuggestions([])
+    setPage(1)
     if (tab === 'users') {
       setUserSortBy('newest')
       return
@@ -502,7 +536,7 @@ export function MyWorkPage() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-50">
-                  {filteredUsers.map((user) => (
+                  {paginatedUsers.map((user) => (
                     <tr key={user.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-5 py-3 text-xs text-slate-400">{user.id}</td>
                       <td className="px-5 py-3">
@@ -561,6 +595,13 @@ export function MyWorkPage() {
                 </tbody>
               </table>
             </div>
+
+            <PaginationFooter
+              currentPage={page}
+              totalPages={usersTotalPages}
+              onPageChange={setPage}
+              pageSize={MY_WORK_PAGE_SIZE}
+            />
           </div>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">
@@ -587,7 +628,7 @@ export function MyWorkPage() {
         )
       ) : filteredAchievements.length ? (
         <div className="space-y-3">
-          {filteredAchievements.map((item) => (
+          {paginatedAchievements.map((item) => (
             <div
               key={item.id}
               className="overflow-hidden rounded-xl border border-slate-200 bg-surface p-4 transition-colors hover:border-slate-300"
@@ -655,11 +696,12 @@ export function MyWorkPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 justify-center gap-2 border-t border-slate-100 pt-3 sm:w-36 sm:flex-col sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
+                <div className="shrink-0 border-t border-slate-100 pt-3 sm:w-36 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
+                  <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-col sm:overflow-visible sm:pb-0">
                   <button
                     type="button"
                     onClick={() => void handleApproveAchievement(item)}
-                    className="flex w-full flex-col items-center justify-center rounded-lg bg-green-600 px-2 py-2 text-xs font-medium leading-tight text-white shadow-sm transition-colors hover:bg-green-700 sm:py-2.5"
+                    className="flex min-w-[136px] flex-none flex-col items-center justify-center rounded-lg bg-green-600 px-2 py-2 text-xs font-medium leading-tight text-white shadow-sm transition-colors hover:bg-green-700 sm:min-w-0 sm:w-full sm:py-2.5"
                   >
                     <span>Одобрить</span>
                     {typeof item.projected_points === 'number' ? (
@@ -670,7 +712,7 @@ export function MyWorkPage() {
                   <button
                     type="button"
                     onClick={() => openEditModal(item)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-surface px-2 py-2 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 sm:py-2.5"
+                    className="flex min-w-[136px] flex-none items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-surface px-2 py-2 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 sm:min-w-0 sm:w-full sm:py-2.5"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -689,7 +731,7 @@ export function MyWorkPage() {
                       setDecisionTarget(item)
                       setDecisionReason(item.rejection_reason ?? '')
                     }}
-                    className="flex w-full flex-col items-center justify-center rounded-lg border border-slate-200 bg-surface px-2 py-2 text-xs font-medium leading-tight text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:py-2.5"
+                    className="flex min-w-[136px] flex-none flex-col items-center justify-center rounded-lg border border-slate-200 bg-surface px-2 py-2 text-xs font-medium leading-tight text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:min-w-0 sm:w-full sm:py-2.5"
                   >
                     <span>Отклонить /</span>
                     <span>Вернуть</span>
@@ -698,7 +740,7 @@ export function MyWorkPage() {
                   <button
                     type="button"
                     onClick={() => void handleReleaseAchievement(item)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:bg-slate-100"
+                    className="flex min-w-[136px] flex-none items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:bg-slate-100 sm:min-w-0 sm:w-full"
                   >
                     Снять
                   </button>
@@ -706,7 +748,7 @@ export function MyWorkPage() {
                   <button
                     type="button"
                     onClick={() => void handleDownloadAchievement(item)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-100"
+                    className="flex min-w-[136px] flex-none items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-100 sm:min-w-0 sm:w-full"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -718,10 +760,17 @@ export function MyWorkPage() {
                     </svg>
                     <span>Скачать</span>
                   </button>
+                  </div>
                 </div>
               </div>
             </div>
           ))}
+          <PaginationFooter
+            currentPage={page}
+            totalPages={achievementsTotalPages}
+            onPageChange={setPage}
+            pageSize={MY_WORK_PAGE_SIZE}
+          />
         </div>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-surface p-12 text-center">

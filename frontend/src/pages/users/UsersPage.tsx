@@ -6,7 +6,7 @@ import { usersApi } from '@/api/users'
 import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
 import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { Pagination } from '@/components/ui/Pagination'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { User } from '@/types/user'
@@ -280,6 +280,7 @@ export function UsersPage() {
             <LoadingSpinner />
           </div>
         ) : items.length ? (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
@@ -379,6 +380,13 @@ export function UsersPage() {
               </tbody>
             </table>
           </div>
+          <PaginationFooter
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            pageSize={10}
+          />
+          </>
         ) : (
           <div className="p-12 text-center">
             <p className="text-sm text-slate-500">Пользователи по текущим фильтрам не найдены.</p>
@@ -386,7 +394,6 @@ export function UsersPage() {
         )}
       </div>
 
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   )
 }

@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { supportApi } from '@/api/support'
+import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useToast } from '@/hooks/useToast'
 import { type SupportTicket } from '@/types/support'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { getTotalPages, paginateItems } from '@/utils/pagination'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
+const SUPPORT_PAGE_SIZE = 10
 
 function statusPill(ticket: SupportTicket) {
   if (ticket.archived_at || ticket.status === 'closed') {
@@ -43,6 +46,7 @@ export function SupportPage() {
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [sizeError, setSizeError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const view = searchParams.get('view') === 'archived' ? 'archived' : 'active'
@@ -62,6 +66,10 @@ export function SupportPage() {
     }
 
     void load()
+  }, [view])
+
+  useEffect(() => {
+    setPage(1)
   }, [view])
 
   useEffect(() => {
@@ -158,6 +166,15 @@ export function SupportPage() {
     }
   }
 
+  const totalPages = useMemo(() => getTotalPages(tickets.length, SUPPORT_PAGE_SIZE), [tickets.length])
+  const paginatedTickets = useMemo(() => paginateItems(tickets, page, SUPPORT_PAGE_SIZE), [page, tickets])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
+
   return (
     <>
       <div className="max-w-4xl mx-auto space-y-6">
@@ -192,7 +209,7 @@ export function SupportPage() {
           <div className="bg-surface rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">Загрузка обращений…</div>
         ) : tickets.length ? (
           <div className="space-y-3">
-            {tickets.map((ticket) => (
+            {paginatedTickets.map((ticket) => (
               <Link key={ticket.id} to={`/support/${ticket.id}`} className="block bg-surface rounded-xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition-all group">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -211,6 +228,12 @@ export function SupportPage() {
                 </div>
               </Link>
             ))}
+            <PaginationFooter
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              pageSize={SUPPORT_PAGE_SIZE}
+            />
           </div>
         ) : (
           <div className="bg-surface rounded-xl border border-slate-200 p-12 text-center">
