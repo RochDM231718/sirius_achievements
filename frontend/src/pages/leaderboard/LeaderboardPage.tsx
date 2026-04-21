@@ -7,6 +7,7 @@ import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { getErrorMessage } from '@/utils/http'
+import { buildMediaUrl } from '@/utils/media'
 import { getTotalPages, paginateItems } from '@/utils/pagination'
 
 const LEADERBOARD_PAGE_SIZE = 20
@@ -389,21 +390,21 @@ export function LeaderboardPage() {
           {podium[1] ? (
             <div data-leaderboard-self={podium[1].is_me ? 'true' : undefined} className="order-2 md:order-1 bg-surface rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-surface border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">2</div>
-              <div className="mt-2 mb-3">{podium[1].user.avatar_path ? <img src={`/static/${podium[1].user.avatar_path}`} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[1].user.first_name.slice(0, 1)}</div>}</div>
+              <div className="mt-2 mb-3">{podium[1].user.avatar_path ? <img src={buildMediaUrl(podium[1].user.avatar_path)} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[1].user.first_name.slice(0, 1)}</div>}</div>
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[1], isStaff)} className="font-semibold text-slate-800 text-sm hover:text-indigo-600">{podium[1].user.first_name} {podium[1].user.last_name}</Link><div className="inline-flex bg-slate-50 text-slate-600 text-xs font-medium px-3 py-1 rounded-md border border-slate-100">{podium[1].total_points} баллов</div></div>
             </div>
           ) : <div className="hidden md:block"></div>}
 
           <div data-leaderboard-self={podium[0]?.is_me ? 'true' : undefined} className="order-1 md:order-2 bg-surface rounded-xl shadow-sm p-6 flex flex-col items-center relative transition-all duration-500" style={{ borderTop: '4px solid var(--theme-accent, #6d5ef3)' }}>
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-8 h-8 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md" style={{ background: 'var(--theme-accent, #6d5ef3)' }}>1</div>
-            <div className="mt-2 mb-3">{podium[0]?.user.avatar_path ? <img src={`/static/${podium[0].user.avatar_path}`} className="w-20 h-20 rounded-full object-cover border border-slate-200" /> : <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center text-2xl font-bold text-indigo-600 border border-indigo-100">{podium[0]?.user.first_name.slice(0, 1)}</div>}</div>
+            <div className="mt-2 mb-3">{podium[0]?.user.avatar_path ? <img src={buildMediaUrl(podium[0].user.avatar_path)} className="w-20 h-20 rounded-full object-cover border border-slate-200" /> : <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center text-2xl font-bold text-indigo-600 border border-indigo-100">{podium[0]?.user.first_name.slice(0, 1)}</div>}</div>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[0], isStaff)} className="font-bold text-slate-900 text-base hover:text-indigo-600">{podium[0]?.user.first_name} {podium[0]?.user.last_name}</Link><div className="inline-flex text-sm font-bold px-4 py-1.5 rounded-md" style={{ background: 'var(--theme-accent-soft, #f0edff)', color: 'var(--theme-accent-strong, #5f4ee6)', border: '1px solid var(--theme-border-soft, #ebeff6)' }}>{podium[0]?.total_points ?? 0} баллов</div></div>
           </div>
 
           {podium[2] ? (
             <div data-leaderboard-self={podium[2].is_me ? 'true' : undefined} className="order-3 bg-surface rounded-xl border border-slate-200 p-6 flex flex-col items-center relative transition-all duration-500">
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-surface border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold shadow-sm">3</div>
-              <div className="mt-2 mb-3">{podium[2].user.avatar_path ? <img src={`/static/${podium[2].user.avatar_path}`} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[2].user.first_name.slice(0, 1)}</div>}</div>
+              <div className="mt-2 mb-3">{podium[2].user.avatar_path ? <img src={buildMediaUrl(podium[2].user.avatar_path)} className="w-16 h-16 rounded-full object-cover border border-slate-200" /> : <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-xl font-medium text-slate-400 border border-slate-100">{podium[2].user.first_name.slice(0, 1)}</div>}</div>
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center"><Link to={buildUserLink(podium[2], isStaff)} className="font-semibold text-slate-800 text-sm hover:text-indigo-600">{podium[2].user.first_name} {podium[2].user.last_name}</Link><div className="inline-flex bg-slate-50 text-slate-600 text-xs font-medium px-3 py-1 rounded-md border border-slate-100">{podium[2].total_points} баллов</div></div>
             </div>
           ) : <div className="hidden md:block"></div>}
@@ -424,7 +425,7 @@ export function LeaderboardPage() {
                     <td className="px-5 py-3 w-12 text-center"><span className={`text-sm font-medium ${row.is_me ? 'text-indigo-600' : 'text-slate-400'}`}>{row.rank}</span></td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        {row.user.avatar_path ? <img src={`/static/${row.user.avatar_path}`} className="w-8 h-8 rounded-full object-cover border border-slate-200" /> : <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-medium text-xs">{row.user.first_name.slice(0, 1)}</div>}
+                        {row.user.avatar_path ? <img src={buildMediaUrl(row.user.avatar_path)} className="w-8 h-8 rounded-full object-cover border border-slate-200" /> : <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-medium text-xs">{row.user.first_name.slice(0, 1)}</div>}
                         <div>
                           <Link to={buildUserLink(row, isStaff)} className={`text-sm font-medium text-slate-800 hover:text-indigo-600 transition-colors ${row.is_me ? 'text-indigo-700' : ''}`}>
                             {row.user.first_name} {row.user.last_name}

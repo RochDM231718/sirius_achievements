@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import Chart from 'chart.js/auto'
 
@@ -12,8 +12,9 @@ import { UserDetailResponse, UserNote } from '@/types/user'
 import { openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { buildMediaUrl } from '@/utils/media'
 
-const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
+const RADAR_CATS = ['РЎРїРѕСЂС‚', 'РќР°СѓРєР°', 'РСЃРєСѓСЃСЃС‚РІРѕ', 'Р’РѕР»РѕРЅС‚С‘СЂСЃС‚РІРѕ', 'РҐР°РєР°С‚РѕРЅ', 'РџР°С‚СЂРёРѕС‚РёР·Рј', 'РџСЂРѕРµРєС‚С‹', 'Р”СЂСѓРіРѕРµ']
 const RADAR_COLORS = [
   { border: '#6366f1', bg: 'rgba(99,102,241,0.18)' },
   { border: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },
@@ -28,13 +29,13 @@ const RADAR_COLORS = [
 function achievementStatusLabel(status: string) {
   switch (status) {
     case AchievementStatus.APPROVED:
-      return 'Одобрено'
+      return 'РћРґРѕР±СЂРµРЅРѕ'
     case AchievementStatus.PENDING:
-      return 'На проверке'
+      return 'РќР° РїСЂРѕРІРµСЂРєРµ'
     case AchievementStatus.REJECTED:
-      return 'Отклонено'
+      return 'РћС‚РєР»РѕРЅРµРЅРѕ'
     case AchievementStatus.REVISION:
-      return 'На доработке'
+      return 'РќР° РґРѕСЂР°Р±РѕС‚РєРµ'
     default:
       return status
   }
@@ -46,12 +47,6 @@ function statusClass(status: string) {
   if (status === 'revision') return 'bg-yellow-100 text-yellow-800 border-yellow-300'
   if (status === 'rejected') return 'bg-red-50 text-red-700 border-red-200'
   return 'bg-slate-100 text-slate-500 border-slate-200'
-}
-
-function buildStaticUrl(path?: string | null) {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) return path
-  return `/static/${path.replace(/^\/+/, '')}`
 }
 
 export function UserDetailPage() {
@@ -106,7 +101,7 @@ export function UserDetailPage() {
 
   const load = async () => {
     if (!Number.isFinite(userId)) {
-      setError('Некорректный идентификатор пользователя.')
+      setError('РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.')
       setIsLoading(false)
       return
     }
@@ -129,7 +124,7 @@ export function UserDetailPage() {
       setResumeReason(resumeResponse.data.reason ?? null)
       setNotes(notesResponse.data.notes)
     } catch (loadError) {
-      setError(getErrorMessage(loadError, 'Не удалось загрузить карточку пользователя.'))
+      setError(getErrorMessage(loadError, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РєР°СЂС‚РѕС‡РєСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.'))
     } finally {
       setIsLoading(false)
     }
@@ -149,7 +144,7 @@ export function UserDetailPage() {
         labels: detail.chart_labels,
         datasets: [
           {
-            label: 'Баллы',
+            label: 'Р‘Р°Р»Р»С‹',
             data: detail.chart_points,
             borderColor: '#4f46e5',
             backgroundColor: 'rgba(79, 70, 229, 0.08)',
@@ -162,7 +157,7 @@ export function UserDetailPage() {
             pointHoverRadius: 6,
           },
           {
-            label: 'Документов',
+            label: 'Р”РѕРєСѓРјРµРЅС‚РѕРІ',
             data: detail.chart_counts,
             borderColor: '#10b981',
             backgroundColor: 'rgba(16, 185, 129, 0.06)',
@@ -237,7 +232,7 @@ export function UserDetailPage() {
             bodyFont: font,
             padding: 10,
             cornerRadius: 8,
-            callbacks: { label: (ctx) => ctx.parsed.r > 0 ? ` ${ctx.dataset.label}: ${ctx.parsed.r} б.` : '' },
+            callbacks: { label: (ctx) => ctx.parsed.r > 0 ? ` ${ctx.dataset.label}: ${ctx.parsed.r} Р±.` : '' },
           },
         },
         scales: {
@@ -263,9 +258,9 @@ export function UserDetailPage() {
     try {
       const { data } = await usersApi.updateRole(userId, role, educationLevel || undefined)
       setDetail((current) => (current ? { ...current, user: data.user } : current))
-      pushToast({ title: 'Роль обновлена', tone: 'success' })
+      pushToast({ title: 'Р РѕР»СЊ РѕР±РЅРѕРІР»РµРЅР°', tone: 'success' })
     } catch (saveError) {
-      setError(getErrorMessage(saveError, 'Не удалось обновить роль пользователя.'))
+      setError(getErrorMessage(saveError, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЂРѕР»СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.'))
     } finally {
       setIsSavingRole(false)
     }
@@ -278,9 +273,9 @@ export function UserDetailPage() {
       const { data } = await usersApi.setGpa(userId, gpa)
       setDetail((current) => current ? { ...current, user: data.user, gpa_bonus: data.bonus } : current)
       setGpa(data.gpa)
-      pushToast({ title: 'Средний балл обновлён', tone: 'success' })
+      pushToast({ title: 'РЎСЂРµРґРЅРёР№ Р±Р°Р»Р» РѕР±РЅРѕРІР»С‘РЅ', tone: 'success' })
     } catch (saveError) {
-      setError(getErrorMessage(saveError, 'Не удалось сохранить GPA.'))
+      setError(getErrorMessage(saveError, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ GPA.'))
     } finally {
       setIsSavingGpa(false)
     }
@@ -298,9 +293,9 @@ export function UserDetailPage() {
       setResumeText(data.resume ?? '')
       setCanGenerateResume(data.can_generate)
       setResumeReason(data.reason ?? null)
-      pushToast({ title: 'AI-сводка обновлена', tone: 'success' })
+      pushToast({ title: 'AI-СЃРІРѕРґРєР° РѕР±РЅРѕРІР»РµРЅР°', tone: 'success' })
     } catch (generationError) {
-      setError(getErrorMessage(generationError, 'Не удалось сгенерировать сводку.'))
+      setError(getErrorMessage(generationError, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ СЃРІРѕРґРєСѓ.'))
     } finally {
       setIsGeneratingResume(false)
     }
@@ -320,7 +315,7 @@ export function UserDetailPage() {
       link.remove()
       URL.revokeObjectURL(href)
     } catch (exportError) {
-      setError(getErrorMessage(exportError, 'Не удалось выгрузить PDF.'))
+      setError(getErrorMessage(exportError, 'РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РіСЂСѓР·РёС‚СЊ PDF.'))
     } finally {
       setIsExportingPdf(false)
     }
@@ -346,7 +341,7 @@ export function UserDetailPage() {
       const isPdf = blob.type === 'application/pdf' || /\.pdf/i.test(note.file_path ?? '')
       setNotePreview({ url, type: isPdf ? 'pdf' : 'image', noteId: note.id })
     } catch {
-      setError('Не удалось загрузить файл заметки.')
+      setError('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ С„Р°Р№Р» Р·Р°РјРµС‚РєРё.')
     } finally {
       setNotePreviewLoading(false)
     }
@@ -366,7 +361,7 @@ export function UserDetailPage() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch {
-      setError('Не удалось скачать файл.')
+      setError('РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ С„Р°Р№Р».')
     }
   }
 
@@ -379,44 +374,44 @@ export function UserDetailPage() {
       setNoteText('')
       setNoteFile(null)
       if (noteFileInputRef.current) noteFileInputRef.current.value = ''
-      pushToast({ title: 'Заметка добавлена', tone: 'success' })
+      pushToast({ title: 'Р—Р°РјРµС‚РєР° РґРѕР±Р°РІР»РµРЅР°', tone: 'success' })
     } catch (err) {
-      setError(getErrorMessage(err, 'Не удалось добавить заметку.'))
+      setError(getErrorMessage(err, 'РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ Р·Р°РјРµС‚РєСѓ.'))
     } finally {
       setIsAddingNote(false)
     }
   }
 
   const handleDeleteNote = async (noteId: number) => {
-    if (!window.confirm('Удалить заметку?')) return
+    if (!window.confirm('РЈРґР°Р»РёС‚СЊ Р·Р°РјРµС‚РєСѓ?')) return
     try {
       await usersApi.deleteNote(userId, noteId)
       setNotes((prev) => prev.filter((n) => n.id !== noteId))
-      pushToast({ title: 'Заметка удалена', tone: 'success' })
+      pushToast({ title: 'Р—Р°РјРµС‚РєР° СѓРґР°Р»РµРЅР°', tone: 'success' })
     } catch (err) {
-      setError(getErrorMessage(err, 'Не удалось удалить заметку.'))
+      setError(getErrorMessage(err, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ Р·Р°РјРµС‚РєСѓ.'))
     }
   }
 
   const handleDeleteUser = async () => {
-    if (!detail || !window.confirm(`Удалить пользователя ${detail.user.first_name} ${detail.user.last_name}?`)) return
+    if (!detail || !window.confirm(`РЈРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ ${detail.user.first_name} ${detail.user.last_name}?`)) return
     try {
       await usersApi.delete(userId)
-      pushToast({ title: 'Пользователь удалён', tone: 'success' })
+      pushToast({ title: 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ СѓРґР°Р»С‘РЅ', tone: 'success' })
       navigate('/users')
     } catch (deleteError) {
-      setError(getErrorMessage(deleteError, 'Не удалось удалить пользователя.'))
+      setError(getErrorMessage(deleteError, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.'))
     }
   }
 
   const handleDeleteDocument = async (documentId: number, title: string) => {
-    if (!window.confirm(`Удалить документ «${title}»?`)) return
+    if (!window.confirm(`РЈРґР°Р»РёС‚СЊ РґРѕРєСѓРјРµРЅС‚ В«${title}В»?`)) return
     try {
       await documentsApi.delete(documentId)
-      pushToast({ title: 'Документ удалён', tone: 'success' })
+      pushToast({ title: 'Р”РѕРєСѓРјРµРЅС‚ СѓРґР°Р»С‘РЅ', tone: 'success' })
       await load()
     } catch (deleteError) {
-      setError(getErrorMessage(deleteError, 'Не удалось удалить документ.'))
+      setError(getErrorMessage(deleteError, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РґРѕРєСѓРјРµРЅС‚.'))
     }
   }
 
@@ -426,11 +421,11 @@ export function UserDetailPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Карточка пользователя</h2>
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">РљР°СЂС‚РѕС‡РєР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ</h2>
         <div className="flex items-center gap-3">
-          {detail.user.role === 'STUDENT' && detail.user.status === 'active' ? <Link to={`/students/${detail.user.id}`} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">Публичный профиль</Link> : null}
+          {detail.user.role === 'STUDENT' && detail.user.status === 'active' ? <Link to={`/students/${detail.user.id}`} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">РџСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ</Link> : null}
           <button type="button" onClick={() => void handleExportPdf()} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">{isExportingPdf ? 'PDF...' : 'PDF'}</button>
-          <Link to={backUrl} className="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">Назад</Link>
+          <Link to={backUrl} className="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">РќР°Р·Р°Рґ</Link>
         </div>
       </div>
 
@@ -440,7 +435,7 @@ export function UserDetailPage() {
         <div className={`space-y-6 ${isGuestOrPending && !isAdminViewer ? 'max-w-xl mx-auto w-full' : ''}`}>
           <div className="bg-surface rounded-xl border border-slate-200 p-6 text-center flex flex-col items-center shadow-sm">
             <div className="h-28 w-28 mb-4 relative">
-              {detail.user.avatar_path ? <img className="h-28 w-28 rounded-full object-cover border border-slate-200" src={buildStaticUrl(detail.user.avatar_path)} alt="Avatar" /> : <div className="h-28 w-28 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 text-3xl font-bold">{detail.user.first_name.slice(0, 1)}{detail.user.last_name.slice(0, 1)}</div>}
+              {detail.user.avatar_path ? <img className="h-28 w-28 rounded-full object-cover border border-slate-200" src={buildMediaUrl(detail.user.avatar_path)} alt="Avatar" /> : <div className="h-28 w-28 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 text-3xl font-bold">{detail.user.first_name.slice(0, 1)}{detail.user.last_name.slice(0, 1)}</div>}
             </div>
             <h1 className="text-lg font-bold text-slate-900 leading-tight">{detail.user.first_name} {detail.user.last_name}</h1>
             <p className="text-[10px] text-slate-400 mb-1">ID: {detail.user.id}</p>
@@ -452,60 +447,60 @@ export function UserDetailPage() {
 
             {currentUser?.role === 'SUPER_ADMIN' && currentUser.id !== detail.user.id ? (
               <div className="w-full pt-4 border-t border-slate-100">
-                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 text-left">Изменить роль</label>
+                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 text-left">РР·РјРµРЅРёС‚СЊ СЂРѕР»СЊ</label>
                 <div className="flex gap-2">
                   <select value={role} onChange={(event) => setRole(event.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
                     {detail.roles.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
                   <button type="button" onClick={() => void handleRoleSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingRole}>OK</button>
                 </div>
-                {role === 'MODERATOR' ? <div className="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100"><label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Зона проверки модератора</label><select value={educationLevel} onChange={(event) => setEducationLevel(event.target.value)} className="w-full px-3 py-2 bg-surface border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"><option value="">Глобальный (Все направления)</option>{detail.education_levels.map((item) => <option key={item} value={item}>Только {item}</option>)}</select></div> : null}
+                {role === 'MODERATOR' ? <div className="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100"><label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Р—РѕРЅР° РїСЂРѕРІРµСЂРєРё РјРѕРґРµСЂР°С‚РѕСЂР°</label><select value={educationLevel} onChange={(event) => setEducationLevel(event.target.value)} className="w-full px-3 py-2 bg-surface border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"><option value="">Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ (Р’СЃРµ РЅР°РїСЂР°РІР»РµРЅРёСЏ)</option>{detail.education_levels.map((item) => <option key={item} value={item}>РўРѕР»СЊРєРѕ {item}</option>)}</select></div> : null}
               </div>
             ) : null}
           </div>
 
           <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50"><h3 className="text-sm font-bold text-slate-700">Информация</h3></div>
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50"><h3 className="text-sm font-bold text-slate-700">РРЅС„РѕСЂРјР°С†РёСЏ</h3></div>
             <div className="p-5 space-y-3 text-sm">
-              {detail.user.education_level ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Обучение / Зона</span><span className="font-medium text-slate-800">{detail.user.education_level}</span></div> : null}
-              <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Курс</span><span className="font-medium text-slate-800">{detail.user.course ? `${detail.user.course} курс` : 'Не указан'}</span></div>
-              {detail.user.study_group ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Группа</span><span className="font-medium text-slate-800">{detail.user.study_group}</span></div> : null}
-              <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Телефон</span><span className="font-medium text-slate-800">{detail.user.phone_number || 'Не указан'}</span></div>
-              <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Регистрация</span><span className="font-medium text-slate-800">{detail.user.created_at ? new Date(detail.user.created_at).toLocaleDateString('ru-RU') : 'Дата не указана'}</span></div>
+              {detail.user.education_level ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">РћР±СѓС‡РµРЅРёРµ / Р—РѕРЅР°</span><span className="font-medium text-slate-800">{detail.user.education_level}</span></div> : null}
+              <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">РљСѓСЂСЃ</span><span className="font-medium text-slate-800">{detail.user.course ? `${detail.user.course} РєСѓСЂСЃ` : 'РќРµ СѓРєР°Р·Р°РЅ'}</span></div>
+              {detail.user.study_group ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Р“СЂСѓРїРїР°</span><span className="font-medium text-slate-800">{detail.user.study_group}</span></div> : null}
+              <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">РўРµР»РµС„РѕРЅ</span><span className="font-medium text-slate-800">{detail.user.phone_number || 'РќРµ СѓРєР°Р·Р°РЅ'}</span></div>
+              <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Р РµРіРёСЃС‚СЂР°С†РёСЏ</span><span className="font-medium text-slate-800">{detail.user.created_at ? new Date(detail.user.created_at).toLocaleDateString('ru-RU') : 'Р”Р°С‚Р° РЅРµ СѓРєР°Р·Р°РЅР°'}</span></div>
             </div>
           </div>
 
-          {isAdminViewer && detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm"><div className="px-5 py-3 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Средний балл сессии</h3></div><div className="p-5"><div className="flex gap-2"><input type="text" value={gpa} onChange={(event) => setGpa(event.target.value)} placeholder="4.5" className="flex-1 px-3 py-2 bg-surface border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" /><button type="button" onClick={() => void handleGpaSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingGpa}>Сохранить</button></div><p className="text-[10px] text-slate-400 mt-1.5">Оценка от 2.0 до 5.0, конвертируется в бонусные баллы рейтинга</p></div></div> : null}
+          {isAdminViewer && detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm"><div className="px-5 py-3 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">РЎСЂРµРґРЅРёР№ Р±Р°Р»Р» СЃРµСЃСЃРёРё</h3></div><div className="p-5"><div className="flex gap-2"><input type="text" value={gpa} onChange={(event) => setGpa(event.target.value)} placeholder="4.5" className="flex-1 px-3 py-2 bg-surface border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" /><button type="button" onClick={() => void handleGpaSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingGpa}>РЎРѕС…СЂР°РЅРёС‚СЊ</button></div><p className="text-[10px] text-slate-400 mt-1.5">РћС†РµРЅРєР° РѕС‚ 2.0 РґРѕ 5.0, РєРѕРЅРІРµСЂС‚РёСЂСѓРµС‚СЃСЏ РІ Р±РѕРЅСѓСЃРЅС‹Рµ Р±Р°Р»Р»С‹ СЂРµР№С‚РёРЅРіР°</p></div></div> : null}
         </div>
 
         {!isGuestOrPending || isAdminViewer ? <div className="lg:col-span-2 space-y-6">
-          {!isGuestOrPending ? <div className="grid grid-cols-2 gap-4"><div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Документов в текущем сезоне</div><div className="text-2xl font-semibold text-slate-800 mt-1">{detail.total_docs}</div></div>{detail.rank ? <div className="bg-surface p-5 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm"><div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Текущее место</div><div className="text-2xl font-bold text-indigo-600 mt-1">#{detail.rank}</div></div><div className="w-px h-8 bg-slate-200" /><div className="text-right"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Баллы</div><div className="text-2xl font-bold text-indigo-600 mt-1">{detail.total_points}</div></div></div> : null}</div> : null}
+          {!isGuestOrPending ? <div className="grid grid-cols-2 gap-4"><div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Р”РѕРєСѓРјРµРЅС‚РѕРІ РІ С‚РµРєСѓС‰РµРј СЃРµР·РѕРЅРµ</div><div className="text-2xl font-semibold text-slate-800 mt-1">{detail.total_docs}</div></div>{detail.rank ? <div className="bg-surface p-5 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm"><div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">РўРµРєСѓС‰РµРµ РјРµСЃС‚Рѕ</div><div className="text-2xl font-bold text-indigo-600 mt-1">#{detail.rank}</div></div><div className="w-px h-8 bg-slate-200" /><div className="text-right"><div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Р‘Р°Р»Р»С‹</div><div className="text-2xl font-bold text-indigo-600 mt-1">{detail.total_points}</div></div></div> : null}</div> : null}
 
           <div className="bg-indigo-50/60 p-5 sm:p-6 rounded-xl border border-indigo-100 shadow-sm">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-              <div><h3 className="text-base font-bold text-indigo-900">AI-сводка профиля</h3><p className="text-xs text-indigo-700/70 mt-1">Быстрый анализ всех подтверждённых достижений для удобства проверяющего.</p></div>
-              <button type="button" onClick={() => void handleGenerateResume()} disabled={isGeneratingResume || !canGenerateResume} className="shrink-0 px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">{isGeneratingResume ? 'Генерация...' : resumeText ? 'Обновить сводку' : 'Сгенерировать сводку'}</button>
+              <div><h3 className="text-base font-bold text-indigo-900">AI-СЃРІРѕРґРєР° РїСЂРѕС„РёР»СЏ</h3><p className="text-xs text-indigo-700/70 mt-1">Р‘С‹СЃС‚СЂС‹Р№ Р°РЅР°Р»РёР· РІСЃРµС… РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹С… РґРѕСЃС‚РёР¶РµРЅРёР№ РґР»СЏ СѓРґРѕР±СЃС‚РІР° РїСЂРѕРІРµСЂСЏСЋС‰РµРіРѕ.</p></div>
+              <button type="button" onClick={() => void handleGenerateResume()} disabled={isGeneratingResume || !canGenerateResume} className="shrink-0 px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">{isGeneratingResume ? 'Р“РµРЅРµСЂР°С†РёСЏ...' : resumeText ? 'РћР±РЅРѕРІРёС‚СЊ СЃРІРѕРґРєСѓ' : 'РЎРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ СЃРІРѕРґРєСѓ'}</button>
             </div>
             {!canGenerateResume && resumeReason ? <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">{resumeReason}</p> : null}
-            {resumeText ? <div className="bg-surface border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">{resumeText}</div> : <div className="text-center py-6 bg-surface/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">Сводка ещё не сгенерирована. Нажмите кнопку, чтобы ИИ проанализировал грамоты этого студента.</div>}
+            {resumeText ? <div className="bg-surface border border-indigo-100/80 rounded-lg p-4 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">{resumeText}</div> : <div className="text-center py-6 bg-surface/50 border border-indigo-100 border-dashed rounded-lg text-indigo-400 text-xs mt-2">РЎРІРѕРґРєР° РµС‰С‘ РЅРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅР°. РќР°Р¶РјРёС‚Рµ РєРЅРѕРїРєСѓ, С‡С‚РѕР±С‹ РР РїСЂРѕР°РЅР°Р»РёР·РёСЂРѕРІР°Р» РіСЂР°РјРѕС‚С‹ СЌС‚РѕРіРѕ СЃС‚СѓРґРµРЅС‚Р°.</div>}
           </div>
 
-          {detail.season_history.length ? <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden text-white shadow-md relative"><div className="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center relative z-10"><h3 className="text-sm font-bold text-white">Зал славы (Архив сезонов)</h3></div><div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">{detail.season_history.map((item) => <div key={item.id} className="bg-surface/10 rounded-lg p-4 flex justify-between items-center border border-white/5 hover:bg-surface/20 transition-colors"><div><div className="text-xs font-bold text-slate-200">{item.season_name}</div><div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Место: <span className="text-white text-sm">#{item.rank}</span></div></div><div className="text-xl font-black text-yellow-400">{item.points} <span className="text-[10px] font-normal text-slate-400">б.</span></div></div>)}</div></div> : null}
+          {detail.season_history.length ? <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden text-white shadow-md relative"><div className="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center relative z-10"><h3 className="text-sm font-bold text-white">Р—Р°Р» СЃР»Р°РІС‹ (РђСЂС…РёРІ СЃРµР·РѕРЅРѕРІ)</h3></div><div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">{detail.season_history.map((item) => <div key={item.id} className="bg-surface/10 rounded-lg p-4 flex justify-between items-center border border-white/5 hover:bg-surface/20 transition-colors"><div><div className="text-xs font-bold text-slate-200">{item.season_name}</div><div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">РњРµСЃС‚Рѕ: <span className="text-white text-sm">#{item.rank}</span></div></div><div className="text-xl font-black text-yellow-400">{item.points} <span className="text-[10px] font-normal text-slate-400">Р±.</span></div></div>)}</div></div> : null}
 
           <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><h3 className="text-sm font-bold text-slate-700">Документы текущего сезона</h3><button type="button" onClick={() => void handleDeleteUser()} className="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">Удалить пользователя</button></div>
-            {detail.achievements.length ? <ul className="divide-y divide-slate-100">{detail.achievements.map((item) => <li key={item.id} className="p-4 hover:bg-slate-50 flex items-center justify-between transition-colors"><div className="flex items-center flex-1 min-w-0 pr-4"><div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mr-4 shrink-0 border border-indigo-100"><button type="button" onClick={() => openDocumentPreview(item.id, item.file_path)}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button></div><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-800 truncate">{item.title}</p><p className="text-xs text-slate-500 mt-0.5 flex items-center"><span className="mr-2">{item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : 'Дата не указана'}</span>{item.rejection_reason ? <span className="text-red-500 truncate max-w-[200px]">• {item.rejection_reason}</span> : null}</p></div></div><div className="flex items-center gap-3 shrink-0"><span className={`hidden sm:inline-flex px-2 py-0.5 text-[10px] rounded font-medium border ${statusClass(item.status)}`}>{achievementStatusLabel(item.status)}</span><button type="button" onClick={() => void handleDeleteDocument(item.id, item.title)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Удалить"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></li>)}</ul> : <div className="p-10 text-center flex flex-col items-center"><p className="text-sm text-slate-500">Достижений пока нет.</p></div>}
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><h3 className="text-sm font-bold text-slate-700">Р”РѕРєСѓРјРµРЅС‚С‹ С‚РµРєСѓС‰РµРіРѕ СЃРµР·РѕРЅР°</h3><button type="button" onClick={() => void handleDeleteUser()} className="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">РЈРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ</button></div>
+            {detail.achievements.length ? <ul className="divide-y divide-slate-100">{detail.achievements.map((item) => <li key={item.id} className="p-4 hover:bg-slate-50 flex items-center justify-between transition-colors"><div className="flex items-center flex-1 min-w-0 pr-4"><div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mr-4 shrink-0 border border-indigo-100"><button type="button" onClick={() => openDocumentPreview(item.id, item.file_path)}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button></div><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-800 truncate">{item.title}</p><p className="text-xs text-slate-500 mt-0.5 flex items-center"><span className="mr-2">{item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : 'Р”Р°С‚Р° РЅРµ СѓРєР°Р·Р°РЅР°'}</span>{item.rejection_reason ? <span className="text-red-500 truncate max-w-[200px]">вЂў {item.rejection_reason}</span> : null}</p></div></div><div className="flex items-center gap-3 shrink-0"><span className={`hidden sm:inline-flex px-2 py-0.5 text-[10px] rounded font-medium border ${statusClass(item.status)}`}>{achievementStatusLabel(item.status)}</span><button type="button" onClick={() => void handleDeleteDocument(item.id, item.title)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="РЈРґР°Р»РёС‚СЊ"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></li>)}</ul> : <div className="p-10 text-center flex flex-col items-center"><p className="text-sm text-slate-500">Р”РѕСЃС‚РёР¶РµРЅРёР№ РїРѕРєР° РЅРµС‚.</p></div>}
           </div>
 
-          {detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>}</div> : null}
+          {detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Р”РёРЅР°РјРёРєР° РґРѕСЃС‚РёР¶РµРЅРёР№</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">РќРµС‚ РѕРґРѕР±СЂРµРЅРЅС‹С… РґРѕСЃС‚РёР¶РµРЅРёР№ РґР»СЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ РіСЂР°С„РёРєР°</div>}</div> : null}
 
           <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
               <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-              <h3 className="text-sm font-bold text-slate-700">Служебные заметки</h3>
+              <h3 className="text-sm font-bold text-slate-700">РЎР»СѓР¶РµР±РЅС‹Рµ Р·Р°РјРµС‚РєРё</h3>
               <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-amber-600 font-medium bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wider">
                 <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                Только для сотрудников
+                РўРѕР»СЊРєРѕ РґР»СЏ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ
               </span>
             </div>
 
@@ -514,19 +509,19 @@ export function UserDetailPage() {
                 <textarea
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="Опишите нарушение или причину заметки..."
+                  placeholder="РћРїРёС€РёС‚Рµ РЅР°СЂСѓС€РµРЅРёРµ РёР»Рё РїСЂРёС‡РёРЅСѓ Р·Р°РјРµС‚РєРё..."
                   rows={3}
                   className="w-full px-3 py-2 bg-surface border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none resize-none transition-all"
                 />
                 <div className="flex items-center gap-2 flex-wrap">
                   <label className="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 bg-surface border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
                     <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                    {noteFile ? <span className="max-w-[140px] truncate text-indigo-600 font-medium">{noteFile.name}</span> : 'Прикрепить файл'}
+                    {noteFile ? <span className="max-w-[140px] truncate text-indigo-600 font-medium">{noteFile.name}</span> : 'РџСЂРёРєСЂРµРїРёС‚СЊ С„Р°Р№Р»'}
                     <input ref={noteFileInputRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xlsx,.pptx" onChange={(e) => setNoteFile(e.target.files?.[0] ?? null)} />
                   </label>
                   {noteFile && (
                     <button type="button" onClick={() => { setNoteFile(null); if (noteFileInputRef.current) noteFileInputRef.current.value = '' }} className="text-xs text-slate-400 hover:text-red-500 transition-colors">
-                      Убрать
+                      РЈР±СЂР°С‚СЊ
                     </button>
                   )}
                   <button
@@ -535,7 +530,7 @@ export function UserDetailPage() {
                     disabled={isAddingNote || !noteText.trim()}
                     className="ml-auto px-4 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isAddingNote ? 'Сохранение...' : 'Добавить заметку'}
+                    {isAddingNote ? 'РЎРѕС…СЂР°РЅРµРЅРёРµ...' : 'Р”РѕР±Р°РІРёС‚СЊ Р·Р°РјРµС‚РєСѓ'}
                   </button>
                 </div>
               </div>
@@ -550,29 +545,29 @@ export function UserDetailPage() {
                           <>
                             <button type="button" onClick={() => void handleOpenNotePreview(note)} disabled={notePreviewLoading} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors disabled:opacity-50">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                              {notePreviewLoading ? 'Загрузка...' : 'Просмотр'}
+                              {notePreviewLoading ? 'Р—Р°РіСЂСѓР·РєР°...' : 'РџСЂРѕСЃРјРѕС‚СЂ'}
                             </button>
                             <button type="button" onClick={() => void handleDownloadNoteFile(note)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                              Скачать
+                              РЎРєР°С‡Р°С‚СЊ
                             </button>
                           </>
                         )}
                         <button type="button" onClick={() => void handleDeleteNote(note.id)} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 transition-colors ml-auto">
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          Удалить
+                          РЈРґР°Р»РёС‚СЊ
                         </button>
                       </div>
                       <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-400">
-                        <span>{note.author ? `${note.author.first_name} ${note.author.last_name}` : 'Неизвестно'}</span>
-                        <span>·</span>
+                        <span>{note.author ? `${note.author.first_name} ${note.author.last_name}` : 'РќРµРёР·РІРµСЃС‚РЅРѕ'}</span>
+                        <span>В·</span>
                         <span>{note.created_at ? new Date(note.created_at).toLocaleString('ru-RU') : ''}</span>
                       </div>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-slate-400 text-center py-2">Заметок пока нет</p>
+                <p className="text-xs text-slate-400 text-center py-2">Р—Р°РјРµС‚РѕРє РїРѕРєР° РЅРµС‚</p>
               )}
             </div>
           </div>
@@ -588,7 +583,7 @@ export function UserDetailPage() {
             if (!activeCats.length) return null
             return (
               <div className="bg-surface rounded-xl border border-slate-200 p-5">
-                <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
+                <h3 className="text-sm font-semibold text-slate-700 mb-4">РџРѕСЂС‚СЂРµС‚ РґРѕСЃС‚РёР¶РµРЅРёР№</h3>
                 <div className="h-64">
                   <canvas ref={radarChartRef} />
                 </div>
@@ -612,7 +607,7 @@ export function UserDetailPage() {
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
                         {cat}
                         <span className="text-[10px] font-semibold ml-0.5" style={{ color: isHidden ? '#94a3b8' : color.border }}>
-                          {pointsMap[cat]} б.
+                          {pointsMap[cat]} Р±.
                         </span>
                       </button>
                     )
@@ -628,7 +623,7 @@ export function UserDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closeNotePreview}>
           <div className="relative w-full max-w-3xl max-h-[90vh] bg-surface dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Файл заметки</span>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Р¤Р°Р№Р» Р·Р°РјРµС‚РєРё</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -636,7 +631,7 @@ export function UserDetailPage() {
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 bg-surface dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  Скачать
+                  РЎРєР°С‡Р°С‚СЊ
                 </button>
                 <button type="button" onClick={closeNotePreview} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -647,7 +642,7 @@ export function UserDetailPage() {
               {notePreview.type === 'pdf' ? (
                 <iframe src={notePreview.url} className="w-full h-full min-h-[500px] border-0 bg-surface" title="PDF" allow="fullscreen" />
               ) : (
-                <img src={notePreview.url} alt="Файл" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
+                <img src={notePreview.url} alt="Р¤Р°Р№Р»" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
               )}
             </div>
           </div>
@@ -656,3 +651,4 @@ export function UserDetailPage() {
     </div>
   )
 }
+

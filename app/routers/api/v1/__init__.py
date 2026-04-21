@@ -5,6 +5,7 @@ from app.routers.api.v1.auth import router as auth_router
 from app.routers.api.v1.dashboard import router as dashboard_router
 from app.routers.api.v1.documents import router as documents_router
 from app.routers.api.v1.leaderboard import router as leaderboard_router
+from app.routers.api.v1.media import router as media_router
 from app.routers.api.v1.moderation import router as moderation_router
 from app.routers.api.v1.moderation_support import router as moderation_support_router
 from app.routers.api.v1.my_work import router as my_work_router
@@ -22,6 +23,7 @@ router.include_router(profile_router)
 router.include_router(notifications_router)
 router.include_router(achievements_router)
 router.include_router(leaderboard_router)
+router.include_router(media_router)
 router.include_router(users_router)
 router.include_router(user_notes_router)
 router.include_router(documents_router)

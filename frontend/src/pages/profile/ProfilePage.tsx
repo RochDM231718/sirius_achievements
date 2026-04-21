@@ -12,17 +12,12 @@ import { useToast } from '@/hooks/useToast'
 import { UserRole } from '@/types/enums'
 import { isImageFile, isPdfFile } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
+import { buildMediaUrl } from '@/utils/media'
 
 Chart.register(...registerables)
 
 function stripEmoji(value: string): string {
   return value.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s{2,}/g, ' ')
-}
-
-function buildStaticUrl(path?: string | null) {
-  if (!path) return ''
-  if (path.startsWith('http') || path.startsWith('/')) return path
-  return `/static/${path.replace(/^\/+/, '')}`
 }
 
 function docStatusBadge(status: string, points?: number) {
@@ -141,7 +136,7 @@ export function ProfilePage() {
       setLastName(data.user.last_name)
       setPhoneNumber(data.user.phone_number ?? '')
       revokeAvatarBlobUrl()
-      setAvatarPreviewUrl(data.user.avatar_path ? buildStaticUrl(data.user.avatar_path) + '?t=' + Date.now() : null)
+      setAvatarPreviewUrl(data.user.avatar_path ? buildMediaUrl(data.user.avatar_path, `${Date.now()}`) : null)
       setResumeText(data.user.resume_text ?? '')
       setCanGenerate(data.can_generate)
       setGenerateReason(data.generate_reason ?? '')
@@ -451,7 +446,7 @@ export function ProfilePage() {
       setCurrentUser(data.user)
       setProfile((current) => (current ? { ...current, user: data.user } : current))
       revokeAvatarBlobUrl()
-      setAvatarPreviewUrl(data.user.avatar_path ? buildStaticUrl(data.user.avatar_path) + '?t=' + Date.now() : null)
+      setAvatarPreviewUrl(data.user.avatar_path ? buildMediaUrl(data.user.avatar_path, `${Date.now()}`) : null)
       await refreshProfile()
       setCroppedFile(null)
       pushToast({ title: 'Профиль обновлён', tone: 'success' })
