@@ -5,6 +5,7 @@ import { moderationApi } from '@/api/moderation'
 import { usersApi } from '@/api/users'
 import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
 import { StaffSectionHeader } from '@/components/staff/StaffSectionHeader'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
@@ -129,17 +130,25 @@ export function UsersPage() {
     }
   }
 
-  const handleDelete = async (targetUser: User) => {
-    if (!window.confirm(`Удалить пользователя ${targetUser.first_name} ${targetUser.last_name}?`)) {
-      return
-    }
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
+  const handleDelete = (targetUser: User) => {
+    setDeleteTarget(targetUser)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
     try {
-      await usersApi.delete(targetUser.id)
+      await usersApi.delete(deleteTarget.id)
       pushToast({ title: 'Пользователь удалён', tone: 'success' })
+      setDeleteTarget(null)
       await loadUsers()
     } catch (deleteError) {
       setError(getErrorMessage(deleteError, 'Не удалось удалить пользователя.'))
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -368,7 +377,7 @@ export function UsersPage() {
                         </Link>
                         <button
                           type="button"
-                          onClick={() => void handleDelete(item)}
+                          onClick={() => handleDelete(item)}
                           className="cursor-pointer text-xs font-medium text-slate-400 transition-colors hover:text-red-600"
                         >
                           Удалить
@@ -394,6 +403,22 @@ export function UsersPage() {
         )}
       </div>
 
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Удалить пользователя?"
+        message={
+          deleteTarget ? (
+            <>
+              Будет удалён аккаунт <strong>{deleteTarget.first_name} {deleteTarget.last_name}</strong> и все связанные с ним данные. Это действие нельзя отменить.
+            </>
+          ) : null
+        }
+        confirmLabel="Удалить"
+        tone="danger"
+        busy={deleteBusy}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => { if (!deleteBusy) setDeleteTarget(null) }}
+      />
     </div>
   )
 }

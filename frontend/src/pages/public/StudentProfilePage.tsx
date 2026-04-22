@@ -1,4 +1,4 @@
-﻿import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Chart from 'chart.js/auto'
 
@@ -14,14 +14,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   static getDerivedStateFromError() { return { hasError: true } }
   render() {
     if (this.state.hasError) {
-      return <div className="min-h-screen flex items-center justify-center"><p className="text-red-500">РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЃС‚СЂР°РЅРёС†С‹. РџРѕРїСЂРѕР±СѓР№С‚Рµ РѕР±РЅРѕРІРёС‚СЊ.</p></div>
+      return <div className="min-h-screen flex items-center justify-center"><p className="text-red-500">Ошибка загрузки страницы. Попробуйте обновить.</p></div>
     }
     return this.props.children
   }
 }
 
 function formatDate(dateStr?: string | null) {
-  if (!dateStr) return 'вЂ”'
+  if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('ru-RU')
 }
 
@@ -30,7 +30,7 @@ function isPdf(url?: string | null) {
   return /\.pdf$/i.test(url ?? '')
 }
 
-const RADAR_CATS = ['РЎРїРѕСЂС‚', 'РќР°СѓРєР°', 'РСЃРєСѓСЃСЃС‚РІРѕ', 'Р’РѕР»РѕРЅС‚С‘СЂСЃС‚РІРѕ', 'РҐР°РєР°С‚РѕРЅ', 'РџР°С‚СЂРёРѕС‚РёР·Рј', 'РџСЂРѕРµРєС‚С‹', 'Р”СЂСѓРіРѕРµ']
+const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
 const RADAR_COLORS = [
   { border: '#6366f1', bg: 'rgba(99,102,241,0.18)' },
   { border: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },
@@ -94,7 +94,7 @@ function StudentProfilePageInner() {
   useEffect(() => {
     const load = async () => {
       if (!Number.isFinite(studentId)) {
-        setError('РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СЃС‚СѓРґРµРЅС‚Р°.')
+        setError('Некорректный идентификатор студента.')
         setIsLoading(false)
         return
       }
@@ -104,7 +104,7 @@ function StudentProfilePageInner() {
         const response = await publicApi.getStudent(studentId)
         setData(response.data)
       } catch (loadError) {
-        setError(getErrorMessage(loadError, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РїСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ.'))
+        setError(getErrorMessage(loadError, 'Не удалось загрузить публичный профиль.'))
       } finally {
         setIsLoading(false)
       }
@@ -125,7 +125,7 @@ function StudentProfilePageInner() {
           labels: data.chart_labels,
           datasets: [
             {
-              label: 'Р‘Р°Р»Р»С‹ (РЅР°РєРѕРїРёС‚РµР»СЊРЅРѕ)',
+              label: 'Баллы (накопительно)',
               data: data.chart_cumulative,
               borderColor: '#6366f1',
               backgroundColor: 'rgba(99, 102, 241, 0.06)',
@@ -140,7 +140,7 @@ function StudentProfilePageInner() {
               yAxisID: 'y',
             },
             {
-              label: 'Р‘Р°Р»Р»С‹ Р·Р° РјРµСЃСЏС†',
+              label: 'Баллы за месяц',
               data: data.chart_points,
               borderColor: '#a78bfa',
               backgroundColor: 'rgba(167, 139, 250, 0.06)',
@@ -156,7 +156,7 @@ function StudentProfilePageInner() {
               yAxisID: 'y',
             },
             {
-              label: 'Р—Р°РіСЂСѓР·РєРё',
+              label: 'Загрузки',
               data: data.chart_uploads,
               borderColor: '#10b981',
               backgroundColor: 'rgba(16, 185, 129, 0.06)',
@@ -180,8 +180,8 @@ function StudentProfilePageInner() {
             tooltip: { backgroundColor: '#1e293b', titleFont: { ...font, weight: 'bold' }, bodyFont: font, padding: 10, cornerRadius: 8, boxPadding: 4 },
           },
           scales: {
-            y: { beginAtZero: true, position: 'left', grid: { color: '#f1f5f9' }, ticks: { font, color: '#94a3b8' }, title: { display: true, text: 'Р‘Р°Р»Р»С‹', font: { ...font, size: 9 }, color: '#94a3b8' } },
-            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { font, color: '#10b981', stepSize: 1 }, title: { display: true, text: 'Р”РѕРєСѓРјРµРЅС‚С‹', font: { ...font, size: 9 }, color: '#10b981' } },
+            y: { beginAtZero: true, position: 'left', grid: { color: '#f1f5f9' }, ticks: { font, color: '#94a3b8' }, title: { display: true, text: 'Баллы', font: { ...font, size: 9 }, color: '#94a3b8' } },
+            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { font, color: '#10b981', stepSize: 1 }, title: { display: true, text: 'Документы', font: { ...font, size: 9 }, color: '#10b981' } },
             x: { grid: { display: false }, ticks: { font, color: '#64748b' } },
           },
         },
@@ -194,7 +194,7 @@ function StudentProfilePageInner() {
     }
   }, [data])
 
-  // Radar chart вЂ” rebuild when data or hiddenCats changes
+  // Radar chart — rebuild when data or hiddenCats changes
   useEffect(() => {
     if (!radarChartRef.current || !data?.achievements?.length) return
     const pointsMap: Record<string, number> = {}
@@ -241,7 +241,7 @@ function StudentProfilePageInner() {
             bodyFont: font,
             padding: 10,
             cornerRadius: 8,
-            callbacks: { label: (ctx) => ctx.parsed.r > 0 ? ` ${ctx.dataset.label}: ${ctx.parsed.r} Р±.` : '' },
+            callbacks: { label: (ctx) => ctx.parsed.r > 0 ? ` ${ctx.dataset.label}: ${ctx.parsed.r} б.` : '' },
           },
         },
         scales: {
@@ -262,7 +262,7 @@ function StudentProfilePageInner() {
   }, [data, hiddenCats])
 
   const handleBack = () => {
-    if (document.referrer && document.referrer.indexOf(location.hostname) !== -1) {
+    if (window.history.length > 1) {
       navigate(-1)
     } else {
       navigate('/dashboard')
@@ -280,9 +280,9 @@ function StudentProfilePageInner() {
       <div className="flex items-center justify-between mb-6">
         <button type="button" onClick={handleBack} className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700">
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-          РќР°Р·Р°Рґ
+          Назад
         </button>
-        <span className="text-xs text-slate-400">РџСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ</span>
+        <span className="text-xs text-slate-400">Публичный профиль</span>
       </div>
 
       {/* Profile card */}
@@ -290,7 +290,7 @@ function StudentProfilePageInner() {
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
           <div className="flex-shrink-0">
             {data.student.avatar_path ? (
-              <img src={buildMediaUrl(data.student.avatar_path)} alt="РђРІР°С‚Р°СЂ" className="w-20 h-20 rounded-full object-cover border-2 border-slate-200" />
+              <img src={buildMediaUrl(data.student.avatar_path)} alt="Аватар" className="w-20 h-20 rounded-full object-cover border-2 border-slate-200" />
             ) : (
               <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
                 {data.student.first_name[0]}{data.student.last_name[0]}
@@ -301,29 +301,29 @@ function StudentProfilePageInner() {
           <div className="flex-1 text-center sm:text-left">
             <h1 className="text-2xl font-bold text-slate-800">{data.student.first_name} {data.student.last_name}</h1>
             <p className="text-sm text-slate-500 mt-1">
-              {data.student.education_level ? `${data.student.education_level}${data.student.course ? `, ${data.student.course} РєСѓСЂСЃ` : ''}` : ''}
+              {data.student.education_level ? `${data.student.education_level}${data.student.course ? `, ${data.student.course} курс` : ''}` : ''}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-4 sm:gap-6 text-center justify-center sm:justify-end">
             <div>
               <div className="text-2xl font-bold text-indigo-600">{data.total_points}</div>
-              <div className="text-[11px] text-slate-500 uppercase tracking-wider">Р‘Р°Р»Р»РѕРІ</div>
+              <div className="text-[11px] text-slate-500 uppercase tracking-wider">Баллов</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-slate-700">{data.total_docs}</div>
-              <div className="text-[11px] text-slate-500 uppercase tracking-wider">Р”РѕСЃС‚РёР¶РµРЅРёР№</div>
+              <div className="text-[11px] text-slate-500 uppercase tracking-wider">Достижений</div>
             </div>
             {data.student.session_gpa ? (
               <div>
                 <div className="text-2xl font-bold text-slate-700">{data.student.session_gpa}</div>
-                <div className="text-[11px] text-slate-500 uppercase tracking-wider">РћС†РµРЅРєР°</div>
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider">Оценка</div>
               </div>
             ) : null}
             {data.rank ? (
               <div>
                 <div className="text-2xl font-bold text-amber-500">#{data.rank}</div>
-                <div className="text-[11px] text-slate-500 uppercase tracking-wider">Р РµР№С‚РёРЅРі</div>
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider">Рейтинг</div>
               </div>
             ) : null}
           </div>
@@ -334,14 +334,14 @@ function StudentProfilePageInner() {
         <div className="lg:col-span-1 space-y-6">
           {data.student.session_gpa ? (
             <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">РћС†РµРЅРєР° РјРѕРґРµСЂР°С‚РѕСЂР°</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Оценка модератора</h3>
               <div className="space-y-3">
                 <div>
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">РЎСЂРµРґРЅРёР№ Р±Р°Р»Р» СЃРµСЃСЃРёРё</div>
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">Средний балл сессии</div>
                   <div className="mt-1 text-3xl font-bold text-slate-800">{data.student.session_gpa}</div>
                 </div>
                 <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-wider text-indigo-400">Р‘РѕРЅСѓСЃ РІ СЂРµР№С‚РёРЅРі</div>
+                  <div className="text-[11px] uppercase tracking-wider text-indigo-400">Бонус в рейтинг</div>
                   <div className="mt-1 text-2xl font-bold text-indigo-700">+{data.gpa_bonus}</div>
                 </div>
               </div>
@@ -352,7 +352,7 @@ function StudentProfilePageInner() {
         <div className="lg:col-span-2 space-y-6">
           {hasChartData ? (
             <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Р”РёРЅР°РјРёРєР° РґРѕСЃС‚РёР¶РµРЅРёР№</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Динамика достижений</h3>
               <canvas ref={progressChartRef} height="160" />
             </div>
           ) : null}
@@ -369,7 +369,7 @@ function StudentProfilePageInner() {
             if (!activeCats.length) return null
             return (
               <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
-                <h3 className="text-sm font-semibold text-slate-700 mb-4">РџРѕСЂС‚СЂРµС‚ РґРѕСЃС‚РёР¶РµРЅРёР№</h3>
+                <h3 className="text-sm font-semibold text-slate-700 mb-4">Портрет достижений</h3>
                 <div className="h-64">
                   <canvas ref={radarChartRef} />
                 </div>
@@ -393,7 +393,7 @@ function StudentProfilePageInner() {
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#cbd5e1' : color.border }} />
                         {cat}
                         <span className="text-[10px] font-semibold ml-0.5" style={{ color: isHidden ? '#94a3b8' : color.border }}>
-                          {pointsMap[cat]} Р±.
+                          {pointsMap[cat]} б.
                         </span>
                       </button>
                     )
@@ -404,7 +404,7 @@ function StudentProfilePageInner() {
           })() : null}
 
           <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h3 className="text-sm font-semibold text-slate-700 mb-4">Р”РѕСЃС‚РёР¶РµРЅРёСЏ ({data.total_docs})</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Достижения ({data.total_docs})</h3>
             {data.achievements.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {data.achievements.map((a) => (
@@ -419,7 +419,7 @@ function StudentProfilePageInner() {
                         <div className="flex items-center gap-1 shrink-0">
                           {a.preview_url && (
                             <span className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-600 text-[9px] font-medium px-1.5 py-0.5">
-                              {isPdf(a.preview_url) ? 'PDF' : 'Р¤РѕС‚Рѕ'}
+                              {isPdf(a.preview_url) ? 'PDF' : 'Фото'}
                             </span>
                           )}
                           <div className="inline-flex items-center rounded-full bg-green-500 text-white text-[10px] font-bold px-2 py-1 shadow-sm">
@@ -438,7 +438,7 @@ function StudentProfilePageInner() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-slate-400 text-center py-8">РќРµС‚ РѕРґРѕР±СЂРµРЅРЅС‹С… РґРѕСЃС‚РёР¶РµРЅРёР№</p>
+              <p className="text-sm text-slate-400 text-center py-8">Нет одобренных достижений</p>
             )}
           </div>
         </div>
@@ -446,7 +446,7 @@ function StudentProfilePageInner() {
 
       {data.student.resume_text ? (
         <div className="mt-6 bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">AI-СЃРІРѕРґРєР° РїСЂРѕС„РёР»СЏ</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">AI-сводка профиля</h3>
           <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{data.student.resume_text}</div>
         </div>
       ) : null}
@@ -463,7 +463,7 @@ function StudentProfilePageInner() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <span className="text-sm font-semibold text-slate-700">РџСЂРѕСЃРјРѕС‚СЂ РґРѕРєСѓРјРµРЅС‚Р°</span>
+              <span className="text-sm font-semibold text-slate-700">Просмотр документа</span>
               <div className="flex items-center gap-2">
                 {previewBlobUrl ? (
                   <a
@@ -472,7 +472,7 @@ function StudentProfilePageInner() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-surface border border-indigo-200 hover:bg-indigo-50 transition-colors"
                   >
-                    РћС‚РєСЂС‹С‚СЊ РІ РЅРѕРІРѕР№ РІРєР»Р°РґРєРµ
+                    Открыть в новой вкладке
                   </a>
                 ) : null}
                 <button
@@ -497,7 +497,7 @@ function StudentProfilePageInner() {
                   allow="fullscreen"
                 />
               ) : (
-                <img src={previewBlobUrl} alt="Р”РѕРєСѓРјРµРЅС‚" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
+                <img src={previewBlobUrl} alt="Документ" className="max-w-full max-h-full object-contain rounded-lg shadow-sm m-4" />
               )}
             </div>
           </div>
@@ -514,4 +514,3 @@ export function StudentProfilePage() {
     </ErrorBoundary>
   )
 }
-

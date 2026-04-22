@@ -212,6 +212,13 @@ export function LoginPage() {
           Создать
         </Link>
       </div>
+
+      <div
+        className="mt-6 text-center text-[10px] uppercase tracking-wider text-slate-400"
+        title={`Build time: ${__APP_BUILD_TIME__}`}
+      >
+        v{__APP_VERSION__}
+      </div>
     </div>
   )
 }

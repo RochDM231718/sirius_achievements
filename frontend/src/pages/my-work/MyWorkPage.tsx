@@ -15,6 +15,7 @@ import type { User } from '@/types/user'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { buildMediaUrl } from '@/utils/media'
 import { getTotalPages, paginateItems } from '@/utils/pagination'
 
 type WorkTab = 'users' | 'achievements'
@@ -541,9 +542,17 @@ export function MyWorkPage() {
                       <td className="px-5 py-3 text-xs text-slate-400">{user.id}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 font-medium text-slate-600">
-                            {user.first_name.slice(0, 1)}
-                          </div>
+                          {user.avatar_path ? (
+                            <img
+                              src={buildMediaUrl(user.avatar_path)}
+                              alt=""
+                              className="h-8 w-8 shrink-0 rounded-full object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 font-medium text-slate-600">
+                              {user.first_name.slice(0, 1)}
+                            </div>
+                          )}
                           <div>
                             <Link
                               to={`/users/${user.id}?from=my-work`}
