@@ -138,7 +138,7 @@ export function DocumentsPage() {
             })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = item.file_path.split('/').pop() || `${item.title}.bin`
+      link.download = (item.file_path ?? '').split('/').pop() || `${item.title}.bin`
       document.body.appendChild(link)
       link.click()
       link.remove()

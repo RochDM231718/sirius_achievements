@@ -5,6 +5,8 @@ import { Achievement, ModerationAchievementsResponse } from '@/types/achievement
 export interface AchievementMetadataPayload {
   title: string
   description?: string
+  category?: string
+  level?: string
 }
 
 export interface ModerationUsersParams {

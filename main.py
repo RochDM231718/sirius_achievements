@@ -85,6 +85,9 @@ async def _apply_schema_updates():
         # achievement result
         "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'achievementresult') THEN CREATE TYPE achievementresult AS ENUM ('PARTICIPANT', 'PRIZEWINNER', 'WINNER'); END IF; END $$",
         "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS result achievementresult",
+        # achievement external_url (file OR link)
+        "ALTER TABLE achievements ALTER COLUMN file_path DROP NOT NULL",
+        "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS external_url VARCHAR",
     ]
 
     # ── Add missing enum values (PostgreSQL 12+ supports ADD VALUE in transactions) ──

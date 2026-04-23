@@ -145,10 +145,13 @@ export function LeaderboardPage() {
     if (!data || searchParams.get('focus_me') !== '1') return
 
     const myIndex = filteredLeaderboard.findIndex((row) => row.is_me)
+    const clearParam = () => {
+      const next = new URLSearchParams(searchParams)
+      next.delete('focus_me')
+      setSearchParams(next, { replace: true })
+    }
     if (myIndex === -1) {
-      const next = new URL(window.location.href)
-      next.searchParams.delete('focus_me')
-      window.history.replaceState({}, document.title, `${next.pathname}${next.search}${next.hash}`)
+      clearParam()
       return
     }
 
@@ -161,7 +164,10 @@ export function LeaderboardPage() {
     }
 
     const target = document.querySelector<HTMLElement>('[data-leaderboard-self="true"]')
-    if (!target) return
+    if (!target) {
+      clearParam()
+      return
+    }
 
     const restore = {
       boxShadow: target.style.boxShadow,
@@ -195,10 +201,8 @@ export function LeaderboardPage() {
       window.setTimeout(applyHighlight, 250)
     }, 120)
 
-    const next = new URL(window.location.href)
-    next.searchParams.delete('focus_me')
-    window.history.replaceState({}, document.title, `${next.pathname}${next.search}${next.hash}`)
-  }, [data, filteredLeaderboard, page, searchParams])
+    clearParam()
+  }, [data, filteredLeaderboard, page, searchParams, setSearchParams])
 
   const updateFilter = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams)

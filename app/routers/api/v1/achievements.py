@@ -121,7 +121,8 @@ async def create_achievement(
     category: str = Form(...),
     level: str = Form(...),
     result: str | None = Form(None),
-    file: UploadFile = File(...),
+    external_url: str | None = Form(None),
+    file: UploadFile | None = File(None),
     current_user=Depends(auth),
     service: AchievementService = Depends(get_service),
 ):
@@ -137,13 +138,23 @@ async def create_achievement(
     if not resolved_category or not resolved_level:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Некорректная категория или уровень.')
 
+    cleaned_url = (external_url or '').strip() or None
+    has_file = bool(file and getattr(file, 'filename', None))
+
+    if not has_file and not cleaned_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Прикрепите файл или укажите ссылку.')
+
+    if cleaned_url and not (cleaned_url.startswith('http://') or cleaned_url.startswith('https://')):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Ссылка должна начинаться с http:// или https://.')
+
     try:
-        file_path = await service.save_file(file)
+        file_path = await service.save_file(file) if has_file else None
         create_data = {
             'user_id': current_user.id,
             'title': title,
             'description': description,
             'file_path': file_path,
+            'external_url': cleaned_url,
             'category': resolved_category,
             'level': resolved_level,
             'status': AchievementStatus.PENDING,

@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useToast } from '@/hooks/useToast'
 import type { Achievement } from '@/types/achievement'
+import { AchievementCategory, AchievementLevel } from '@/types/enums'
 import type { User } from '@/types/user'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
@@ -96,6 +97,8 @@ export function MyWorkPage() {
   const [editTarget, setEditTarget] = useState<Achievement | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editCategory, setEditCategory] = useState('')
+  const [editLevel, setEditLevel] = useState('')
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
 
   const tab = normalizeTab(searchParams.get('tab'))
@@ -245,6 +248,8 @@ export function MyWorkPage() {
     setEditTarget(item)
     setEditTitle(item.title)
     setEditDescription(item.description ?? '')
+    setEditCategory(item.category ?? '')
+    setEditLevel(item.level ?? '')
     setIsSubmittingEdit(false)
   }
 
@@ -252,6 +257,8 @@ export function MyWorkPage() {
     setEditTarget(null)
     setEditTitle('')
     setEditDescription('')
+    setEditCategory('')
+    setEditLevel('')
     setIsSubmittingEdit(false)
   }
 
@@ -339,6 +346,8 @@ export function MyWorkPage() {
       await moderationApi.updateAchievementMetadata(editTarget.id, {
         title: normalizedTitle,
         description: normalizedDescription || undefined,
+        category: editCategory || undefined,
+        level: editLevel || undefined,
       })
       pushToast({
         title: 'Данные документа обновлены',
@@ -855,6 +864,40 @@ export function MyWorkPage() {
                   className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:bg-surface focus:ring-2 focus:ring-indigo-500/20"
                   placeholder="Короткое описание документа"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Категория
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(event) => setEditCategory(event.target.value)}
+                    disabled={isSubmittingEdit}
+                    className="h-[38px] w-full rounded-lg border border-slate-200 bg-surface px-3 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {Object.values(AchievementCategory).map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Уровень
+                  </label>
+                  <select
+                    value={editLevel}
+                    onChange={(event) => setEditLevel(event.target.value)}
+                    disabled={isSubmittingEdit}
+                    className="h-[38px] w-full rounded-lg border border-slate-200 bg-surface px-3 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {Object.values(AchievementLevel).map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 

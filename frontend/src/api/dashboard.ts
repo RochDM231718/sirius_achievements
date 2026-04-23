@@ -42,6 +42,7 @@ export interface DashboardStats {
     points?: number
   }>
   category_breakdown?: Array<{ category: string; points: number }>
+  category_activity?: Array<{ category: string; count: number; points: number }>
   rejected_achievements?: number
 }
 

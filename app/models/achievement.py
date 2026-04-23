@@ -14,7 +14,8 @@ class Achievement(Base):
 
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    file_path = Column(String, nullable=False)
+    file_path = Column(String, nullable=True)
+    external_url = Column(String, nullable=True)
 
     category = Column(Enum(AchievementCategory), default=AchievementCategory.OTHER, nullable=False)
     level = Column(Enum(AchievementLevel), default=AchievementLevel.SCHOOL, nullable=False)

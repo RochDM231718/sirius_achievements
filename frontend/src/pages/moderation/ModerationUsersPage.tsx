@@ -170,7 +170,7 @@ export function ModerationUsersPage() {
         kind="users"
         currentView="incoming"
         title="Новые пользователи"
-        description={`${totalCount} ожидают проверки. Поиск и навигация теперь совпадают с остальными пользовательскими страницами.`}
+        description={`${totalCount} ожидают проверки`}
       />
 
       {error ? (

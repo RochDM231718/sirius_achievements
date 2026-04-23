@@ -241,11 +241,17 @@ export function DashboardPage() {
                 <p className="text-3xl font-semibold text-slate-800">{card.value}</p>
               </div>
             ))}
-            <div className="bg-indigo-600 p-5 rounded-xl shadow-sm flex flex-col justify-between text-white relative overflow-hidden">
+            <div className="bg-indigo-600 p-5 rounded-xl shadow-sm flex flex-col text-white relative overflow-hidden">
               <div className="absolute -right-4 -top-4 opacity-10"><svg className="w-24 h-24" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM9 9V5a1 1 0 012 0v4h2.5a.5.5 0 010 1h-3A1.5 1.5 0 019 9z"></path></svg></div>
               <div className="flex items-center gap-2 mb-2 relative z-10"><div className="w-2 h-2 rounded-full bg-surface/60"></div><p className="text-[10px] text-white/90 uppercase font-bold tracking-wider">Ожидают проверки</p></div>
-              <p className="text-3xl font-bold text-white relative z-10">{stats?.pending_achievements ?? 0}</p>
-              {(stats?.pending_achievements ?? 0) > 0 ? <Link to="/moderation/achievements" className="absolute bottom-4 right-4 text-[11px] bg-white text-indigo-700 px-2.5 py-1 rounded font-bold hover:bg-indigo-50 transition-colors z-10 shadow-sm">Проверить →</Link> : null}
+              <div className="flex items-end justify-between gap-3 relative z-10 mt-auto">
+                <p className="text-3xl font-bold text-white leading-none">{stats?.pending_achievements ?? 0}</p>
+                {(stats?.pending_achievements ?? 0) > 0 ? (
+                  <Link to="/moderation/achievements" className="shrink-0 text-[11px] bg-white text-indigo-700 px-2.5 py-1 rounded font-bold hover:bg-indigo-50 transition-colors shadow-sm">
+                    Проверить →
+                  </Link>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -265,7 +271,26 @@ export function DashboardPage() {
             <div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col"><h3 className="text-sm font-semibold text-slate-800 mb-4">Лидеры периода</h3><div className="overflow-y-auto flex-1 pr-2 scrollbar-hide"><div className="space-y-4">{stats?.top_students?.length ? stats.top_students.map((row, index) => <div key={row.id} className="flex items-center justify-between group"><div className="flex items-center"><div className={`w-8 h-8 rounded-full ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-slate-200 text-slate-600' : index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-indigo-50 text-indigo-600'} flex items-center justify-center text-xs font-bold mr-3`}>{index + 1}</div><div><Link to={`/users/${row.id}`} className="text-sm font-medium text-slate-800 hover:text-indigo-600 transition-colors">{row.first_name} {row.last_name.slice(0, 1)}.</Link><div className="text-[10px] text-slate-400">{row.education_level || '—'}</div></div></div><div className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">+{row.points}</div></div>) : <div className="text-center text-slate-400 text-xs py-8 bg-slate-50 rounded-lg border border-dashed border-slate-200">Нет начисленных баллов за период</div>}</div></div></div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">Активность по категориям</h3>
+              <div className="space-y-3 mb-5">
+                {stats?.category_activity?.length ? (() => {
+                  const max = Math.max(...stats.category_activity.map((c) => c.count))
+                  return stats.category_activity.map((cat) => (
+                    <div key={cat.category}>
+                      <div className="flex justify-between text-xs font-medium text-slate-700 mb-1">
+                        <span>{cat.category}</span>
+                        <span className="text-slate-500">{cat.count} док.{cat.points ? ` · ${cat.points} б.` : ''}</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className="bg-indigo-500 h-2" style={{ width: `${max > 0 ? (cat.count / max) * 100 : 0}%` }}></div>
+                      </div>
+                    </div>
+                  ))
+                })() : <div className="text-center text-slate-400 text-xs py-6">Нет активности за период</div>}
+              </div>
+            </div>
             <div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col"><h3 className="text-sm font-semibold text-slate-800 mb-4">Активность по потокам</h3><div className="space-y-5">{stats?.cohorts?.length ? stats.cohorts.map((cohort) => { const total = cohort.total ?? cohort.count ?? 0; const pending = cohort.pending ?? 0; const approvedPercent = total > 0 ? 100 - Math.round((pending / total) * 100) : 0; const pendingPercent = total > 0 ? Math.round((pending / total) * 100) : 0; return <div key={cohort.education_level}><div className="flex justify-between text-xs font-medium text-slate-700 mb-1.5"><span>{cohort.education_level}</span><span className="text-slate-500">{total} док.</span></div><div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden flex">{total > 0 ? <><div className="bg-indigo-500 h-2" style={{ width: `${approvedPercent}%` }}></div><div className="bg-yellow-400 h-2" style={{ width: `${pendingPercent}%` }}></div></> : null}</div>{pending > 0 ? <div className="text-[9px] text-yellow-600 font-medium mt-1 text-right">{pending} ожидают проверки</div> : null}</div> }) : <div className="text-center text-slate-400 text-xs py-8">Нет данных по направлениям</div>}</div></div>
             <div className="lg:col-span-2 bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col"><div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0"><h3 className="text-sm font-semibold text-slate-700">Последние загрузки</h3><Link to="/documents" className="text-[10px] text-indigo-600 font-bold uppercase hover:underline flex items-center">Все документы <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg></Link></div><div className="overflow-x-auto flex-1"><table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-surface text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider"><tr><th className="px-5 py-3 font-bold">Название</th><th className="px-5 py-3 font-bold">Студент</th><th className="px-5 py-3 font-bold">Категория</th><th className="px-5 py-3 font-bold text-right">Статус</th></tr></thead><tbody className="divide-y divide-slate-50">{stats?.recent_achievements?.length ? stats.recent_achievements.map((doc) => <tr key={doc.id} className="hover:bg-slate-50 transition-colors"><td className="px-5 py-3"><div className="font-medium text-slate-800">{doc.title}</div><div className="text-[10px] text-slate-400">{formatDateTime(doc.created_at)}</div></td><td className="px-5 py-3 text-slate-600 text-xs">{doc.user ? `${doc.user.first_name} ${doc.user.last_name}` : '—'}</td><td className="px-5 py-3"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-medium">{doc.category || '—'}</span></td><td className="px-5 py-3 text-right"><span className={statusClass(doc.status)}>{statusLabel(doc.status)}</span></td></tr>) : <tr><td colSpan={4} className="text-center py-10 text-slate-400 text-xs bg-slate-50/50">Новых документов пока нет</td></tr>}</tbody></table></div></div>
           </div>

@@ -27,6 +27,7 @@ interface AchievementFormState {
   level: string
   result: string
   file: File | null
+  external_url: string
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -41,6 +42,7 @@ function getDefaultForm(): AchievementFormState {
     level: Object.values(AchievementLevel)[0] ?? '',
     result: Object.values(AchievementResult)[0] ?? '',
     file: null,
+    external_url: '',
   }
 }
 
@@ -86,7 +88,13 @@ function resultClass(result?: string | null) {
 }
 
 function emitPreview(item: Achievement) {
-  openDocumentPreview(item.id, item.file_path)
+  if (item.file_path) {
+    openDocumentPreview(item.id, item.file_path)
+    return
+  }
+  if (item.external_url) {
+    window.open(item.external_url, '_blank', 'noopener')
+  }
 }
 
 function formatFileSize(size: number) {
@@ -243,8 +251,12 @@ export function AchievementsPage() {
     setError(null)
 
     try {
-      if (!createForm.file) {
-        throw new Error('Выберите файл для загрузки.')
+      const trimmedUrl = createForm.external_url.trim()
+      if (!createForm.file && !trimmedUrl) {
+        throw new Error('Прикрепите файл или укажите ссылку.')
+      }
+      if (trimmedUrl && !/^https?:\/\//i.test(trimmedUrl)) {
+        throw new Error('Ссылка должна начинаться с http:// или https://')
       }
 
       const formData = new FormData()
@@ -253,7 +265,12 @@ export function AchievementsPage() {
       formData.append('category', createForm.category)
       formData.append('level', createForm.level)
       formData.append('result', createForm.result)
-      formData.append('file', createForm.file)
+      if (createForm.file) {
+        formData.append('file', createForm.file)
+      }
+      if (trimmedUrl) {
+        formData.append('external_url', trimmedUrl)
+      }
 
       await achievementsApi.create(formData)
       pushToast({
@@ -822,6 +839,24 @@ export function AchievementsPage() {
                       <span>{createFileText}</span>
                     </div>
                   ) : null}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Или ссылка на документ
+                  </label>
+                  <input
+                    type="url"
+                    value={createForm.external_url}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({ ...current, external_url: event.target.value }))
+                    }
+                    placeholder="https://..."
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Укажите ссылку на грамоту или страницу подтверждения участия, если нет файла. Можно указать и то, и другое — главное чтобы было заполнено хотя бы одно поле.
+                  </p>
                 </div>
               </div>
 

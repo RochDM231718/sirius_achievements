@@ -128,6 +128,17 @@ async def dashboard(
             .order_by(desc('count'))
         )).all()
 
+        category_rows = (await db.execute(
+            select(
+                Achievement.category,
+                func.count().label('count'),
+                func.coalesce(func.sum(Achievement.points), 0).label('points'),
+            )
+            .filter(Achievement.created_at >= start_date)
+            .group_by(Achievement.category)
+            .order_by(desc('count'))
+        )).all()
+
         return {
             'new_users_count': int(new_users_count),
             'pending_achievements': int(ach_stats.pending or 0),
@@ -157,6 +168,14 @@ async def dashboard(
                     'approved': max(int(row.count or 0) - int(row.pending or 0), 0),
                 }
                 for row in cohorts_rows
+            ],
+            'category_activity': [
+                {
+                    'category': row.category.value if hasattr(row.category, 'value') else str(row.category),
+                    'count': int(row.count or 0),
+                    'points': int(row.points or 0),
+                }
+                for row in category_rows if row.category is not None
             ],
         }
 

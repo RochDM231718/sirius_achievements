@@ -6,15 +6,15 @@ import path from 'path'
 
 import pkg from './package.json' with { type: 'json' }
 
-function getGitShortSha(): string {
+function getGitTagOrSha(): string {
   try {
-    return execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim()
+    return execSync('git describe --tags --always --dirty', { cwd: __dirname }).toString().trim()
   } catch {
     return 'dev'
   }
 }
 
-const buildVersion = `${pkg.version}+${getGitShortSha()}`
+const buildVersion = process.env.APP_VERSION?.trim() || getGitTagOrSha()
 const buildTime = new Date().toISOString()
 
 export default defineConfig({

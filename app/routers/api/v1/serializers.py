@@ -81,6 +81,7 @@ def serialize_achievement(achievement):
         'title': achievement.title,
         'description': achievement.description,
         'file_path': achievement.file_path,
+        'external_url': getattr(achievement, 'external_url', None),
         'category': _enum_value(achievement.category),
         'level': _enum_value(achievement.level),
         'result': _enum_value(getattr(achievement, 'result', None)),

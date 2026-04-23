@@ -13,7 +13,7 @@ from app.config import settings
 from app.infrastructure.database import get_db
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementStatus, UserRole, UserStatus
+from app.models.enums import AchievementCategory, AchievementLevel, AchievementStatus, UserRole, UserStatus
 from app.models.user import Users
 from app.services.audit_service import log_action
 from app.services.points_calculator import calculate_points
@@ -35,6 +35,8 @@ class AchievementDecisionPayload(BaseModel):
 class AchievementMetadataPayload(BaseModel):
     title: str
     description: str | None = None
+    category: str | None = None
+    level: str | None = None
 
 
 class BatchAchievementPayload(BaseModel):
@@ -289,6 +291,18 @@ async def update_achievement_metadata(
     previous_title = achievement.title
     achievement.title = clean_title
     achievement.description = clean_description or None
+
+    if payload.category is not None:
+        try:
+            achievement.category = AchievementCategory(payload.category)
+        except ValueError:
+            raise HTTPException(status_code=400, detail='Invalid category')
+
+    if payload.level is not None:
+        try:
+            achievement.level = AchievementLevel(payload.level)
+        except ValueError:
+            raise HTTPException(status_code=400, detail='Invalid level')
 
     await log_action(
         db,

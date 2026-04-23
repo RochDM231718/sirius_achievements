@@ -264,18 +264,18 @@ export function UsersPage() {
             </select>
           </div>
 
-          <div className="flex w-[calc(33%-0.5rem)] gap-2 sm:w-auto">
+          <div className="flex w-full gap-2 sm:w-auto">
             <button
               type="button"
               onClick={() => void loadUsers()}
-              className="flex-1 rounded-lg bg-indigo-600 px-4 text-xs font-medium text-white transition-colors hover:bg-indigo-700 sm:flex-none h-[38px]"
+              className="h-[38px] flex-1 rounded-lg bg-indigo-600 px-4 text-xs font-medium text-white transition-colors hover:bg-indigo-700 sm:flex-none"
             >
               Обновить
             </button>
             <button
               type="button"
               onClick={resetFilters}
-              className="h-[38px] rounded-lg border border-slate-200 px-4 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              className="h-[38px] flex-1 rounded-lg border border-slate-200 px-4 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 sm:flex-none"
             >
               Сбросить
             </button>

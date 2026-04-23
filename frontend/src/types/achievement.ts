@@ -10,7 +10,8 @@ export interface Achievement {
   user_id: number
   title: string
   description?: string
-  file_path: string
+  file_path?: string | null
+  external_url?: string | null
   category: AchievementCategory
   level: AchievementLevel
   result?: AchievementResult
