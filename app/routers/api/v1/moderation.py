@@ -5,7 +5,7 @@ import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,7 +13,7 @@ from app.config import settings
 from app.infrastructure.database import get_db
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementCategory, AchievementLevel, AchievementStatus, UserRole, UserStatus
+from app.models.enums import AchievementCategory, AchievementLevel, AchievementResult, AchievementStatus, UserRole, UserStatus
 from app.models.user import Users
 from app.services.audit_service import log_action
 from app.services.points_calculator import calculate_points
@@ -37,6 +37,7 @@ class AchievementMetadataPayload(BaseModel):
     description: str | None = None
     category: str | None = None
     level: str | None = None
+    result: str | None = None
 
 
 class BatchAchievementPayload(BaseModel):
@@ -150,6 +151,9 @@ async def release_user(
 async def pending_achievements(
     page: int = Query(default=1, ge=1, le=1000),
     query: str = Query(default=''),
+    category: str = Query(default=''),
+    level: str = Query(default=''),
+    result: str = Query(default=''),
     sort_by: str = Query(default='oldest'),
     current_user=Depends(require_moderator),
     db: AsyncSession = Depends(get_db),
@@ -180,12 +184,35 @@ async def pending_achievements(
             )
         )
 
+    if category and category != 'all':
+        stmt = stmt.filter(Achievement.category == category)
+    if level and level != 'all':
+        stmt = stmt.filter(Achievement.level == level)
+    if result and result != 'all':
+        stmt = stmt.filter(Achievement.result == result)
+
     if sort_by == 'newest':
         stmt = stmt.order_by(Achievement.created_at.desc())
     elif sort_by == 'category':
         stmt = stmt.order_by(Achievement.category.asc(), Achievement.created_at.desc())
     elif sort_by == 'level':
-        stmt = stmt.order_by(Achievement.level.asc(), Achievement.created_at.desc())
+        level_order = case(
+            (Achievement.level == AchievementLevel.INTERNATIONAL, 5),
+            (Achievement.level == AchievementLevel.FEDERAL, 4),
+            (Achievement.level == AchievementLevel.REGIONAL, 3),
+            (Achievement.level == AchievementLevel.MUNICIPAL, 2),
+            (Achievement.level == AchievementLevel.SCHOOL, 1),
+            else_=0,
+        )
+        stmt = stmt.order_by(level_order.desc(), Achievement.created_at.desc())
+    elif sort_by == 'result':
+        result_order = case(
+            (Achievement.result == AchievementResult.WINNER, 3),
+            (Achievement.result == AchievementResult.PRIZEWINNER, 2),
+            (Achievement.result == AchievementResult.PARTICIPANT, 1),
+            else_=0,
+        )
+        stmt = stmt.order_by(result_order.desc(), Achievement.created_at.desc())
     elif sort_by == 'title':
         stmt = stmt.order_by(Achievement.title.asc(), Achievement.created_at.desc())
     else:
@@ -304,6 +331,15 @@ async def update_achievement_metadata(
         except ValueError:
             raise HTTPException(status_code=400, detail='Invalid level')
 
+    if payload.result is not None:
+        if payload.result == '':
+            achievement.result = None
+        else:
+            try:
+                achievement.result = AchievementResult(payload.result)
+            except ValueError:
+                raise HTTPException(status_code=400, detail='Invalid result')
+
     await log_action(
         db,
         current_user.id,
@@ -351,16 +387,16 @@ async def update_achievement_status(
 
     achievement.status = new_status
     achievement.moderator_id = current_user.id
-    notification_message = f"Status for '{achievement.title}' was updated."
+    notification_message = f"Статус документа «{achievement.title}» обновлён."
 
     if new_status == AchievementStatus.REJECTED:
         achievement.rejection_reason = payload.rejection_reason
         achievement.points = 0
-        notification_message = f"Document '{achievement.title}' was rejected. Reason: {payload.rejection_reason or '-'}"
+        notification_message = f"Документ «{achievement.title}» отклонён. Причина: {payload.rejection_reason or '—'}"
     elif new_status == AchievementStatus.REVISION:
         achievement.rejection_reason = payload.rejection_reason
         achievement.points = 0
-        notification_message = f"Document '{achievement.title}' was returned for revision. Note: {payload.rejection_reason or '-'}"
+        notification_message = f"Документ «{achievement.title}» отправлен на доработку. Комментарий: {payload.rejection_reason or '—'}"
     elif new_status == AchievementStatus.APPROVED:
         points = calculate_points(
             achievement.level.value,
@@ -369,11 +405,11 @@ async def update_achievement_status(
         )
         achievement.points = points
         achievement.rejection_reason = None
-        notification_message = f"Document '{achievement.title}' was approved. Added points: {points}."
+        notification_message = f"Документ «{achievement.title}» одобрен. Начислено баллов: {points}."
 
     notification = make_notification(
         user_id=achievement.user_id,
-        title='Application status updated',
+        title='Статус документа обновлён',
         message=notification_message,
         link='/sirius.achievements/app/achievements',
     )
@@ -431,15 +467,15 @@ async def batch_update_achievements(
             )
             achievement.points = points
             achievement.rejection_reason = None
-            message = f"Document '{achievement.title}' was approved. Added points: {points}."
+            message = f"Документ «{achievement.title}» одобрен. Начислено баллов: {points}."
         else:
             achievement.points = 0
             achievement.rejection_reason = None
-            message = f"Document '{achievement.title}' was rejected."
+            message = f"Документ «{achievement.title}» отклонён."
 
         notification = make_notification(
             user_id=achievement.user_id,
-            title='Application status updated',
+            title='Статус документа обновлён',
             message=message,
             link='/sirius.achievements/app/achievements',
         )

@@ -24,6 +24,7 @@ export function Header({ user }: HeaderProps) {
   const avatarUrl = buildMediaUrlOrNull(user?.avatar_path, user?.updated_at)
   const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : 'User'
   const avatarFallback = fullName.charAt(0).toUpperCase() || 'U'
+  const isDeleted = user?.status === 'deleted'
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -140,9 +141,11 @@ export function Header({ user }: HeaderProps) {
               <div className="px-4 py-2 border-b border-slate-100 md:hidden">
                 <span className="block text-sm font-medium text-slate-700 truncate">{fullName}</span>
               </div>
-              <Link to="/profile" className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                Профиль
-              </Link>
+              {!isDeleted ? (
+                <Link to="/profile" className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  Профиль
+                </Link>
+              ) : null}
               <button type="button" onClick={() => void handleLogout()} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                 Выйти
               </button>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { achievementsApi } from '@/api/achievements'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -11,7 +11,7 @@ import {
   AchievementResult,
   AchievementStatus,
 } from '@/types/enums'
-import { isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
+import { openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
 
@@ -116,6 +116,8 @@ export function AchievementsPage() {
   const [status, setStatus] = useState('')
   const [category, setCategory] = useState('')
   const [level, setLevel] = useState('')
+  const [result, setResult] = useState('')
+  const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
@@ -124,6 +126,7 @@ export function AchievementsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createForm, setCreateForm] = useState<AchievementFormState>(getDefaultForm)
   const [createFileText, setCreateFileText] = useState('')
+  const createFileInputRef = useRef<HTMLInputElement | null>(null)
   const [isSubmittingCreate, setIsSubmittingCreate] = useState(false)
   const [reviseModalOpen, setReviseModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Achievement | null>(null)
@@ -141,9 +144,10 @@ export function AchievementsPage() {
       status: status || undefined,
       category: category || undefined,
       level: level || undefined,
-      sort_by: 'newest',
+      result: result || undefined,
+      sort_by: sortBy,
     }),
-    [category, level, page, query, status]
+    [category, level, page, query, result, sortBy, status]
   )
 
   const loadItems = async () => {
@@ -167,7 +171,7 @@ export function AchievementsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [query, status, category, level])
+  }, [query, status, category, level, result, sortBy])
 
   useEffect(() => {
     const trimmed = query.trim()
@@ -466,6 +470,35 @@ export function AchievementsPage() {
             </select>
           </div>
 
+          <div className="w-full sm:w-[140px]">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Результат</label>
+            <select
+              value={result}
+              onChange={(event) => setResult(event.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px]"
+            >
+              <option value="">Все результаты</option>
+              {Object.values(AchievementResult).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-[160px]">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider">Сортировка</label>
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none h-[38px]"
+            >
+              <option value="newest">Сначала новые</option>
+              <option value="oldest">Сначала старые</option>
+              <option value="title">По названию</option>
+            </select>
+          </div>
+
           <div className="flex gap-2 w-full sm:w-auto">
             <button
               type="submit"
@@ -480,6 +513,8 @@ export function AchievementsPage() {
                 setStatus('')
                 setCategory('')
                 setLevel('')
+                setResult('')
+                setSortBy('newest')
                 setPage(1)
                 setSuggestions([])
               }}
@@ -543,6 +578,23 @@ export function AchievementsPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="font-medium text-slate-800">{item.title}</div>
+                        {item.description ? (
+                          <details className="mt-0.5 max-w-xs whitespace-normal text-[11px] text-slate-500">
+                            <summary className="cursor-pointer text-indigo-600 hover:underline">Описание</summary>
+                            <p className="mt-1 leading-relaxed">{item.description}</p>
+                          </details>
+                        ) : null}
+                        {item.external_url ? (
+                          <a
+                            href={item.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 block max-w-xs truncate text-[11px] text-indigo-600 hover:underline"
+                            title={item.external_url}
+                          >
+                            Ссылка на подтверждение
+                          </a>
+                        ) : null}
                         {item.rejection_reason ? (
                           <div
                             className={`text-[10px] mt-0.5 break-words whitespace-normal max-w-xs ${
@@ -616,6 +668,22 @@ export function AchievementsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium text-slate-800">{item.title}</div>
+                      {item.description ? (
+                        <details className="mt-1 text-xs text-slate-500">
+                          <summary className="cursor-pointer text-indigo-600 hover:underline">Описание</summary>
+                          <p className="mt-1 leading-relaxed">{item.description}</p>
+                        </details>
+                      ) : null}
+                      {item.external_url ? (
+                        <a
+                          href={item.external_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 block truncate text-xs text-indigo-600 hover:underline"
+                        >
+                          Ссылка на подтверждение
+                        </a>
+                      ) : null}
                       <div className="text-xs text-slate-500 mt-1">
                         {item.category} • {item.level}
                         {item.result ? ` • ${item.result}` : ''}
@@ -825,6 +893,7 @@ export function AchievementsPage() {
                     Документ (Фото или PDF)
                   </label>
                   <input
+                    ref={createFileInputRef}
                     type="file"
                     accept={FILE_ACCEPT}
                     onChange={(event) => handleCreateFileChange(event.target.files?.[0] ?? null)}
@@ -832,11 +901,23 @@ export function AchievementsPage() {
                   />
                   <p className="text-[10px] text-slate-400 mt-1">JPG, PNG, WebP, GIF, PDF, DOC, DOCX, PPTX, XLSX до 10 МБ</p>
                   {createFileText ? (
-                    <div className="mt-2 flex items-center gap-2 text-xs text-green-600 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{createFileText}</span>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-green-600 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="truncate">{createFileText}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleCreateFileChange(null)
+                          if (createFileInputRef.current) createFileInputRef.current.value = ''
+                        }}
+                        className="shrink-0 text-[11px] font-semibold text-red-600 hover:text-red-700 px-2 py-0.5 rounded hover:bg-red-50 transition-colors"
+                      >
+                        Удалить
+                      </button>
                     </div>
                   ) : null}
                 </div>

@@ -10,6 +10,7 @@ from app.routers.api.v1.moderation import router as moderation_router
 from app.routers.api.v1.moderation_support import router as moderation_support_router
 from app.routers.api.v1.my_work import router as my_work_router
 from app.routers.api.v1.notifications import router as notifications_router
+from app.routers.api.v1.points import router as points_router
 from app.routers.api.v1.profile import router as profile_router
 from app.routers.api.v1.public import router as public_router
 from app.routers.api.v1.support import router as support_router
@@ -21,6 +22,7 @@ router.include_router(auth_router)
 router.include_router(dashboard_router)
 router.include_router(profile_router)
 router.include_router(notifications_router)
+router.include_router(points_router)
 router.include_router(achievements_router)
 router.include_router(leaderboard_router)
 router.include_router(media_router)

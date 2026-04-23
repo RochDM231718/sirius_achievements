@@ -7,6 +7,7 @@ export interface AchievementMetadataPayload {
   description?: string
   category?: string
   level?: string
+  result?: string
 }
 
 export interface ModerationUsersParams {
@@ -17,6 +18,9 @@ export interface ModerationUsersParams {
 export interface ModerationAchievementsParams {
   page?: number
   query?: string
+  category?: string
+  level?: string
+  result?: string
   sort_by?: string
 }
 

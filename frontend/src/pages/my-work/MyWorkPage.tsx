@@ -11,11 +11,12 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useToast } from '@/hooks/useToast'
 import type { Achievement } from '@/types/achievement'
-import { AchievementCategory, AchievementLevel } from '@/types/enums'
+import { AchievementCategory, AchievementLevel, AchievementResult } from '@/types/enums'
 import type { User } from '@/types/user'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { roleLabel } from '@/utils/labels'
 import { buildMediaUrl } from '@/utils/media'
 import { getTotalPages, paginateItems } from '@/utils/pagination'
 
@@ -87,6 +88,9 @@ export function MyWorkPage() {
   const [query, setQuery] = useState('')
   const [userSortBy, setUserSortBy] = useState('newest')
   const [achievementSortBy, setAchievementSortBy] = useState('oldest')
+  const [achievementCategory, setAchievementCategory] = useState('')
+  const [achievementLevel, setAchievementLevel] = useState('')
+  const [achievementResult, setAchievementResult] = useState('')
   const [page, setPage] = useState(1)
   const [suggestions, setSuggestions] = useState<SearchSuggestionItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -99,6 +103,7 @@ export function MyWorkPage() {
   const [editDescription, setEditDescription] = useState('')
   const [editCategory, setEditCategory] = useState('')
   const [editLevel, setEditLevel] = useState('')
+  const [editResult, setEditResult] = useState('')
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
 
   const tab = normalizeTab(searchParams.get('tab'))
@@ -174,8 +179,20 @@ export function MyWorkPage() {
         return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
       }
 
-      if (userSortBy === 'name_asc') {
+      if (userSortBy === 'first_name_asc') {
+        return `${left.first_name} ${left.last_name}`.localeCompare(`${right.first_name} ${right.last_name}`, 'ru')
+      }
+
+      if (userSortBy === 'first_name_desc') {
+        return `${right.first_name} ${right.last_name}`.localeCompare(`${left.first_name} ${left.last_name}`, 'ru')
+      }
+
+      if (userSortBy === 'last_name_asc') {
         return `${left.last_name} ${left.first_name}`.localeCompare(`${right.last_name} ${right.first_name}`, 'ru')
+      }
+
+      if (userSortBy === 'last_name_desc') {
+        return `${right.last_name} ${right.first_name}`.localeCompare(`${left.last_name} ${left.first_name}`, 'ru')
       }
 
       return new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
@@ -185,7 +202,13 @@ export function MyWorkPage() {
   }, [query, userSortBy, users])
 
   const filteredAchievements = useMemo(() => {
-    const nextAchievements = achievements.filter((item) => matchesAchievement(item, query))
+    const nextAchievements = achievements.filter(
+      (item) =>
+        matchesAchievement(item, query) &&
+        (!achievementCategory || item.category === achievementCategory) &&
+        (!achievementLevel || item.level === achievementLevel) &&
+        (!achievementResult || item.result === achievementResult),
+    )
 
     nextAchievements.sort((left, right) => {
       if (achievementSortBy === 'newest') {
@@ -196,10 +219,6 @@ export function MyWorkPage() {
         return left.title.localeCompare(right.title, 'ru')
       }
 
-      if (achievementSortBy === 'category') {
-        return String(left.category ?? '').localeCompare(String(right.category ?? ''), 'ru')
-      }
-
       if (achievementSortBy === 'points_desc') {
         return Number(right.projected_points ?? 0) - Number(left.projected_points ?? 0)
       }
@@ -208,7 +227,7 @@ export function MyWorkPage() {
     })
 
     return nextAchievements
-  }, [achievementSortBy, achievements, query])
+  }, [achievementCategory, achievementLevel, achievementResult, achievementSortBy, achievements, query])
 
   const usersTotalPages = useMemo(
     () => getTotalPages(filteredUsers.length, MY_WORK_PAGE_SIZE),
@@ -230,7 +249,7 @@ export function MyWorkPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [achievementSortBy, query, tab, userSortBy])
+  }, [achievementCategory, achievementLevel, achievementResult, achievementSortBy, query, tab, userSortBy])
 
   useEffect(() => {
     if (page > currentTotalPages) {
@@ -250,6 +269,7 @@ export function MyWorkPage() {
     setEditDescription(item.description ?? '')
     setEditCategory(item.category ?? '')
     setEditLevel(item.level ?? '')
+    setEditResult(item.result ?? AchievementResult.PARTICIPANT)
     setIsSubmittingEdit(false)
   }
 
@@ -259,6 +279,7 @@ export function MyWorkPage() {
     setEditDescription('')
     setEditCategory('')
     setEditLevel('')
+    setEditResult(AchievementResult.PARTICIPANT)
     setIsSubmittingEdit(false)
   }
 
@@ -348,6 +369,7 @@ export function MyWorkPage() {
         description: normalizedDescription || undefined,
         category: editCategory || undefined,
         level: editLevel || undefined,
+        result: editResult || AchievementResult.PARTICIPANT,
       })
       pushToast({
         title: 'Данные документа обновлены',
@@ -405,6 +427,15 @@ export function MyWorkPage() {
   }
 
   const handleDownloadAchievement = async (item: Achievement) => {
+    if (!item.file_path && item.external_url) {
+      window.open(item.external_url, '_blank', 'noopener')
+      return
+    }
+    if (!item.file_path) {
+      setError('У этого документа нет прикреплённого файла.')
+      return
+    }
+
     try {
       const response = await documentsApi.download(item.id)
       const blob =
@@ -441,6 +472,9 @@ export function MyWorkPage() {
     }
 
     setAchievementSortBy('oldest')
+    setAchievementCategory('')
+    setAchievementLevel('')
+    setAchievementResult('')
   }
 
   return (
@@ -483,7 +517,10 @@ export function MyWorkPage() {
               >
                 <option value="newest">Новые</option>
                 <option value="oldest">Старые</option>
-                <option value="name_asc">По алфавиту</option>
+                <option value="first_name_asc">Имя: А-Я</option>
+                <option value="first_name_desc">Имя: Я-А</option>
+                <option value="last_name_asc">Фамилия: А-Я</option>
+                <option value="last_name_desc">Фамилия: Я-А</option>
               </select>
             ) : (
               <select
@@ -494,11 +531,62 @@ export function MyWorkPage() {
                 <option value="oldest">Сначала старые</option>
                 <option value="newest">Сначала новые</option>
                 <option value="title">По названию</option>
-                <option value="category">По категории</option>
                 <option value="points_desc">По баллам</option>
               </select>
             )}
           </div>
+
+          {tab === 'achievements' ? (
+            <>
+              <div className="w-full sm:w-[140px]">
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Категория
+                </label>
+                <select
+                  value={achievementCategory}
+                  onChange={(event) => setAchievementCategory(event.target.value)}
+                  className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+                >
+                  <option value="">Все</option>
+                  {Object.values(AchievementCategory).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="w-full sm:w-[140px]">
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Уровень
+                </label>
+                <select
+                  value={achievementLevel}
+                  onChange={(event) => setAchievementLevel(event.target.value)}
+                  className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+                >
+                  <option value="">Все</option>
+                  {Object.values(AchievementLevel).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="w-full sm:w-[140px]">
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Результат
+                </label>
+                <select
+                  value={achievementResult}
+                  onChange={(event) => setAchievementResult(event.target.value)}
+                  className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+                >
+                  <option value="">Все</option>
+                  {Object.values(AchievementResult).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : null}
 
           <div className="flex gap-2">
             <button
@@ -575,7 +663,7 @@ export function MyWorkPage() {
                       </td>
                       <td className="px-5 py-3">
                         <span className="mb-1 inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                          {user.role}
+                          {roleLabel(user.role)}
                         </span>
                         <br />
                         {user.education_level ? (
@@ -655,9 +743,15 @@ export function MyWorkPage() {
                 <div className="flex flex-1 gap-3">
                   <button
                     type="button"
-                    onClick={() => openDocumentPreview(item.id, item.file_path)}
+                    onClick={() => {
+                      if (item.file_path) {
+                        openDocumentPreview(item.id, item.file_path)
+                      } else if (item.external_url) {
+                        window.open(item.external_url, '_blank', 'noopener')
+                      }
+                    }}
                     className="relative flex h-24 w-20 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50 sm:h-28 sm:w-28"
-                    title="Открыть превью"
+                    title={item.file_path ? 'Открыть превью' : item.external_url || ''}
                   >
                     {item.file_path && isImageFile(item.file_path) ? (
                       <DocumentPreviewImage documentId={item.id} alt={item.title} className="h-full w-full object-cover" />
@@ -673,8 +767,15 @@ export function MyWorkPage() {
                         </svg>
                         <span className="text-[9px] font-bold uppercase text-slate-500">PDF</span>
                       </>
+                    ) : item.external_url ? (
+                      <>
+                        <svg className="mb-1 h-6 w-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 015.656 5.656l-3 3a4 4 0 01-5.656-5.656M10.172 13.828a4 4 0 01-5.656-5.656l3-3a4 4 0 015.656 5.656" />
+                        </svg>
+                        <span className="text-[9px] font-bold uppercase text-indigo-500">Ссылка</span>
+                      </>
                     ) : (
-                      <span className="text-[9px] font-bold uppercase text-slate-400">Нет файла</span>
+                      <span className="px-1 text-center text-[9px] font-bold uppercase text-slate-400">Без вложения</span>
                     )}
                   </button>
 
@@ -690,7 +791,31 @@ export function MyWorkPage() {
                       <span className="rounded border border-slate-200/50 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
                         {item.level || 'Без уровня'}
                       </span>
+                      {item.result ? (
+                        <span className="rounded border border-amber-200/70 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+                          {item.result}
+                        </span>
+                      ) : null}
                     </div>
+
+                    {item.description ? (
+                      <details className="mb-2 text-xs text-slate-600">
+                        <summary className="cursor-pointer text-indigo-600 hover:underline">Описание</summary>
+                        <p className="mt-1 leading-relaxed">{item.description}</p>
+                      </details>
+                    ) : null}
+
+                    {item.external_url ? (
+                      <a
+                        href={item.external_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mb-1.5 truncate text-[11px] text-indigo-600 hover:underline"
+                        title={item.external_url}
+                      >
+                        {item.external_url}
+                      </a>
+                    ) : null}
 
                     <div className="mb-1.5 flex items-center gap-1.5">
                       <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-slate-100 text-[8px] font-bold text-slate-600">
@@ -705,11 +830,6 @@ export function MyWorkPage() {
                       <span className="text-[9px] font-medium uppercase tracking-wider text-slate-400">
                         {formatDateTime(item.created_at)}
                       </span>
-                      {item.description ? (
-                        <span className="max-w-[160px] truncate text-[10px] italic text-slate-400" title={item.description}>
-                          {item.description}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -776,7 +896,7 @@ export function MyWorkPage() {
                         d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                       />
                     </svg>
-                    <span>Скачать</span>
+                    <span>{item.file_path ? 'Скачать' : item.external_url ? 'Открыть ссылку' : 'Нет вложения'}</span>
                   </button>
                   </div>
                 </div>
@@ -827,7 +947,7 @@ export function MyWorkPage() {
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Редактирование документа</h3>
                 <p className="mt-1 text-xs text-slate-400">
-                  Исправьте название или описание перед одобрением.
+                  Исправьте название, описание, категорию, уровень или результат перед одобрением.
                 </p>
               </div>
               <button type="button" onClick={closeEditModal} className="text-slate-400 hover:text-slate-600">
@@ -898,6 +1018,22 @@ export function MyWorkPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Результат
+                </label>
+                <select
+                  value={editResult}
+                  onChange={(event) => setEditResult(event.target.value)}
+                  disabled={isSubmittingEdit}
+                  className="h-[38px] w-full rounded-lg border border-slate-200 bg-surface px-3 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  {Object.values(AchievementResult).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

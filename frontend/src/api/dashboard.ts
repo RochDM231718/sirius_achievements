@@ -1,6 +1,7 @@
 ﻿import client from './client'
 
 export interface DashboardStats {
+  deleted_account?: boolean
   pending_review?: boolean
   new_users_count?: number
   pending_achievements?: number

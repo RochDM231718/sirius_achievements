@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import Chart from 'chart.js/auto'
 
 import { documentsApi } from '@/api/documents'
@@ -10,8 +10,8 @@ import { useToast } from '@/hooks/useToast'
 import { AchievementStatus } from '@/types/enums'
 import { UserDetailResponse, UserNote } from '@/types/user'
 import { openDocumentPreview } from '@/utils/documentPreview'
-import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { roleLabel, userStatusLabel } from '@/utils/labels'
 import { buildMediaUrl } from '@/utils/media'
 
 const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
@@ -54,7 +54,6 @@ export function UserDetailPage() {
   const userId = Number(id)
   const { user: currentUser } = useAuth()
   const location = useLocation()
-  const navigate = useNavigate()
   const { pushToast } = useToast()
   const chartRef = useRef<HTMLCanvasElement | null>(null)
   const chartInstanceRef = useRef<Chart | null>(null)
@@ -71,6 +70,7 @@ export function UserDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingRole, setIsSavingRole] = useState(false)
   const [isSavingGpa, setIsSavingGpa] = useState(false)
+  const [isRestoringUser, setIsRestoringUser] = useState(false)
   const [isGeneratingResume, setIsGeneratingResume] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -394,13 +394,29 @@ export function UserDetailPage() {
   }
 
   const handleDeleteUser = async () => {
-    if (!detail || !window.confirm(`Удалить пользователя ${detail.user.first_name} ${detail.user.last_name}?`)) return
+    if (!detail || !window.confirm(`Перенести пользователя ${detail.user.first_name} ${detail.user.last_name} в удалённые?`)) return
     try {
       await usersApi.delete(userId)
       pushToast({ title: 'Пользователь удалён', tone: 'success' })
-      navigate('/users')
+      await load()
     } catch (deleteError) {
       setError(getErrorMessage(deleteError, 'Не удалось удалить пользователя.'))
+    }
+  }
+
+  const handleRestoreUser = async () => {
+    if (!detail) return
+
+    setIsRestoringUser(true)
+    setError(null)
+    try {
+      const { data } = await usersApi.restore(userId)
+      setDetail((current) => (current ? { ...current, user: data.user } : current))
+      pushToast({ title: 'Аккаунт восстановлен', tone: 'success' })
+    } catch (restoreError) {
+      setError(getErrorMessage(restoreError, 'Не удалось восстановить пользователя.'))
+    } finally {
+      setIsRestoringUser(false)
     }
   }
 
@@ -417,6 +433,16 @@ export function UserDetailPage() {
 
   if (isLoading) return <div className="py-16"><LoadingSpinner /></div>
   if (!detail) return null
+
+  const openUserDocument = (item: UserDetailResponse['achievements'][number]) => {
+    if (item.file_path) {
+      openDocumentPreview(item.id, item.file_path)
+      return
+    }
+    if (item.external_url) {
+      window.open(item.external_url, '_blank', 'noopener')
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -441,8 +467,8 @@ export function UserDetailPage() {
             <p className="text-[10px] text-slate-400 mb-1">ID: {detail.user.id}</p>
             <p className="text-xs text-slate-500 mb-4">{detail.user.email}</p>
             <div className="flex flex-wrap justify-center gap-2 mb-6">
-              <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-slate-100 text-slate-600 border border-slate-200">{detail.user.role}</span>
-              <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${detail.user.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{detail.user.status}</span>
+              <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-slate-100 text-slate-600 border border-slate-200">{roleLabel(detail.user.role)}</span>
+              <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${detail.user.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : detail.user.status === 'deleted' || detail.user.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{userStatusLabel(detail.user.status)}</span>
             </div>
 
             {currentUser?.role === 'SUPER_ADMIN' && currentUser.id !== detail.user.id ? (
@@ -450,7 +476,7 @@ export function UserDetailPage() {
                 <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 text-left">Изменить роль</label>
                 <div className="flex gap-2">
                   <select value={role} onChange={(event) => setRole(event.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
-                    {detail.roles.map((item) => <option key={item} value={item}>{item}</option>)}
+                    {detail.roles.map((item) => <option key={item} value={item}>{roleLabel(item)}</option>)}
                   </select>
                   <button type="button" onClick={() => void handleRoleSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingRole}>OK</button>
                 </div>
@@ -488,8 +514,71 @@ export function UserDetailPage() {
           {detail.season_history.length ? <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden text-white shadow-md relative"><div className="px-5 py-3 border-b border-slate-700/50 flex justify-between items-center relative z-10"><h3 className="text-sm font-bold text-white">Зал славы (Архив сезонов)</h3></div><div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">{detail.season_history.map((item) => <div key={item.id} className="bg-surface/10 rounded-lg p-4 flex justify-between items-center border border-white/5 hover:bg-surface/20 transition-colors"><div><div className="text-xs font-bold text-slate-200">{item.season_name}</div><div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">Место: <span className="text-white text-sm">#{item.rank}</span></div></div><div className="text-xl font-black text-yellow-400">{item.points} <span className="text-[10px] font-normal text-slate-400">б.</span></div></div>)}</div></div> : null}
 
           <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><h3 className="text-sm font-bold text-slate-700">Документы текущего сезона</h3><button type="button" onClick={() => void handleDeleteUser()} className="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">Удалить пользователя</button></div>
-            {detail.achievements.length ? <ul className="divide-y divide-slate-100">{detail.achievements.map((item) => <li key={item.id} className="p-4 hover:bg-slate-50 flex items-center justify-between transition-colors"><div className="flex items-center flex-1 min-w-0 pr-4"><div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mr-4 shrink-0 border border-indigo-100"><button type="button" onClick={() => openDocumentPreview(item.id, item.file_path)}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button></div><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-800 truncate">{item.title}</p><p className="text-xs text-slate-500 mt-0.5 flex items-center"><span className="mr-2">{item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : 'Дата не указана'}</span>{item.rejection_reason ? <span className="text-red-500 truncate max-w-[200px]">• {item.rejection_reason}</span> : null}</p></div></div><div className="flex items-center gap-3 shrink-0"><span className={`hidden sm:inline-flex px-2 py-0.5 text-[10px] rounded font-medium border ${statusClass(item.status)}`}>{achievementStatusLabel(item.status)}</span><button type="button" onClick={() => void handleDeleteDocument(item.id, item.title)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Удалить"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></li>)}</ul> : <div className="p-10 text-center flex flex-col items-center"><p className="text-sm text-slate-500">Достижений пока нет.</p></div>}
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-700">Документы текущего сезона</h3>
+              {detail.user.status === 'deleted' ? (
+                <button type="button" onClick={() => void handleRestoreUser()} disabled={isRestoringUser} className="text-xs font-medium text-green-600 hover:text-green-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60">
+                  {isRestoringUser ? 'Восстановление...' : 'Восстановить пользователя'}
+                </button>
+              ) : (
+                <button type="button" onClick={() => void handleDeleteUser()} className="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors">
+                  Удалить пользователя
+                </button>
+              )}
+            </div>
+            {detail.achievements.length ? (
+              <ul className="divide-y divide-slate-100">
+                {detail.achievements.map((item) => (
+                  <li key={item.id} className="p-4 hover:bg-slate-50 flex items-center justify-between transition-colors">
+                    <div className="flex items-center flex-1 min-w-0 pr-4">
+                      <div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mr-4 shrink-0 border border-indigo-100">
+                        <button type="button" onClick={() => openUserDocument(item)} title={item.file_path ? 'Открыть файл' : item.external_url ? 'Открыть ссылку' : 'Нет вложения'}>
+                          {item.external_url && !item.file_path ? (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 015.656 5.656l-3 3a4 4 0 01-5.656-5.656M10.172 13.828a4 4 0 01-5.656-5.656l3-3a4 4 0 015.656 5.656" /></svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          )}
+                        </button>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 truncate">{item.title}</p>
+                        {item.description ? (
+                          <details className="mt-0.5 text-xs text-slate-500">
+                            <summary className="cursor-pointer text-indigo-600 hover:underline">Описание</summary>
+                            <p className="mt-1 leading-relaxed">{item.description}</p>
+                          </details>
+                        ) : null}
+                        {item.external_url ? (
+                          <a
+                            href={item.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 block max-w-md truncate text-xs text-indigo-600 hover:underline"
+                            title={item.external_url}
+                          >
+                            Ссылка на подтверждение
+                          </a>
+                        ) : null}
+                        <p className="text-xs text-slate-500 mt-0.5 flex items-center">
+                          <span className="mr-2">{item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : 'Дата не указана'}</span>
+                          {item.rejection_reason ? <span className="text-red-500 truncate max-w-[200px]">• {item.rejection_reason}</span> : null}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`hidden sm:inline-flex px-2 py-0.5 text-[10px] rounded font-medium border ${statusClass(item.status)}`}>{achievementStatusLabel(item.status)}</span>
+                      <button type="button" onClick={() => void handleDeleteDocument(item.id, item.title)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Удалить">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="p-10 text-center flex flex-col items-center">
+                <p className="text-sm text-slate-500">Достижений пока нет.</p>
+              </div>
+            )}
           </div>
 
           {detail.user.role === 'STUDENT' ? <div className="bg-surface rounded-xl border border-slate-200 p-5"><h3 className="text-sm font-semibold text-slate-700 mb-4">Динамика достижений</h3>{detail.chart_labels.length ? <div className="h-48"><canvas ref={chartRef} /></div> : <div className="text-center py-8 text-sm text-slate-400">Нет одобренных достижений для отображения графика</div>}</div> : null}

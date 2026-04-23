@@ -7,6 +7,7 @@ export interface AchievementsParams {
   status?: string
   category?: string
   level?: string
+  result?: string
   sort_by?: string
 }
 

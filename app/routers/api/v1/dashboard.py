@@ -38,6 +38,9 @@ async def dashboard(
 ):
     user = current_user
 
+    if user.status == UserStatus.DELETED and not user.is_staff:
+        return {'deleted_account': True}
+
     if user.status == UserStatus.PENDING and not user.is_staff:
         return {'pending_review': True}
 

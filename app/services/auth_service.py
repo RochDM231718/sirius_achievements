@@ -1,5 +1,6 @@
 import smtplib
 import ssl
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -114,7 +115,10 @@ class AuthService:
         data.email = data.email.strip().lower()
         stmt = select(Users).where(func.lower(Users.email) == data.email)
         result = await self.db.execute(stmt)
-        if result.scalars().first():
+        existing_user = result.scalars().first()
+        if existing_user and existing_user.status == UserStatus.DELETED:
+            await self._release_deleted_email(existing_user, data.email)
+        elif existing_user:
             # Return None on duplicate to avoid user enumeration.
             # Caller should always respond with the same generic success.
             logger.info("Registration attempt for existing email", email=data.email)
@@ -141,6 +145,14 @@ class AuthService:
 
         logger.info("New user registered", email=data.email)
         return new_user
+
+    async def _release_deleted_email(self, user: Users, original_email: str) -> None:
+        timestamp = int(datetime.now(timezone.utc).timestamp())
+        user.email = f"deleted+{user.id}+{timestamp}-{original_email}"
+        user.api_access_version = self._next_version(user.api_access_version)
+        user.api_refresh_version = self._next_version(user.api_refresh_version)
+        self.db.add(user)
+        await self.db.flush()
 
     async def api_authenticate(self, email: str, password: str, role: str = "User", ip: str = "unknown"):
         user = await self.authenticate(email, password, role, ip)

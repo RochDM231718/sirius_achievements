@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { dashboardApi, type DashboardStats } from '@/api/dashboard'
+import { PointsGuide } from '@/components/points/PointsGuide'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
@@ -57,8 +58,16 @@ export function DashboardPage() {
   const period = normalizePeriod(searchParams.get('period'))
   const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+  const isDeletedAccount = user?.status === 'deleted'
 
   useEffect(() => {
+    if (isDeletedAccount) {
+      setStats(null)
+      setError(null)
+      setIsLoading(false)
+      return
+    }
+
     const load = async () => {
       setIsLoading(true)
       setError(null)
@@ -72,7 +81,7 @@ export function DashboardPage() {
       }
     }
     void load()
-  }, [period])
+  }, [isDeletedAccount, period])
 
   useEffect(() => {
     const canvas = chartCanvasRef.current
@@ -163,6 +172,32 @@ export function DashboardPage() {
     }
   }, [isStaff, stats])
 
+  if (isDeletedAccount || stats?.deleted_account) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="min-h-[50vh] flex flex-col items-center justify-center text-center p-4">
+          <div className="bg-surface p-8 rounded-xl border border-red-200 max-w-md w-full shadow-sm">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v4m0 4h.01M5.07 19h13.86A2 2 0 0020.66 16L13.73 4a2 2 0 00-3.46 0L3.34 16A2 2 0 005.07 19z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Аккаунт удалён</h2>
+            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+              Доступ к функциям ограничен. Напишите в поддержку, если нужно восстановить данные или уточнить статус аккаунта.
+            </p>
+            <Link
+              to="/support"
+              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+            >
+              Написать в поддержку
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading && !stats) {
     return <div className="max-w-6xl mx-auto bg-surface rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500 shadow-sm">Загрузка данных…</div>
   }
@@ -231,6 +266,8 @@ export function DashboardPage() {
       </div>
 
       {error ? <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div> : null}
+
+      <PointsGuide />
 
       {isStaff ? (
         <>
@@ -316,4 +353,3 @@ export function DashboardPage() {
     </div>
   )
 }
-

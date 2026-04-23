@@ -96,6 +96,28 @@ def _achievement_status_label(status: str) -> str:
     return str(status)
 
 
+def _user_role_label(role) -> str:
+    value = role.value if hasattr(role, 'value') else str(role)
+    labels = {
+        'GUEST': 'Гость',
+        'STUDENT': 'Студент',
+        'MODERATOR': 'Модератор',
+        'SUPER_ADMIN': 'Админ',
+    }
+    return labels.get(value, value)
+
+
+def _user_status_label(status) -> str:
+    value = status.value if hasattr(status, 'value') else str(status)
+    labels = {
+        'active': 'Активен',
+        'pending': 'Ожидает',
+        'rejected': 'Отклонён',
+        'deleted': 'Удалён',
+    }
+    return labels.get(value, value)
+
+
 def _format_ru_date(value) -> str:
     if not value:
         return '—'
@@ -261,9 +283,13 @@ async def list_users(
 
     if sort_by == 'oldest':
         stmt = stmt.order_by(Users.created_at.asc())
-    elif sort_by == 'name_asc':
+    elif sort_by in {'first_name_asc', 'name_asc'}:
+        stmt = stmt.order_by(Users.first_name.asc(), Users.last_name.asc(), Users.created_at.desc())
+    elif sort_by in {'first_name_desc', 'name_desc'}:
+        stmt = stmt.order_by(Users.first_name.desc(), Users.last_name.desc(), Users.created_at.desc())
+    elif sort_by == 'last_name_asc':
         stmt = stmt.order_by(Users.last_name.asc(), Users.first_name.asc(), Users.created_at.desc())
-    elif sort_by == 'name_desc':
+    elif sort_by == 'last_name_desc':
         stmt = stmt.order_by(Users.last_name.desc(), Users.first_name.desc(), Users.created_at.desc())
     else:
         stmt = stmt.order_by(Users.created_at.desc())
@@ -393,9 +419,46 @@ async def delete_user(
         if target_level >= current_level:
             raise HTTPException(status_code=403, detail='Insufficient permissions for deletion.')
 
-    repository = UserRepository(db)
-    await repository.delete(user_id)
-    return {'success': True}
+    target_user.status = UserStatus.DELETED
+    target_user.role = UserRole.GUEST
+    target_user.is_active = True
+    target_user.reviewed_by_id = None
+    target_user.session_version = int(target_user.session_version or 0) + 1
+    target_user.api_access_version = int(target_user.api_access_version or 0) + 1
+    target_user.api_refresh_version = int(target_user.api_refresh_version or 0) + 1
+    await db.commit()
+    await db.refresh(target_user)
+    return {'success': True, 'user': serialize_user(target_user)}
+
+
+@router.post('/{user_id}/restore')
+async def restore_user(
+    user_id: int,
+    current_user=Depends(_check_admin_rights),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await _get_target_user_or_404(db, user_id)
+    if not _can_access_target(current_user, target_user):
+        raise HTTPException(status_code=403, detail='Access denied')
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        current_level = ROLE_HIERARCHY.get(current_user.role, 0)
+        target_level = ROLE_HIERARCHY.get(target_user.role, 0)
+        if target_level >= current_level:
+            raise HTTPException(status_code=403, detail='Insufficient permissions for restoration.')
+
+    if target_user.status == UserStatus.DELETED and target_user.role == UserRole.GUEST:
+        target_user.role = UserRole.STUDENT
+
+    target_user.status = UserStatus.PENDING if target_user.role == UserRole.GUEST else UserStatus.ACTIVE
+    target_user.is_active = True
+    target_user.reviewed_by_id = None
+    target_user.session_version = int(target_user.session_version or 0) + 1
+    target_user.api_access_version = int(target_user.api_access_version or 0) + 1
+    target_user.api_refresh_version = int(target_user.api_refresh_version or 0) + 1
+    await db.commit()
+    await db.refresh(target_user)
+    return {'success': True, 'user': serialize_user(target_user)}
 
 
 @router.get('/{user_id}/generate-resume')
@@ -575,8 +638,8 @@ async def export_user_pdf(
     write_heading('Основная информация')
     write_wrapped(f'ФИО: {target_user.first_name} {target_user.last_name}', width=76)
     write_wrapped(f'Email: {target_user.email}', size=10, color=(0.35, 0.35, 0.35), width=90)
-    write_wrapped(f'Роль: {target_user.role.value if hasattr(target_user.role, "value") else target_user.role}', size=10, color=(0.35, 0.35, 0.35), width=90)
-    write_wrapped(f'Статус: {target_user.status.value if hasattr(target_user.status, "value") else target_user.status}', size=10, color=(0.35, 0.35, 0.35), width=90)
+    write_wrapped(f'Роль: {_user_role_label(target_user.role)}', size=10, color=(0.35, 0.35, 0.35), width=90)
+    write_wrapped(f'Статус: {_user_status_label(target_user.status)}', size=10, color=(0.35, 0.35, 0.35), width=90)
     write_wrapped(f'Уровень обучения: {target_user.education_level.value if target_user.education_level else "—"}', size=10, color=(0.35, 0.35, 0.35), width=90)
     write_wrapped(f'Курс: {target_user.course or "—"} | Группа: {target_user.study_group or "—"}', size=10, color=(0.35, 0.35, 0.35), width=90)
     write_wrapped(f'Телефон: {target_user.phone_number or "Не указан"}', size=10, color=(0.35, 0.35, 0.35), width=90)

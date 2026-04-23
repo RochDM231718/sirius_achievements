@@ -10,8 +10,10 @@ import { Pagination } from '@/components/ui/Pagination'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { Achievement } from '@/types/achievement'
+import { AchievementResult } from '@/types/enums'
 import { openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
+import { achievementStatusLabel } from '@/utils/labels'
 
 const DOCUMENTS_PAGE_SIZE = 20
 
@@ -45,6 +47,7 @@ export function DocumentsPage() {
   const [status, setStatus] = useState('')
   const [category, setCategory] = useState('')
   const [level, setLevel] = useState('')
+  const [result, setResult] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -59,9 +62,10 @@ export function DocumentsPage() {
       status: status || undefined,
       category: category || undefined,
       level: level || undefined,
+      result: result || undefined,
       sort_by: sortBy,
     }),
-    [category, level, page, query, sortBy, status],
+    [category, level, page, query, result, sortBy, status],
   )
 
   const loadDocuments = async () => {
@@ -88,7 +92,7 @@ export function DocumentsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [query, status, category, level, sortBy])
+  }, [query, status, category, level, result, sortBy])
 
   useEffect(() => {
     const trimmed = query.trim()
@@ -122,12 +126,22 @@ export function DocumentsPage() {
     setStatus('')
     setCategory('')
     setLevel('')
+    setResult('')
     setSortBy('newest')
     setSuggestions([])
     setPage(1)
   }
 
   const handleDownload = async (item: Achievement) => {
+    if (!item.file_path && item.external_url) {
+      window.open(item.external_url, '_blank', 'noopener')
+      return
+    }
+    if (!item.file_path) {
+      setError('У этого документа нет прикреплённого файла.')
+      return
+    }
+
     try {
       const response = await documentsApi.download(item.id)
       const blob =
@@ -145,6 +159,16 @@ export function DocumentsPage() {
       URL.revokeObjectURL(link.href)
     } catch (downloadError) {
       setError(getErrorMessage(downloadError, 'Не удалось скачать документ.'))
+    }
+  }
+
+  const handleOpenDocument = (item: Achievement) => {
+    if (item.file_path) {
+      openDocumentPreview(item.id, item.file_path)
+      return
+    }
+    if (item.external_url) {
+      window.open(item.external_url, '_blank', 'noopener')
     }
   }
 
@@ -178,7 +202,7 @@ export function DocumentsPage() {
         kind="documents"
         currentView="all"
         title="Все документы"
-        description="Единый поиск по базе достижений, а фильтры и сортировка настроены под полный реестр."
+        description="Единый поиск по базе достижений."
       />
 
       {error ? (
@@ -211,8 +235,7 @@ export function DocumentsPage() {
             >
               <option value="newest">Новые</option>
               <option value="oldest">Старые</option>
-              <option value="level">По уровню</option>
-              <option value="category">По категории</option>
+              <option value="title">По названию</option>
             </select>
           </div>
 
@@ -228,7 +251,7 @@ export function DocumentsPage() {
               <option value="">Все</option>
               {statuses.map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {achievementStatusLabel(item)}
                 </option>
               ))}
             </select>
@@ -261,6 +284,22 @@ export function DocumentsPage() {
             >
               <option value="">Все</option>
               {levels.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Результат</label>
+            <select
+              value={result}
+              onChange={(event) => setResult(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {Object.values(AchievementResult).map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
@@ -313,8 +352,9 @@ export function DocumentsPage() {
                       <td className="px-5 py-3">
                         <button
                           type="button"
-                          onClick={() => openDocumentPreview(item.id, item.file_path)}
+                          onClick={() => handleOpenDocument(item)}
                           className="inline-flex h-8 w-8 items-center justify-center rounded bg-indigo-50 text-indigo-600 transition-colors hover:bg-indigo-100 hover:text-indigo-700"
+                          title={item.file_path ? 'Открыть файл' : item.external_url ? 'Открыть ссылку' : 'Нет вложения'}
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path
@@ -334,6 +374,23 @@ export function DocumentsPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="font-medium text-slate-800">{item.title}</div>
+                        {item.description ? (
+                          <details className="mt-0.5 max-w-[280px] whitespace-normal text-[11px] text-slate-500">
+                            <summary className="cursor-pointer text-indigo-600 hover:underline">Описание</summary>
+                            <p className="mt-1 leading-relaxed">{item.description}</p>
+                          </details>
+                        ) : null}
+                        {item.external_url ? (
+                          <a
+                            href={item.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 block max-w-[280px] truncate text-[11px] text-indigo-600 hover:underline"
+                            title={item.external_url}
+                          >
+                            Ссылка на подтверждение
+                          </a>
+                        ) : null}
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-600">
                         {item.user ? (
@@ -355,6 +412,7 @@ export function DocumentsPage() {
                       <td className="px-5 py-3 text-xs text-slate-600">
                         <span className="block">{item.category}</span>
                         <span className="text-slate-400">{item.level}</span>
+                        {item.result ? <span className="block text-slate-400">{item.result}</span> : null}
                       </td>
                       <td className="px-5 py-3">
                         <span
@@ -372,7 +430,7 @@ export function DocumentsPage() {
                             type="button"
                             onClick={() => void handleDownload(item)}
                             className="text-slate-400 transition-colors hover:text-indigo-600"
-                            title="Скачать"
+                            title={item.file_path ? 'Скачать' : item.external_url ? 'Открыть ссылку' : 'Нет вложения'}
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path

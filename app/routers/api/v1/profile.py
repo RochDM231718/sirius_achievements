@@ -14,7 +14,7 @@ from app.infrastructure.database import get_db
 from app.infrastructure.jwt_handler import ALGORITHM, SECRET_KEY, JWTError
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementStatus
+from app.models.enums import AchievementStatus, UserStatus
 from app.repositories.admin.user_repository import UserRepository
 from app.repositories.admin.user_token_repository import UserTokenRepository
 from app.schemas.admin.auth import ResetPasswordSchema
@@ -96,9 +96,16 @@ def get_user_service(db: AsyncSession = Depends(get_db)):
     return UserService(UserRepository(db))
 
 
+def _ensure_account_not_deleted(current_user) -> None:
+    if current_user.status == UserStatus.DELETED:
+        raise HTTPException(status_code=403, detail='Аккаунт удалён. Доступна только поддержка.')
+
+
 @router.get('')
 @router.get('/')
 async def profile(current_user=Depends(auth), db: AsyncSession = Depends(get_db)):
+    _ensure_account_not_deleted(current_user)
+
     user = current_user
     resume_service = ResumeService(db)
     check = await resume_service.can_generate(user.id)
@@ -172,6 +179,8 @@ async def update_profile(
     current_user=Depends(auth),
     service: UserService = Depends(get_user_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     normalized_first_name = _EMOJI_RE.sub('', (first_name or current_user.first_name or '')).strip() or current_user.first_name
     normalized_last_name = _EMOJI_RE.sub('', (last_name or current_user.last_name or '')).strip() or current_user.last_name
     normalized_phone = phone_number.strip() if isinstance(phone_number, str) else phone_number
@@ -209,6 +218,8 @@ async def send_password_code(
     current_user=Depends(auth),
     auth_service: AuthService = Depends(get_auth_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     success, message, retry_after, user_id = await auth_service.forgot_password(current_user.email, background_tasks)
     if not success or not user_id:
         raise HTTPException(status_code=400, detail=message)
@@ -227,6 +238,8 @@ async def verify_password_code(
     current_user=Depends(auth),
     auth_service: AuthService = Depends(get_auth_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     user_id = _parse_flow_token(payload.flow_id, 'profile_password_change')
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail='Access denied')
@@ -254,6 +267,8 @@ async def resend_password_code(
     current_user=Depends(auth),
     auth_service: AuthService = Depends(get_auth_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     user_id = _parse_flow_token(payload.flow_id, 'profile_password_change')
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail='Access denied')
@@ -277,6 +292,8 @@ async def reset_password(
     current_user=Depends(auth),
     auth_service: AuthService = Depends(get_auth_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     user_id = _parse_flow_token(payload.flow_id, 'profile_password_change_verified')
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail='Access denied')

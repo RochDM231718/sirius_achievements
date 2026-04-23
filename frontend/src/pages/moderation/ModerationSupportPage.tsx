@@ -92,6 +92,19 @@ function formatDate(dateStr?: string | null) {
   return `${day}.${month}.${year} ${hours}:${minutes}`
 }
 
+function getSortOrderLabels(sortBy: string) {
+  if (sortBy === 'subject') {
+    return { asc: 'Тема: А-Я', desc: 'Тема: Я-А' }
+  }
+  if (sortBy === 'status') {
+    return { asc: 'Статус: А-Я', desc: 'Статус: Я-А' }
+  }
+  if (sortBy === 'id') {
+    return { asc: 'ID: сначала меньшие', desc: 'ID: сначала большие' }
+  }
+  return { asc: 'Сначала старые', desc: 'Сначала новые' }
+}
+
 export function ModerationSupportPage() {
   const { user: currentUser } = useAuth()
   const { pushToast } = useToast()
@@ -237,6 +250,7 @@ export function ModerationSupportPage() {
 
   const tickets = data?.tickets ?? []
   const total = data?.total ?? 0
+  const sortOrderLabels = getSortOrderLabels(sortBy)
   const currentView = tab === 'new' ? 'incoming' : tab === 'chats' ? 'my' : 'all'
   const title =
     tab === 'new' ? 'Новые обращения' : tab === 'chats' ? 'Мои чаты поддержки' : 'Все обращения'
@@ -272,7 +286,7 @@ export function ModerationSupportPage() {
 
           <div className="w-full sm:w-[170px]">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Сортировка
+              Критерий
             </label>
             <select
               value={sortBy}
@@ -303,14 +317,14 @@ export function ModerationSupportPage() {
           </div>
 
           <div className="w-full sm:w-[140px]">
-            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Порядок</label>
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Направление</label>
             <select
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value)}
               className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
             >
-              <option value="desc">По убыванию</option>
-              <option value="asc">По возрастанию</option>
+              <option value="desc">{sortOrderLabels.desc}</option>
+              <option value="asc">{sortOrderLabels.asc}</option>
             </select>
           </div>
 

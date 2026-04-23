@@ -13,13 +13,16 @@ import { useToast } from '@/hooks/useToast'
 import type { User } from '@/types/user'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { coursesForEducationLevel, roleLabel, userStatusLabel } from '@/utils/labels'
 
 function statusLabel(status: string, reviewedById?: number, currentUserId?: number) {
   if (status === 'active') return 'Активен'
   if (status === 'pending' && !reviewedById) return 'Новый'
   if (status === 'pending' && reviewedById === currentUserId) return 'В работе'
   if (status === 'pending') return 'Принято'
-  return 'Блок'
+  if (status === 'deleted') return 'Удалён'
+  if (status === 'rejected') return 'Отклонён'
+  return userStatusLabel(status)
 }
 
 function statusClass(status: string, reviewedById?: number, currentUserId?: number) {
@@ -89,6 +92,12 @@ export function UsersPage() {
   }, [query, role, status, educationLevel, course, sortBy])
 
   useEffect(() => {
+    if (!educationLevel || (course && !coursesForEducationLevel(educationLevel).includes(Number(course)))) {
+      setCourse('')
+    }
+  }, [course, educationLevel])
+
+  useEffect(() => {
     const trimmed = query.trim()
     if (!trimmed) {
       setSuggestions([])
@@ -132,6 +141,7 @@ export function UsersPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [restoreBusyId, setRestoreBusyId] = useState<number | null>(null)
 
   const handleDelete = (targetUser: User) => {
     setDeleteTarget(targetUser)
@@ -149,6 +159,21 @@ export function UsersPage() {
       setError(getErrorMessage(deleteError, 'Не удалось удалить пользователя.'))
     } finally {
       setDeleteBusy(false)
+    }
+  }
+
+  const handleRestore = async (targetUser: User) => {
+    setRestoreBusyId(targetUser.id)
+    setError(null)
+
+    try {
+      await usersApi.restore(targetUser.id)
+      pushToast({ title: 'Аккаунт восстановлен', tone: 'success' })
+      await loadUsers()
+    } catch (restoreError) {
+      setError(getErrorMessage(restoreError, 'Не удалось восстановить пользователя.'))
+    } finally {
+      setRestoreBusyId(null)
     }
   }
 
@@ -189,10 +214,12 @@ export function UsersPage() {
               onChange={(event) => setSortBy(event.target.value)}
               className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
             >
-              <option value="newest">Новые</option>
-              <option value="oldest">Старые</option>
-              <option value="name_asc">По алфавиту</option>
-              <option value="name_desc">Я-А</option>
+              <option value="newest">Сначала новые</option>
+              <option value="oldest">Сначала старые</option>
+              <option value="first_name_asc">По имени (А-Я)</option>
+              <option value="first_name_desc">По имени (Я-А)</option>
+              <option value="last_name_asc">По фамилии (А-Я)</option>
+              <option value="last_name_desc">По фамилии (Я-А)</option>
             </select>
           </div>
 
@@ -206,7 +233,7 @@ export function UsersPage() {
               <option value="">Все роли</option>
               {roles.map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {roleLabel(item)}
                 </option>
               ))}
             </select>
@@ -235,10 +262,11 @@ export function UsersPage() {
             <select
               value={course}
               onChange={(event) => setCourse(event.target.value)}
-              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+              disabled={!educationLevel}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="">Все</option>
-              {[1, 2, 3, 4, 5, 6].map((item) => (
+              <option value="">{educationLevel ? 'Все' : 'Выберите обучение'}</option>
+              {coursesForEducationLevel(educationLevel).map((item) => (
                 <option key={item} value={String(item)}>
                   {item}
                 </option>
@@ -258,7 +286,7 @@ export function UsersPage() {
               <option value="">Все</option>
               {statuses.map((item) => (
                 <option key={item} value={item}>
-                  {item === 'active' ? 'Активен' : item === 'pending' ? 'Ожидает' : item === 'rejected' ? 'Блок' : item}
+                  {userStatusLabel(item)}
                 </option>
               ))}
             </select>
@@ -330,7 +358,7 @@ export function UsersPage() {
                     </td>
                     <td className="px-5 py-3">
                       <span className="mb-1 inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                        {item.role}
+                        {roleLabel(item.role)}
                       </span>
                       <br />
                       <span
@@ -355,6 +383,16 @@ export function UsersPage() {
                     <td className="px-5 py-3 text-xs text-slate-500">{formatDateTime(item.created_at)}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {item.status === 'deleted' ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRestore(item)}
+                            disabled={restoreBusyId === item.id}
+                            className="text-xs font-bold text-green-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {restoreBusyId === item.id ? 'Восстановление...' : 'Восстановить'}
+                          </button>
+                        ) : null}
                         {item.status === 'pending' && !item.reviewed_by_id ? (
                           <button
                             type="button"
@@ -375,13 +413,15 @@ export function UsersPage() {
                         >
                           Профиль
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item)}
-                          className="cursor-pointer text-xs font-medium text-slate-400 transition-colors hover:text-red-600"
-                        >
-                          Удалить
-                        </button>
+                        {item.status !== 'deleted' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(item)}
+                            className="cursor-pointer text-xs font-medium text-slate-400 transition-colors hover:text-red-600"
+                          >
+                            Удалить
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -409,7 +449,7 @@ export function UsersPage() {
         message={
           deleteTarget ? (
             <>
-              Будет удалён аккаунт <strong>{deleteTarget.first_name} {deleteTarget.last_name}</strong> и все связанные с ним данные. Это действие нельзя отменить.
+              Аккаунт <strong>{deleteTarget.first_name} {deleteTarget.last_name}</strong> будет перенесён в статус «Удалён». Его можно будет восстановить из списка пользователей.
             </>
           ) : null
         }

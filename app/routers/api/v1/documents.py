@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.infrastructure.database import get_db
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementCategory, AchievementLevel, AchievementStatus, UserRole
+from app.models.enums import AchievementCategory, AchievementLevel, AchievementResult, AchievementStatus, UserRole
 from app.models.user import Users
 from app.repositories.admin.achievement_repository import AchievementRepository
 from app.services.admin.achievement_service import AchievementService
@@ -94,6 +94,7 @@ async def list_documents(
     status: str = '',
     category: str = '',
     level: str = '',
+    result: str = '',
     sort_by: str = 'newest',
     current_user=Depends(_check_admin_rights),
     db: AsyncSession = Depends(get_db),
@@ -107,6 +108,7 @@ async def list_documents(
         status=status,
         category=category,
         level=level,
+        result=result,
         sort_by=sort_by,
         owner_education_level=_document_zone_filter(current_user),
     )
@@ -122,6 +124,7 @@ async def list_documents(
         'statuses': [item.value for item in AchievementStatus],
         'categories': [item.value for item in AchievementCategory],
         'levels': [item.value for item in AchievementLevel],
+        'results': [item.value for item in AchievementResult],
     }
 
 

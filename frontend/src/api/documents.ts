@@ -7,6 +7,7 @@ export interface DocumentsParams {
   status?: string
   category?: string
   level?: string
+  result?: string
   sort_by?: string
 }
 
@@ -18,6 +19,7 @@ export interface DocumentsResponse {
   statuses: string[]
   categories: string[]
   levels: string[]
+  results?: string[]
 }
 
 export const documentsApi = {

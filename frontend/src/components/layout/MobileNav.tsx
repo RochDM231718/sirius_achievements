@@ -12,6 +12,7 @@ export function MobileNav({ user }: MobileNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
   const isActive = user?.status === 'active'
+  const isDeleted = user?.status === 'deleted'
   const showStudentAchievements = Boolean(user && isActive && !isStaff)
   const showStudentSupport = Boolean(user && !isStaff)
 
@@ -95,19 +96,21 @@ export function MobileNav({ user }: MobileNavProps) {
           </Link>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(true)}
-          className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 hover:text-slate-600 focus:outline-none"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-          <span className="text-[10px] font-medium">Ещё</span>
-        </button>
+        {!isDeleted ? (
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 hover:text-slate-600 focus:outline-none"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            <span className="text-[10px] font-medium">Ещё</span>
+          </button>
+        ) : null}
       </nav>
 
-      {mobileMenuOpen ? (
+      {mobileMenuOpen && !isDeleted ? (
         <div className="fixed inset-0 z-[60] md:hidden">
           <div
             className="absolute inset-0 bg-slate-900 bg-opacity-50 backdrop-blur-sm"
@@ -162,10 +165,14 @@ export function MobileNav({ user }: MobileNavProps) {
                 </>
               ) : null}
 
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-4 mb-2 pl-2">Аккаунт</p>
-              <Link to="/profile" className="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">
-                Настройки профиля
-              </Link>
+              {!isDeleted ? (
+                <>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-4 mb-2 pl-2">Аккаунт</p>
+                  <Link to="/profile" className="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">
+                    Настройки профиля
+                  </Link>
+                </>
+              ) : null}
             </div>
           </div>
         </div>

@@ -32,7 +32,11 @@ export const usersApi = {
   },
 
   delete(id: number) {
-    return client.delete<{ success: boolean }>(`/users/${id}`)
+    return client.delete<{ success: boolean; user: User }>(`/users/${id}`)
+  },
+
+  restore(id: number) {
+    return client.post<{ success: boolean; user: User }>(`/users/${id}/restore`)
   },
 
   generateResume(id: number) {

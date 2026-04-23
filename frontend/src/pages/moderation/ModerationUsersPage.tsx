@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { User } from '@/types/user'
 import { getErrorMessage } from '@/utils/http'
+import { roleLabel } from '@/utils/labels'
 import { buildMediaUrl } from '@/utils/media'
 import { getTotalPages, paginateItems } from '@/utils/pagination'
 
@@ -50,7 +51,8 @@ export function ModerationUsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [query, setQuery] = useState('')
-  const [sortBy, setSortBy] = useState('free_first')
+  const [assignmentSort, setAssignmentSort] = useState('free_first')
+  const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -102,30 +104,46 @@ export function ModerationUsersPage() {
     const nextUsers = users.filter((user) => matchesUser(user, query))
 
     nextUsers.sort((left, right) => {
-      if (sortBy === 'oldest') {
-        return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+      if (assignmentSort === 'mine_first') {
+        const mineRank = (user: User) => (user.reviewed_by_id === currentUser?.id ? 0 : user.reviewed_by_id ? 2 : 1)
+        const assignmentDiff = mineRank(left) - mineRank(right)
+        if (assignmentDiff !== 0) {
+          return assignmentDiff
+        }
       }
 
-      if (sortBy === 'name_asc') {
-        return `${left.last_name} ${left.first_name}`.localeCompare(`${right.last_name} ${right.first_name}`, 'ru')
-      }
-
-      if (sortBy === 'mine_first') {
-        return assignmentRank(left, currentUser?.id) - assignmentRank(right, currentUser?.id)
-      }
-
-      if (sortBy === 'free_first') {
+      if (assignmentSort === 'free_first') {
         const assignmentDiff = assignmentRank(left, currentUser?.id) - assignmentRank(right, currentUser?.id)
         if (assignmentDiff !== 0) {
           return assignmentDiff
         }
       }
 
+      if (sortBy === 'oldest') {
+        return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+      }
+
+      if (sortBy === 'first_name_asc') {
+        return `${left.first_name} ${left.last_name}`.localeCompare(`${right.first_name} ${right.last_name}`, 'ru')
+      }
+
+      if (sortBy === 'first_name_desc') {
+        return `${right.first_name} ${right.last_name}`.localeCompare(`${left.first_name} ${left.last_name}`, 'ru')
+      }
+
+      if (sortBy === 'last_name_asc') {
+        return `${left.last_name} ${left.first_name}`.localeCompare(`${right.last_name} ${right.first_name}`, 'ru')
+      }
+
+      if (sortBy === 'last_name_desc') {
+        return `${right.last_name} ${right.first_name}`.localeCompare(`${left.last_name} ${left.first_name}`, 'ru')
+      }
+
       return new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     })
 
     return nextUsers
-  }, [currentUser?.id, query, sortBy, users])
+  }, [assignmentSort, currentUser?.id, query, sortBy, users])
 
   const totalPages = useMemo(
     () => getTotalPages(filteredUsers.length, MODERATION_USERS_PAGE_SIZE),
@@ -139,7 +157,7 @@ export function ModerationUsersPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [query, sortBy])
+  }, [assignmentSort, query, sortBy])
 
   useEffect(() => {
     if (page > totalPages) {
@@ -159,7 +177,8 @@ export function ModerationUsersPage() {
 
   const resetFilters = () => {
     setQuery('')
-    setSortBy('free_first')
+    setAssignmentSort('free_first')
+    setSortBy('newest')
     setSuggestions([])
     setPage(1)
   }
@@ -192,6 +211,21 @@ export function ModerationUsersPage() {
             className="min-w-[240px] flex-1"
           />
 
+          <div className="w-full sm:w-[150px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Занятость
+            </label>
+            <select
+              value={assignmentSort}
+              onChange={(event) => setAssignmentSort(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="free_first">Сначала свободные</option>
+              <option value="mine_first">Сначала мои</option>
+              <option value="none">Без приоритета</option>
+            </select>
+          </div>
+
           <div className="w-full sm:w-[170px]">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Сортировка
@@ -201,11 +235,12 @@ export function ModerationUsersPage() {
               onChange={(event) => setSortBy(event.target.value)}
               className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
             >
-              <option value="free_first">Сначала свободные</option>
-              <option value="mine_first">Сначала мои</option>
               <option value="newest">Новые</option>
               <option value="oldest">Старые</option>
-              <option value="name_asc">По алфавиту</option>
+              <option value="first_name_asc">Имя: А-Я</option>
+              <option value="first_name_desc">Имя: Я-А</option>
+              <option value="last_name_asc">Фамилия: А-Я</option>
+              <option value="last_name_desc">Фамилия: Я-А</option>
             </select>
           </div>
 
@@ -277,7 +312,7 @@ export function ModerationUsersPage() {
                     </td>
                     <td className="px-5 py-3">
                       <span className="mb-1 inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                        {user.role}
+                        {roleLabel(user.role)}
                       </span>
                       <br />
                       {user.education_level ? (

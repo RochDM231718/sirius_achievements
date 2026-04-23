@@ -11,6 +11,7 @@ import { PaginationFooter } from '@/components/ui/PaginationFooter'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import type { Achievement } from '@/types/achievement'
+import { AchievementCategory, AchievementLevel, AchievementResult } from '@/types/enums'
 import { isImageFile, isPdfFile, openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
 
@@ -21,6 +22,9 @@ export function ModerationAchievementsPage() {
   const { pushToast } = useToast()
   const [items, setItems] = useState<Achievement[]>([])
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('')
+  const [level, setLevel] = useState('')
+  const [result, setResult] = useState('')
   const [sortBy, setSortBy] = useState('oldest')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -34,9 +38,12 @@ export function ModerationAchievementsPage() {
     () => ({
       page,
       query: query || undefined,
+      category: category || undefined,
+      level: level || undefined,
+      result: result || undefined,
       sort_by: sortBy,
     }),
-    [page, query, sortBy],
+    [category, level, page, query, result, sortBy],
   )
 
   const load = async (initial = false) => {
@@ -66,7 +73,7 @@ export function ModerationAchievementsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [query, sortBy])
+  }, [query, category, level, result, sortBy])
 
   useEffect(() => {
     const trimmed = query.trim()
@@ -80,6 +87,9 @@ export function ModerationAchievementsPage() {
         const { data } = await moderationApi.getAchievements({
           page: 1,
           query: trimmed,
+          category: category || undefined,
+          level: level || undefined,
+          result: result || undefined,
           sort_by: sortBy,
         })
         setSuggestions(
@@ -96,7 +106,7 @@ export function ModerationAchievementsPage() {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [query, sortBy])
+  }, [category, level, query, result, sortBy])
 
   const handleTake = async (item: Achievement) => {
     try {
@@ -109,6 +119,15 @@ export function ModerationAchievementsPage() {
   }
 
   const handleDownload = async (item: Achievement) => {
+    if (!item.file_path && item.external_url) {
+      window.open(item.external_url, '_blank', 'noopener')
+      return
+    }
+    if (!item.file_path) {
+      setError('У этого документа нет прикреплённого файла.')
+      return
+    }
+
     try {
       const response = await documentsApi.download(item.id)
       const blob =
@@ -129,8 +148,21 @@ export function ModerationAchievementsPage() {
     }
   }
 
+  const handleOpenDocument = (item: Achievement) => {
+    if (item.file_path) {
+      openDocumentPreview(item.id, item.file_path)
+      return
+    }
+    if (item.external_url) {
+      window.open(item.external_url, '_blank', 'noopener')
+    }
+  }
+
   const resetFilters = () => {
     setQuery('')
+    setCategory('')
+    setLevel('')
+    setResult('')
     setSortBy('oldest')
     setSuggestions([])
     setPage(1)
@@ -142,7 +174,7 @@ export function ModerationAchievementsPage() {
         kind="documents"
         currentView="incoming"
         title="Новые документы"
-        description={`${totalPending} ожидают проверки. Поиск и быстрые переходы теперь такие же, как на остальных документных страницах.`}
+        description={`${totalPending} ожидают проверки`}
       />
 
       {error ? (
@@ -164,6 +196,60 @@ export function ModerationAchievementsPage() {
             className="min-w-[240px] flex-1"
           />
 
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Категория
+            </label>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {Object.values(AchievementCategory).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Уровень
+            </label>
+            <select
+              value={level}
+              onChange={(event) => setLevel(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {Object.values(AchievementLevel).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-[140px]">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Результат
+            </label>
+            <select
+              value={result}
+              onChange={(event) => setResult(event.target.value)}
+              className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all focus:border-indigo-600 focus:bg-surface"
+            >
+              <option value="">Все</option>
+              {Object.values(AchievementResult).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="w-full sm:w-[170px]">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Сортировка
@@ -175,8 +261,6 @@ export function ModerationAchievementsPage() {
             >
               <option value="oldest">Сначала старые</option>
               <option value="newest">Сначала новые</option>
-              <option value="category">По категории</option>
-              <option value="level">По уровню</option>
               <option value="title">По названию</option>
             </select>
           </div>
@@ -236,7 +320,8 @@ export function ModerationAchievementsPage() {
                         <button
                           type="button"
                           className="group flex h-14 w-12 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50"
-                          onClick={() => openDocumentPreview(item.id, item.file_path)}
+                          onClick={() => handleOpenDocument(item)}
+                          title={item.file_path ? 'Открыть файл' : item.external_url ? 'Открыть ссылку' : 'Нет вложения'}
                         >
                           {item.file_path && isImageFile(item.file_path) ? (
                             <DocumentPreviewImage
@@ -253,6 +338,10 @@ export function ModerationAchievementsPage() {
                                 d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
                               />
                             </svg>
+                          ) : item.external_url ? (
+                            <svg className="h-5 w-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 015.656 5.656l-3 3a4 4 0 01-5.656-5.656M10.172 13.828a4 4 0 01-5.656-5.656l3-3a4 4 0 015.656 5.656" />
+                            </svg>
                           ) : (
                             <span className="text-[8px] text-slate-400">—</span>
                           )}
@@ -264,9 +353,21 @@ export function ModerationAchievementsPage() {
                             {item.title}
                           </div>
                           {item.description ? (
-                            <div className="mt-0.5 truncate text-[10px] text-slate-400" title={item.description}>
-                              {item.description}
-                            </div>
+                            <details className="mt-0.5 whitespace-normal text-[10px] text-slate-400">
+                              <summary className="cursor-pointer text-indigo-600 hover:underline">Описание</summary>
+                              <p className="mt-1 leading-relaxed">{item.description}</p>
+                            </details>
+                          ) : null}
+                          {item.external_url ? (
+                            <a
+                              href={item.external_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-0.5 block truncate text-[10px] text-indigo-600 hover:underline"
+                              title={item.external_url}
+                            >
+                              Ссылка на подтверждение
+                            </a>
                           ) : null}
                         </div>
                       </td>
@@ -293,6 +394,11 @@ export function ModerationAchievementsPage() {
                           <span className="inline-flex w-fit rounded border border-slate-200/50 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
                             {item.level || '—'}
                           </span>
+                          {item.result ? (
+                            <span className="inline-flex w-fit rounded border border-amber-200/70 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+                              {item.result}
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-5 py-3 text-xs text-slate-500">
@@ -328,7 +434,7 @@ export function ModerationAchievementsPage() {
                             type="button"
                             onClick={() => void handleDownload(item)}
                             className="text-xs text-slate-500 transition-colors hover:text-slate-700"
-                            title="Скачать"
+                            title={item.file_path ? 'Скачать' : item.external_url ? 'Открыть ссылку' : 'Нет вложения'}
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path

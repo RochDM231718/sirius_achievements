@@ -230,8 +230,8 @@ async def take_ticket(
         await _notify_support_user(
             db,
             ticket.user_id,
-            'Support ticket taken',
-            f'Moderator started working on ticket "{ticket.subject}".',
+            'Обращение взято в работу',
+            f'Модератор начал работу с обращением «{ticket.subject}».',
             f'/sirius.achievements/app/support/{ticket_id}',
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'taken'})
@@ -271,8 +271,8 @@ async def send_moderator_message(
         await _notify_support_user(
             db,
             ticket.user_id,
-            'New support reply',
-            f'Moderator replied in ticket "{ticket.subject}".',
+            'Новый ответ поддержки',
+            f'Модератор ответил в обращении «{ticket.subject}».',
             f'/sirius.achievements/app/support/{ticket_id}',
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'moderator_reply'})
@@ -305,8 +305,8 @@ async def close_ticket(
         await _notify_support_user(
             db,
             ticket.user_id,
-            'Support ticket closed',
-            f'Moderator closed ticket "{ticket.subject}".',
+            'Обращение закрыто',
+            f'Модератор закрыл обращение «{ticket.subject}».',
             f'/sirius.achievements/app/support/{ticket_id}',
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'closed'})
@@ -337,8 +337,8 @@ async def reopen_ticket(
         await _notify_support_user(
             db,
             ticket.user_id,
-            'Support ticket reopened',
-            f'Moderator reopened ticket "{ticket.subject}".',
+            'Обращение открыто повторно',
+            f'Модератор снова открыл обращение «{ticket.subject}».',
             f'/sirius.achievements/app/support/{ticket_id}',
         )
         await broadcast_staff_event(db, 'support_queue_updated', {'ticket_id': ticket_id, 'action': 'reopened'})

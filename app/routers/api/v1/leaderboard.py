@@ -156,6 +156,9 @@ async def leaderboard(
     current_user=Depends(auth),
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.status == UserStatus.DELETED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Аккаунт удалён. Доступна только поддержка.')
+
     course_int = int(course) if course and course.isdigit() else None
     scoped_education_level = _scoped_education_level(current_user, education_level)
     scoped_course = _scoped_course(current_user, course_int)

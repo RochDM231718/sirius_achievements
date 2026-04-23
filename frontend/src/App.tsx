@@ -53,8 +53,18 @@ function RequireAuth() {
 function RequireStaff() {
   const { user } = useAuth()
 
-  if (user?.role !== 'MODERATOR' && user?.role !== 'SUPER_ADMIN') {
+  if (user?.status === 'deleted' || (user?.role !== 'MODERATOR' && user?.role !== 'SUPER_ADMIN')) {
     return <Navigate to="/403" replace />
+  }
+
+  return <Outlet />
+}
+
+function RequireUsableAccount() {
+  const { user } = useAuth()
+
+  if (user?.status === 'deleted') {
+    return <Navigate to="/dashboard" replace />
   }
 
   return <Outlet />
@@ -79,11 +89,14 @@ function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/achievements" element={<AchievementsPage />} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/support" element={<SupportPage />} />
           <Route path="/support/:id" element={<SupportChatPage />} />
+
+          <Route element={<RequireUsableAccount />}>
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/achievements" element={<AchievementsPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+          </Route>
 
           <Route element={<RequireStaff />}>
             <Route path="/users" element={<UsersPage />} />

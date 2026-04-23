@@ -11,7 +11,7 @@ from app.config import settings
 from app.infrastructure.database import get_db
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementCategory, AchievementLevel, AchievementResult, AchievementStatus
+from app.models.enums import AchievementCategory, AchievementLevel, AchievementResult, AchievementStatus, UserStatus
 from app.repositories.admin.achievement_repository import AchievementRepository
 from app.services.admin.achievement_service import AchievementService
 from app.utils.rate_limiter import rate_limiter
@@ -23,6 +23,11 @@ router = APIRouter(prefix='/api/v1/achievements', tags=['api.v1.achievements'])
 
 
 PAGE_SIZE = 10
+
+
+def _ensure_account_not_deleted(current_user) -> None:
+    if current_user.status == UserStatus.DELETED:
+        raise HTTPException(status_code=403, detail='Аккаунт удалён. Доступна только поддержка.')
 
 
 def get_service(db: AsyncSession = Depends(get_db)):
@@ -52,10 +57,13 @@ async def list_achievements(
     status_value: str | None = Query(None, alias='status'),
     category: str | None = Query(None),
     level: str | None = Query(None),
+    result_value: str | None = Query(None, alias='result'),
     sort_by: str = Query('newest'),
     current_user=Depends(auth),
     db: AsyncSession = Depends(get_db),
 ):
+    _ensure_account_not_deleted(current_user)
+
     stmt = select(Achievement).filter(Achievement.user_id == current_user.id)
 
     if query:
@@ -67,6 +75,8 @@ async def list_achievements(
         stmt = stmt.filter(Achievement.category == category)
     if level and level != 'all':
         stmt = stmt.filter(Achievement.level == level)
+    if result_value and result_value != 'all':
+        stmt = stmt.filter(Achievement.result == result_value)
 
     if sort_by == 'oldest':
         stmt = stmt.order_by(Achievement.created_at.asc())
@@ -82,6 +92,16 @@ async def list_achievements(
             else_=0,
         )
         stmt = stmt.order_by(level_order.desc())
+    elif sort_by == 'result':
+        result_order = case(
+            (Achievement.result == AchievementResult.WINNER, 3),
+            (Achievement.result == AchievementResult.PRIZEWINNER, 2),
+            (Achievement.result == AchievementResult.PARTICIPANT, 1),
+            else_=0,
+        )
+        stmt = stmt.order_by(result_order.desc(), Achievement.created_at.desc())
+    elif sort_by == 'title':
+        stmt = stmt.order_by(Achievement.title.asc(), Achievement.created_at.desc())
     else:
         stmt = stmt.order_by(Achievement.created_at.desc())
 
@@ -101,6 +121,8 @@ async def search_achievements(
     current_user=Depends(auth),
     db: AsyncSession = Depends(get_db),
 ):
+    _ensure_account_not_deleted(current_user)
+
     like_term = f"%{escape_like(q)}%"
     stmt = (
         select(Achievement)
@@ -126,6 +148,8 @@ async def create_achievement(
     current_user=Depends(auth),
     service: AchievementService = Depends(get_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     rl_key = f'upload_rl:{current_user.id}'
     upload_count = int(await rate_limiter.increment(rl_key, settings.UPLOAD_RATE_TTL))
     if upload_count > settings.UPLOAD_MAX_PER_HOUR:
@@ -177,6 +201,8 @@ async def revise_achievement(
     current_user=Depends(auth),
     service: AchievementService = Depends(get_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     achievement = await service.repo.find(achievement_id)
     if not achievement or achievement.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Достижение не найдено.')
@@ -217,6 +243,8 @@ async def delete_achievement(
     current_user=Depends(auth),
     service: AchievementService = Depends(get_service),
 ):
+    _ensure_account_not_deleted(current_user)
+
     achievement = await service.repo.find(achievement_id)
     if not achievement or achievement.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Достижение не найдено.')

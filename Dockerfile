@@ -1,5 +1,8 @@
 FROM node:20-slim AS frontend-build
 
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
+
 WORKDIR /frontend
 
 COPY frontend/package*.json ./

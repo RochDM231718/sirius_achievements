@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import selectinload
 from app.repositories.admin.base_crud_repository import BaseCrudRepository
 from app.models.achievement import Achievement
+from app.models.enums import AchievementLevel, AchievementResult
 from app.models.user import Users
 from app.utils.search import escape_like
 
@@ -16,6 +17,7 @@ class AchievementRepository(BaseCrudRepository):
             status: str = "",
             category: str = "",
             level: str = "",
+            result: str = "",
             sort_by: str = "newest",
             owner_education_level=None,
             owner_id: int | None = None,
@@ -29,7 +31,11 @@ class AchievementRepository(BaseCrudRepository):
                 stmt = stmt.filter(Users.id == owner_id)
 
         if search:
-            stmt = stmt.filter(self.model.title.ilike(f"%{escape_like(search)}%"))
+            like_term = f"%{escape_like(search)}%"
+            stmt = stmt.filter(
+                (self.model.title.ilike(like_term)) |
+                (self.model.description.ilike(like_term))
+            )
 
         if status and status != "all":
             stmt = stmt.filter(self.model.status == status)
@@ -40,12 +46,33 @@ class AchievementRepository(BaseCrudRepository):
         if level and level != "all":
             stmt = stmt.filter(self.model.level == level)
 
+        if result and result != "all":
+            stmt = stmt.filter(self.model.result == result)
+
         if sort_by == "oldest":
             stmt = stmt.order_by(self.model.created_at.asc())
         elif sort_by == "level":
-            stmt = stmt.order_by(self.model.level.asc())
+            level_order = case(
+                (self.model.level == AchievementLevel.INTERNATIONAL, 5),
+                (self.model.level == AchievementLevel.FEDERAL, 4),
+                (self.model.level == AchievementLevel.REGIONAL, 3),
+                (self.model.level == AchievementLevel.MUNICIPAL, 2),
+                (self.model.level == AchievementLevel.SCHOOL, 1),
+                else_=0,
+            )
+            stmt = stmt.order_by(level_order.desc(), self.model.created_at.desc())
+        elif sort_by == "result":
+            result_order = case(
+                (self.model.result == AchievementResult.WINNER, 3),
+                (self.model.result == AchievementResult.PRIZEWINNER, 2),
+                (self.model.result == AchievementResult.PARTICIPANT, 1),
+                else_=0,
+            )
+            stmt = stmt.order_by(result_order.desc(), self.model.created_at.desc())
         elif sort_by == "category":
-            stmt = stmt.order_by(self.model.category.asc())
+            stmt = stmt.order_by(self.model.category.asc(), self.model.created_at.desc())
+        elif sort_by == "title":
+            stmt = stmt.order_by(self.model.title.asc(), self.model.created_at.desc())
         else:
             stmt = stmt.order_by(self.model.created_at.desc())
 
@@ -57,6 +84,7 @@ class AchievementRepository(BaseCrudRepository):
             status: str = "",
             category: str = "",
             level: str = "",
+            result: str = "",
             sort_by: str = "newest",
             owner_education_level=None,
             owner_id: int | None = None,
@@ -66,6 +94,7 @@ class AchievementRepository(BaseCrudRepository):
             status=status,
             category=category,
             level=level,
+            result=result,
             sort_by=sort_by,
             owner_education_level=owner_education_level,
             owner_id=owner_id,
