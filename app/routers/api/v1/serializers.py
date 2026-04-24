@@ -17,6 +17,12 @@ def _iso(value: datetime | None):
     return value.isoformat() if value else None
 
 
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
 def _loaded_relationship(instance: Any, attr_name: str, default: Any = None):
     if instance is None:
         return default
@@ -49,6 +55,10 @@ def serialize_user(user):
         'education_level': _enum_value(user.education_level),
         'course': user.course,
         'study_group': user.study_group,
+        'moderator_courses': [
+            int(item) for item in _split_csv(getattr(user, 'moderator_courses', None)) if item.isdigit()
+        ],
+        'moderator_groups': _split_csv(getattr(user, 'moderator_groups', None)),
         'session_gpa': user.session_gpa,
         'is_active': bool(user.is_active),
         'created_at': _iso(user.created_at),

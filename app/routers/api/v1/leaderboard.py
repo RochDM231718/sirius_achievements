@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.database import get_db
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementCategory, AchievementStatus, EducationLevel, UserRole, UserStatus
+from app.models.enums import AchievementCategory, AchievementStatus, UserRole, UserStatus
 from app.models.season_result import SeasonResult
 from app.models.user import Users
 from app.utils.points import aggregated_gpa_bonus_expr
+from app.utils.education import AVAILABLE_EDUCATION_LEVELS, COURSE_MAPPING, GROUP_MAPPING
 
 from .serializers import serialize_user
 
@@ -41,6 +42,14 @@ def _scoped_course(user: Users, requested_course: int | None):
 def _apply_student_scope(stmt, user: Users, education_level: str | None, course: int | None, group: str | None = None):
     if user.role == UserRole.MODERATOR and user.education_level:
         stmt = stmt.filter(Users.education_level == user.education_level)
+        if user.moderator_courses:
+            courses = [int(item) for item in user.moderator_courses.split(',') if item.isdigit()]
+            if courses:
+                stmt = stmt.filter(Users.course.in_(courses))
+        if user.moderator_groups:
+            groups = [item.strip() for item in user.moderator_groups.split(',') if item.strip()]
+            if groups:
+                stmt = stmt.filter(Users.study_group.in_(groups))
     elif education_level and education_level != 'all':
         stmt = stmt.filter(Users.education_level == education_level)
 
@@ -109,20 +118,9 @@ async def _build_leaderboard_payload(user: Users, db: AsyncSession, education_le
             }
         )
 
-    group_mapping = {
-        EducationLevel.COLLEGE.value: ['К-1', 'К-2'],
-        EducationLevel.BACHELOR.value: ['Б-1', 'Б-2'],
-        EducationLevel.SPECIALIST.value: ['С-1', 'С-2'],
-        EducationLevel.MASTER.value: ['М-1', 'М-2'],
-        EducationLevel.POSTGRADUATE.value: ['А-1', 'А-2'],
-    }
-
-    course_mapping = {
-        EducationLevel.COLLEGE.value: 4,
-        EducationLevel.BACHELOR.value: 4,
-        EducationLevel.SPECIALIST.value: 6,
-        EducationLevel.MASTER.value: 2,
-        EducationLevel.POSTGRADUATE.value: 4,
+    flat_group_mapping = {
+        level: [group for groups in by_course.values() for group in groups]
+        for level, by_course in GROUP_MAPPING.items()
     }
 
     params = _build_query_params(education_level, course, category, group)
@@ -137,9 +135,10 @@ async def _build_leaderboard_payload(user: Users, db: AsyncSession, education_le
         'current_category': category or 'all',
         'current_group': group or 'all',
         'categories': [item.value if hasattr(item, 'value') else str(item) for item in AchievementCategory],
-        'education_levels': [item.value if hasattr(item, 'value') else str(item) for item in EducationLevel],
-        'course_mapping': course_mapping,
-        'group_mapping': group_mapping,
+        'education_levels': AVAILABLE_EDUCATION_LEVELS,
+        'course_mapping': COURSE_MAPPING,
+        'group_mapping': flat_group_mapping,
+        'course_group_mapping': GROUP_MAPPING,
         'can_export': bool(user.is_staff),
         'can_end_season': bool(user.role == UserRole.SUPER_ADMIN),
         'export_url': f"/api/v1/leaderboard/export?{export_query}" if export_query else '/api/v1/leaderboard/export',

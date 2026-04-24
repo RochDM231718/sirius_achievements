@@ -5,7 +5,7 @@ from pathlib import Path
 from textwrap import wrap
 
 import fitz
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import desc, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,11 +18,16 @@ from app.models.enums import AchievementStatus, EducationLevel, UserRole, UserSt
 from app.models.season_result import SeasonResult
 from app.models.user import Users
 from app.repositories.admin.user_repository import UserRepository
+from app.repositories.admin.support_repository import SupportMessageRepository, SupportTicketRepository
 from app.services.admin.resume_service import ResumeService
+from app.services.admin.support_service import SupportService
 from app.utils.access import is_in_zone
+from app.utils.education import AVAILABLE_EDUCATION_LEVELS, COURSE_MAPPING, GROUP_MAPPING
 from app.utils.media_paths import resolve_static_path
+from app.utils.notifications import make_notification, serialize_notification
 from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 from app.utils.search import escape_like
+from app.services.ws_manager import ws_manager
 
 from .serializers import serialize_achievement, serialize_user
 
@@ -48,10 +53,18 @@ PDF_FONT_CANDIDATES = (
 class UpdateRolePayload(BaseModel):
     role: UserRole
     education_level: str | None = None
+    moderator_courses: list[int] | None = None
+    moderator_groups: list[str] | None = None
 
 
 class SetGpaPayload(BaseModel):
     gpa: str
+
+
+def get_support_service(db: AsyncSession = Depends(get_db)):
+    ticket_repo = SupportTicketRepository(db)
+    message_repo = SupportMessageRepository(db)
+    return SupportService(ticket_repo, message_repo)
 
 
 async def _check_admin_rights(current_user=Depends(auth)):
@@ -60,16 +73,39 @@ async def _check_admin_rights(current_user=Depends(auth)):
     return current_user
 
 
-def _zone_filter_for(current_user):
-    if current_user.role == UserRole.MODERATOR and current_user.education_level:
-        return current_user.education_level
-    return None
+def _split_csv(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip() for item in value.split(',') if item.strip()}
+
+
+def _apply_moderator_user_scope(stmt, current_user):
+    if current_user.role != UserRole.MODERATOR:
+        return stmt
+
+    if current_user.education_level:
+        stmt = stmt.filter(Users.education_level == current_user.education_level)
+
+    courses = _split_csv(getattr(current_user, 'moderator_courses', None))
+    if courses:
+        stmt = stmt.filter(Users.course.in_([int(item) for item in courses if item.isdigit()]))
+
+    groups = _split_csv(getattr(current_user, 'moderator_groups', None))
+    if groups:
+        stmt = stmt.filter(Users.study_group.in_(groups))
+
+    return stmt
 
 
 def _can_access_target(current_user, target_user) -> bool:
     if current_user.role == UserRole.SUPER_ADMIN:
         return True
-    return is_in_zone(current_user, getattr(target_user, 'education_level', None))
+    return is_in_zone(
+        current_user,
+        getattr(target_user, 'education_level', None),
+        getattr(target_user, 'course', None),
+        getattr(target_user, 'study_group', None),
+    )
 
 
 def _serialize_season_result(item: SeasonResult):
@@ -116,6 +152,13 @@ def _user_status_label(status) -> str:
         'deleted': 'Удалён',
     }
     return labels.get(value, value)
+
+
+VISIBLE_USER_STATUSES = (
+    UserStatus.ACTIVE,
+    UserStatus.PENDING,
+    UserStatus.DELETED,
+)
 
 
 def _format_ru_date(value) -> str:
@@ -253,11 +296,9 @@ async def list_users(
     offset = (page - 1) * limit
     course_int = int(course) if course and str(course).isdigit() else None
 
-    stmt = select(Users)
+    stmt = select(Users).filter(Users.status != UserStatus.REJECTED)
 
-    zone_filter = _zone_filter_for(current_user)
-    if zone_filter is not None:
-        stmt = stmt.filter(Users.education_level == zone_filter)
+    stmt = _apply_moderator_user_scope(stmt, current_user)
 
     if query:
         like_term = f"%{escape_like(query)}%"
@@ -302,8 +343,10 @@ async def list_users(
         'page': page,
         'total_pages': max(1, math.ceil(total_items / limit)),
         'roles': [item.value for item in UserRole],
-        'statuses': [item.value for item in UserStatus],
-        'education_levels': [item.value for item in EducationLevel],
+        'statuses': [item.value for item in VISIBLE_USER_STATUSES],
+        'education_levels': AVAILABLE_EDUCATION_LEVELS,
+        'course_mapping': COURSE_MAPPING,
+        'group_mapping': GROUP_MAPPING,
     }
 
 
@@ -314,23 +357,33 @@ async def search_users(
     db: AsyncSession = Depends(get_db),
 ):
     like_term = f"%{escape_like(q)}%"
-    stmt = select(Users).filter(
-        or_(
-            Users.first_name.ilike(like_term),
-            Users.last_name.ilike(like_term),
-            Users.email.ilike(like_term),
-            Users.phone_number.ilike(like_term),
-            (Users.first_name + ' ' + Users.last_name).ilike(like_term),
-            (Users.last_name + ' ' + Users.first_name).ilike(like_term),
+    stmt = (
+        select(Users)
+        .filter(
+            Users.status != UserStatus.REJECTED,
+            or_(
+                Users.first_name.ilike(like_term),
+                Users.last_name.ilike(like_term),
+                Users.email.ilike(like_term),
+                Users.phone_number.ilike(like_term),
+                (Users.first_name + ' ' + Users.last_name).ilike(like_term),
+                (Users.last_name + ' ' + Users.first_name).ilike(like_term),
+            ),
         )
-    ).limit(5)
+        .limit(5)
+    )
 
-    zone_filter = _zone_filter_for(current_user)
-    if zone_filter is not None:
-        stmt = stmt.filter(Users.education_level == zone_filter)
+    stmt = _apply_moderator_user_scope(stmt, current_user)
 
     users = (await db.execute(stmt)).scalars().all()
-    return [{'value': user.email, 'text': f'{user.first_name} {user.last_name} ({user.email})'} for user in users]
+    return [
+        {
+            'id': user.id,
+            'value': user.email,
+            'text': f'{user.first_name} {user.last_name} ({user.email})',
+        }
+        for user in users
+    ]
 
 
 @router.get('/{user_id}')
@@ -363,7 +416,9 @@ async def get_user_detail(
         'chart_counts': [int(row.count or 0) for row in chart_rows] if chart_rows else [],
         'chart_points': [int(row.points or 0) for row in chart_rows] if chart_rows else [],
         'roles': [item.value for item in UserRole],
-        'education_levels': [item.value for item in EducationLevel],
+        'education_levels': AVAILABLE_EDUCATION_LEVELS,
+        'course_mapping': COURSE_MAPPING,
+        'group_mapping': GROUP_MAPPING,
     }
 
 
@@ -383,8 +438,25 @@ async def update_user_role(
     update_data: dict[str, object | None] = {'role': payload.role}
     if payload.role == UserRole.MODERATOR:
         update_data['education_level'] = _resolve_education_level(payload.education_level)
+        update_data['moderator_courses'] = ','.join(
+            str(course) for course in sorted(set(payload.moderator_courses or [])) if course in {1, 2}
+        ) or None
+        valid_groups = {
+            group
+            for groups_by_course in GROUP_MAPPING.values()
+            for groups in groups_by_course.values()
+            for group in groups
+        }
+        update_data['moderator_groups'] = ','.join(
+            group for group in (payload.moderator_groups or []) if group in valid_groups
+        ) or None
     elif payload.role == UserRole.SUPER_ADMIN:
         update_data['education_level'] = None
+        update_data['moderator_courses'] = None
+        update_data['moderator_groups'] = None
+    else:
+        update_data['moderator_courses'] = None
+        update_data['moderator_groups'] = None
 
     # Super admin promoting a guest to any real role — activate immediately
     # regardless of email verification status
@@ -544,6 +616,51 @@ async def set_gpa(
         'bonus': calculate_gpa_bonus(target_user.session_gpa),
         'user': serialize_user(target_user),
     }
+
+
+@router.post('/{user_id}/support-message')
+async def create_support_message_for_user(
+    user_id: int,
+    subject: str = Form(default='Сообщение от модератора'),
+    text: str = Form(...),
+    file: UploadFile | None = File(default=None),
+    session_duration: str = Form(default='month'),
+    current_user=Depends(_check_admin_rights),
+    db: AsyncSession = Depends(get_db),
+    service: SupportService = Depends(get_support_service),
+):
+    target_user = await _get_target_user_or_404(db, user_id)
+    if not _can_access_target(current_user, target_user):
+        raise HTTPException(status_code=403, detail='Access denied')
+    if current_user.id == target_user.id:
+        raise HTTPException(status_code=400, detail='Нельзя создать обращение самому себе.')
+
+    try:
+        ticket = await service.create_ticket_from_moderator(
+            user_id=target_user.id,
+            moderator_id=current_user.id,
+            subject=subject,
+            text=text,
+            file=file if file and file.filename else None,
+            session_duration=session_duration,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='Не удалось отправить сообщение пользователю.') from exc
+
+    notification = make_notification(
+        user_id=target_user.id,
+        title='Новое сообщение от модератора',
+        message=f'Модератор написал вам в обращении «{ticket.subject}».',
+        link=f'/sirius.achievements/app/support/{ticket.id}',
+    )
+    db.add(notification)
+    await db.commit()
+    await ws_manager.send_to_user(
+        target_user.id,
+        {'type': 'notification', 'notification': serialize_notification(notification)},
+    )
+
+    return {'success': True, 'ticket_id': ticket.id}
 
 
 @router.get('/{user_id}/export-pdf')

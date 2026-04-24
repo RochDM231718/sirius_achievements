@@ -31,7 +31,13 @@ def _can_access_ticket(user, ticket) -> bool:
         return False
     if ticket.user_id == user.id:
         return True
-    return is_in_zone(user, getattr(getattr(ticket, 'user', None), 'education_level', None))
+    ticket_user = getattr(ticket, 'user', None)
+    return is_in_zone(
+        user,
+        getattr(ticket_user, 'education_level', None),
+        getattr(ticket_user, 'course', None),
+        getattr(ticket_user, 'study_group', None),
+    )
 
 
 async def _inline_file_response(relative_path: str) -> FileResponse | StreamingResponse:

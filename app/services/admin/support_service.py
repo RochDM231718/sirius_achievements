@@ -89,6 +89,50 @@ class SupportService:
         await self.db.refresh(ticket)
         return ticket
 
+    async def create_ticket_from_moderator(
+        self,
+        user_id: int,
+        moderator_id: int,
+        subject: str,
+        text: str | None = None,
+        file=None,
+        session_duration: str | None = "month",
+    ) -> SupportTicket:
+        clean_subject = (subject or "").strip()[:255] or "Сообщение от модератора"
+        clean_text = text.strip() if text and text.strip() else None
+        if not clean_text and not (file and file.filename):
+            raise ValueError("Сообщение должно содержать текст или файл")
+
+        now = datetime.now(timezone.utc)
+        ticket = SupportTicket(
+            user_id=user_id,
+            moderator_id=moderator_id,
+            subject=clean_subject,
+            status=SupportTicketStatus.IN_PROGRESS,
+            assigned_at=now,
+            session_expires_at=calculate_session_expiration(session_duration),
+            closed_at=None,
+            archived_at=None,
+        )
+        self.db.add(ticket)
+        await self.db.flush()
+
+        file_path = None
+        if file and file.filename:
+            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket.id))
+
+        message = SupportMessage(
+            ticket_id=ticket.id,
+            sender_id=moderator_id,
+            text=clean_text,
+            file_path=file_path,
+            is_from_moderator=True,
+        )
+        self.db.add(message)
+        await self.db.commit()
+        await self.db.refresh(ticket)
+        return ticket
+
     async def take_ticket(self, ticket_id: int, moderator_id: int) -> SupportTicket:
         ticket = await self.ticket_repo.find(ticket_id)
         if not ticket:

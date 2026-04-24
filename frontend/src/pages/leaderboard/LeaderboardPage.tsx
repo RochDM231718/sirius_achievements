@@ -258,7 +258,9 @@ export function LeaderboardPage() {
     ? Array.from({ length: data.course_mapping[data.current_education_level] ?? 0 }, (_, index) => String(index + 1))
     : []
   const groupOptions = data?.current_education_level && data.current_education_level !== 'all'
-    ? data.group_mapping[data.current_education_level] ?? []
+    ? data.current_course
+      ? data.course_group_mapping?.[data.current_education_level]?.[data.current_course] ?? data.group_mapping[data.current_education_level] ?? []
+      : data.group_mapping[data.current_education_level] ?? []
     : []
   const focusUrl = (() => {
     const next = new URLSearchParams(searchParams)
@@ -339,9 +341,9 @@ export function LeaderboardPage() {
       <div className="bg-surface p-4 rounded-xl border border-slate-200">
         <form action="/sirius.achievements/leaderboard" method="GET" className="flex flex-wrap gap-4 items-end">
           <SearchAutocompleteInput
-            label="Ð ÑŸÐ Ñ•Ð Ñ‘Ð¡ÐƒÐ Ñ”"
+            label="Поиск"
             value={searchQuery}
-            placeholder="Ð Â˜Ð Ñ˜Ð¡Ð Ð Ñ‘Ð Â»Ð Ñ‘ Ð¡â€žÐ Â°Ð Ñ˜Ð Ñ‘Ð Â»Ð Ñ‘Ð¡Ð..."
+            placeholder="Имя или фамилия..."
             suggestions={suggestions}
             onChange={setSearchQuery}
             onSelectSuggestion={(item) => {

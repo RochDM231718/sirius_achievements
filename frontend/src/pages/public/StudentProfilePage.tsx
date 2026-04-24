@@ -274,9 +274,10 @@ function StudentProfilePageInner() {
 
   const hasChartData = Boolean(data.chart_labels?.length)
   const catStats = data.category_breakdown ?? []
+  const topCategories = catStats.slice(0, 4)
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <button type="button" onClick={handleBack} className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700">
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
@@ -287,7 +288,7 @@ function StudentProfilePageInner() {
 
       {/* Profile card */}
       <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 mb-6">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-center">
           <div className="flex-shrink-0">
             {data.student.avatar_path ? (
               <img src={buildMediaUrl(data.student.avatar_path)} alt="Аватар" className="w-20 h-20 rounded-full object-cover border-2 border-slate-200" />
@@ -298,30 +299,33 @@ function StudentProfilePageInner() {
             )}
           </div>
 
-          <div className="flex-1 text-center sm:text-left">
+          <div className="min-w-0 flex-1 text-center xl:text-left">
             <h1 className="text-2xl font-bold text-slate-800">{data.student.first_name} {data.student.last_name}</h1>
+            {data.student.study_group ? (
+              <p className="text-sm text-slate-400 mt-1">{data.student.study_group}</p>
+            ) : null}
             <p className="text-sm text-slate-500 mt-1">
               {data.student.education_level ? `${data.student.education_level}${data.student.course ? `, ${data.student.course} курс` : ''}` : ''}
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-4 sm:gap-6 text-center justify-center sm:justify-end">
-            <div>
+          <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-auto xl:min-w-[420px] xl:grid-cols-4">
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-center">
               <div className="text-2xl font-bold text-indigo-600">{data.total_points}</div>
               <div className="text-[11px] text-slate-500 uppercase tracking-wider">Баллов</div>
             </div>
-            <div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
               <div className="text-2xl font-bold text-slate-700">{data.total_docs}</div>
               <div className="text-[11px] text-slate-500 uppercase tracking-wider">Достижений</div>
             </div>
             {data.student.session_gpa ? (
-              <div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
                 <div className="text-2xl font-bold text-slate-700">{data.student.session_gpa}</div>
                 <div className="text-[11px] text-slate-500 uppercase tracking-wider">Оценка</div>
               </div>
             ) : null}
             {data.rank ? (
-              <div>
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-center">
                 <div className="text-2xl font-bold text-amber-500">#{data.rank}</div>
                 <div className="text-[11px] text-slate-500 uppercase tracking-wider">Рейтинг</div>
               </div>
@@ -330,8 +334,42 @@ function StudentProfilePageInner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(300px,0.9fr)_minmax(0,1.1fr)] gap-6 items-start">
+        <div className="space-y-6 xl:sticky xl:top-24">
+          <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Сводка профиля</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">Обучение</div>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{data.student.education_level || 'Не указано'}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">Курс</div>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{data.student.course ? `${data.student.course} курс` : 'Не указан'}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">Группа</div>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{data.student.study_group || 'Не указана'}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">Категорий</div>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{catStats.length || 0}</div>
+              </div>
+            </div>
+            {topCategories.length ? (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <div className="mb-2 text-[11px] uppercase tracking-wider text-slate-400">Сильные направления</div>
+                <div className="flex flex-wrap gap-2">
+                  {topCategories.map((item) => (
+                    <span key={item.category} className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                      {item.category}
+                      <span className="ml-1 text-slate-400">x{item.count}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           {data.student.session_gpa ? (
             <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Оценка модератора</h3>
@@ -349,7 +387,7 @@ function StudentProfilePageInner() {
           ) : null}
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6">
           {hasChartData ? (
             <div className="bg-surface rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Динамика достижений</h3>

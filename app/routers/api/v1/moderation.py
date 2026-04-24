@@ -51,14 +51,46 @@ async def require_moderator(current_user=Depends(auth)):
     return current_user
 
 
+def _split_csv(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip() for item in value.split(',') if item.strip()}
+
+
+def _apply_moderator_scope(stmt, current_user):
+    if current_user.role != UserRole.MODERATOR:
+        return stmt
+    if current_user.education_level:
+        stmt = stmt.filter(Users.education_level == current_user.education_level)
+    courses = _split_csv(getattr(current_user, 'moderator_courses', None))
+    if courses:
+        stmt = stmt.filter(Users.course.in_([int(item) for item in courses if item.isdigit()]))
+    groups = _split_csv(getattr(current_user, 'moderator_groups', None))
+    if groups:
+        stmt = stmt.filter(Users.study_group.in_(groups))
+    return stmt
+
+
+def _is_user_in_moderator_scope(current_user, target_user) -> bool:
+    return is_in_zone(
+        current_user,
+        getattr(target_user, 'education_level', None),
+        getattr(target_user, 'course', None),
+        getattr(target_user, 'study_group', None),
+    )
+
+
+def _is_achievement_in_moderator_scope(current_user, achievement) -> bool:
+    return _is_user_in_moderator_scope(current_user, getattr(achievement, 'user', None))
+
+
 @router.get('/users')
 async def pending_users(
     current_user=Depends(require_moderator),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(Users).filter(Users.status == UserStatus.PENDING)
-    if current_user.role == UserRole.MODERATOR and current_user.education_level:
-        stmt = stmt.filter(Users.education_level == current_user.education_level)
+    stmt = _apply_moderator_scope(stmt, current_user)
 
     stmt = stmt.order_by(Users.id.desc())
     users = (await db.execute(stmt)).scalars().all()
@@ -75,7 +107,7 @@ async def approve_user(
     db: AsyncSession = Depends(get_db),
 ):
     target_user = await db.get(Users, user_id)
-    if not target_user or not is_in_zone(current_user, target_user.education_level):
+    if not target_user or not _is_user_in_moderator_scope(current_user, target_user):
         raise HTTPException(status_code=404, detail='User not found in your moderation zone')
 
     target_user.status = UserStatus.ACTIVE
@@ -94,7 +126,7 @@ async def reject_user(
     db: AsyncSession = Depends(get_db),
 ):
     target_user = await db.get(Users, user_id)
-    if not target_user or not is_in_zone(current_user, target_user.education_level):
+    if not target_user or not _is_user_in_moderator_scope(current_user, target_user):
         raise HTTPException(status_code=404, detail='User not found in your moderation zone')
 
     target_user.status = UserStatus.REJECTED
@@ -114,7 +146,7 @@ async def take_user(
     target_user = await db.get(Users, user_id)
     if not target_user or target_user.status != UserStatus.PENDING:
         raise HTTPException(status_code=404, detail='User not found or already processed')
-    if not is_in_zone(current_user, target_user.education_level):
+    if not _is_user_in_moderator_scope(current_user, target_user):
         raise HTTPException(status_code=403, detail='Access denied')
     if target_user.reviewed_by_id and target_user.reviewed_by_id != current_user.id:
         raise HTTPException(status_code=409, detail='User is already assigned to another moderator')
@@ -137,7 +169,7 @@ async def release_user(
         raise HTTPException(status_code=404, detail='User not found')
     if current_user.role != UserRole.SUPER_ADMIN and target_user.reviewed_by_id != current_user.id:
         raise HTTPException(status_code=403, detail='Access denied')
-    if not is_in_zone(current_user, target_user.education_level):
+    if not _is_user_in_moderator_scope(current_user, target_user):
         raise HTTPException(status_code=403, detail='Access denied')
 
     target_user.reviewed_by_id = None
@@ -168,8 +200,7 @@ async def pending_achievements(
         .filter(Achievement.status == AchievementStatus.PENDING)
     )
 
-    if current_user.role == UserRole.MODERATOR and current_user.education_level:
-        stmt = stmt.filter(Users.education_level == current_user.education_level)
+    stmt = _apply_moderator_scope(stmt, current_user)
 
     if query:
         like_term = f"%{escape_like(query)}%"
@@ -249,7 +280,7 @@ async def take_achievement(
     achievement = (await db.execute(stmt)).scalars().first()
     if not achievement or achievement.status != AchievementStatus.PENDING:
         raise HTTPException(status_code=404, detail='Achievement not found or already processed')
-    if not is_in_zone(current_user, achievement.user.education_level):
+    if not _is_achievement_in_moderator_scope(current_user, achievement):
         raise HTTPException(status_code=403, detail='Access denied')
     if achievement.moderator_id and achievement.moderator_id != current_user.id:
         raise HTTPException(status_code=409, detail='Achievement is already assigned to another moderator')
@@ -274,7 +305,7 @@ async def release_achievement(
         raise HTTPException(status_code=404, detail='Achievement not found')
     if current_user.role != UserRole.SUPER_ADMIN and achievement.moderator_id != current_user.id:
         raise HTTPException(status_code=403, detail='Access denied')
-    if not is_in_zone(current_user, achievement.user.education_level):
+    if not _is_achievement_in_moderator_scope(current_user, achievement):
         raise HTTPException(status_code=403, detail='Access denied')
 
     achievement.moderator_id = None
@@ -302,7 +333,7 @@ async def update_achievement_metadata(
 
     if not achievement:
         raise HTTPException(status_code=404, detail='Achievement not found')
-    if not is_in_zone(current_user, achievement.user.education_level):
+    if not _is_achievement_in_moderator_scope(current_user, achievement):
         raise HTTPException(status_code=403, detail='Access denied')
     if achievement.status != AchievementStatus.PENDING:
         raise HTTPException(status_code=409, detail='Only pending achievements can be edited')
@@ -371,7 +402,7 @@ async def update_achievement_status(
 
     if not achievement:
         raise HTTPException(status_code=404, detail='Achievement not found')
-    if not is_in_zone(current_user, achievement.user.education_level):
+    if not _is_achievement_in_moderator_scope(current_user, achievement):
         raise HTTPException(status_code=403, detail='Access denied')
     if achievement.status != AchievementStatus.PENDING:
         raise HTTPException(status_code=409, detail='Achievement was already processed by another moderator')
@@ -454,7 +485,7 @@ async def batch_update_achievements(
         achievement = (await db.execute(stmt)).scalars().first()
         if not achievement or achievement.status != AchievementStatus.PENDING:
             continue
-        if not is_in_zone(current_user, achievement.user.education_level):
+        if not _is_achievement_in_moderator_scope(current_user, achievement):
             continue
 
         achievement.status = new_status

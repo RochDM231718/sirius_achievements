@@ -6,25 +6,10 @@ import { useToast } from '@/hooks/useToast'
 import { EducationLevel } from '@/types/enums'
 import { getAuthFlowEmail, getAuthFlowRemainingSeconds, hasStoredAuthFlow, saveAuthFlow } from '@/utils/authFlow'
 import { getErrorMessage } from '@/utils/http'
+import { coursesForEducationLevel, groupsForEducationLevel } from '@/utils/labels'
 
 function stripEmoji(value: string): string {
   return value.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s{2,}/g, ' ')
-}
-
-const COURSE_MAPPING: Record<string, number> = {
-  [EducationLevel.COLLEGE]: 4,
-  [EducationLevel.BACHELOR]: 4,
-  [EducationLevel.SPECIALIST]: 6,
-  [EducationLevel.MASTER]: 2,
-  [EducationLevel.POSTGRADUATE]: 4,
-}
-
-const GROUP_MAPPING: Record<string, string[]> = {
-  [EducationLevel.COLLEGE]: ['К-1', 'К-2'],
-  [EducationLevel.BACHELOR]: ['Б-1', 'Б-2'],
-  [EducationLevel.SPECIALIST]: ['С-1', 'С-2'],
-  [EducationLevel.MASTER]: ['М-1', 'М-2'],
-  [EducationLevel.POSTGRADUATE]: ['А-1', 'А-2'],
 }
 
 const EYE_CLOSED_PATH =
@@ -52,14 +37,10 @@ export function RegisterPage() {
   const pendingVerifyEmail = getAuthFlowEmail('verify_email')
   const pendingVerifyTimeLeft = getAuthFlowRemainingSeconds('verify_email')
 
+  const courseOptions = useMemo(() => coursesForEducationLevel(form.education_level), [form.education_level])
   const groups = useMemo(
-    () => (form.education_level ? GROUP_MAPPING[form.education_level] || [] : []),
-    [form.education_level]
-  )
-
-  const maxCourses = useMemo(
-    () => (form.education_level ? COURSE_MAPPING[form.education_level] || 0 : 0),
-    [form.education_level]
+    () => groupsForEducationLevel(form.education_level, form.course),
+    [form.course, form.education_level],
   )
 
   const hasLength = form.password.length >= 8
@@ -81,6 +62,14 @@ export function RegisterPage() {
       ...current,
       education_level: value,
       course: '',
+      group: '',
+    }))
+  }
+
+  const handleCourseChange = (value: string) => {
+    setForm((current) => ({
+      ...current,
+      course: value,
       group: '',
     }))
   }
@@ -238,7 +227,7 @@ export function RegisterPage() {
             <select
               name="course"
               value={form.course}
-              onChange={(event) => handleChange('course', event.target.value)}
+              onChange={(event) => handleCourseChange(event.target.value)}
               disabled={!form.education_level}
               required
               className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -246,7 +235,7 @@ export function RegisterPage() {
               <option value="" disabled>
                 Курс...
               </option>
-              {Array.from({ length: maxCourses }, (_, index) => index + 1).map((item) => (
+              {courseOptions.map((item) => (
                 <option key={item} value={item}>
                   {item} курс
                 </option>
@@ -261,7 +250,7 @@ export function RegisterPage() {
               name="group"
               value={form.group}
               onChange={(event) => handleChange('group', event.target.value)}
-              disabled={!form.education_level}
+              disabled={!form.education_level || !form.course}
               required
               className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-surface focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >

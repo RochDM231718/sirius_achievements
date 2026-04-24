@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { useInboxCounts } from '@/hooks/useInboxCounts'
 import type { User } from '@/types/user'
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ function useStoredSection(key: string, initialValue: boolean) {
 
 export function Sidebar({ user }: SidebarProps) {
   const location = useLocation()
+  const inboxCounts = useInboxCounts(user)
   const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
   const isActive = user?.status === 'active'
   const showStudentAchievements = Boolean(user && isActive && !isStaff)
@@ -53,6 +55,12 @@ export function Sidebar({ user }: SidebarProps) {
     location.pathname.includes('/moderation/support') &&
     !location.search.includes('tab=all') &&
     !location.search.includes('tab=chats')
+
+  const Badge = ({ value }: { value?: number }) => value ? (
+    <span className="ml-auto inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+      {value > 99 ? '99+' : value}
+    </span>
+  ) : null
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-surface border-r border-slate-200 z-40">
@@ -138,6 +146,7 @@ export function Sidebar({ user }: SidebarProps) {
               />
             </svg>
             Поддержка
+            <Badge value={inboxCounts?.support_unread} />
           </Link>
         ) : null}
 
@@ -172,7 +181,7 @@ export function Sidebar({ user }: SidebarProps) {
                 <div className="pl-10 pr-2 space-y-1 mt-1">
                   <Link
                     to="/users"
-                    className={`block px-2 py-1.5 text-sm rounded-md transition-colors ${
+                    className={`flex items-center justify-between px-2 py-1.5 text-sm rounded-md transition-colors ${
                       isUsersPage ? 'text-indigo-600 font-medium' : 'text-slate-500 hover:text-indigo-600'
                     }`}
                   >
@@ -180,7 +189,7 @@ export function Sidebar({ user }: SidebarProps) {
                   </Link>
                   <Link
                     to="/documents"
-                    className={`block px-2 py-1.5 text-sm rounded-md transition-colors ${
+                    className={`flex items-center justify-between px-2 py-1.5 text-sm rounded-md transition-colors ${
                       isDocumentsPage ? 'text-indigo-600 font-medium' : 'text-slate-500 hover:text-indigo-600'
                     }`}
                   >
@@ -188,7 +197,7 @@ export function Sidebar({ user }: SidebarProps) {
                   </Link>
                   <Link
                     to="/moderation/support?tab=all"
-                    className={`block px-2 py-1.5 text-sm rounded-md transition-colors ${
+                    className={`flex items-center justify-between px-2 py-1.5 text-sm rounded-md transition-colors ${
                       isAllSupportPage ? 'text-indigo-600 font-medium' : 'text-slate-500 hover:text-indigo-600'
                     }`}
                   >
@@ -228,7 +237,7 @@ export function Sidebar({ user }: SidebarProps) {
                 <div className="pl-10 pr-2 space-y-1 mt-1">
                   <Link
                     to="/my-work?tab=users"
-                    className={`block px-2 py-1.5 text-sm rounded-md transition-colors ${
+                    className={`flex items-center justify-between px-2 py-1.5 text-sm rounded-md transition-colors ${
                       isMyWorkPage && !location.search.includes('tab=achievements')
                         ? 'text-indigo-600 font-medium'
                         : 'text-slate-500 hover:text-indigo-600'
@@ -238,7 +247,7 @@ export function Sidebar({ user }: SidebarProps) {
                   </Link>
                   <Link
                     to="/my-work?tab=achievements"
-                    className={`block px-2 py-1.5 text-sm rounded-md transition-colors ${
+                    className={`flex items-center justify-between px-2 py-1.5 text-sm rounded-md transition-colors ${
                       isMyWorkPage && location.search.includes('tab=achievements')
                         ? 'text-indigo-600 font-medium'
                         : 'text-slate-500 hover:text-indigo-600'
@@ -248,7 +257,7 @@ export function Sidebar({ user }: SidebarProps) {
                   </Link>
                   <Link
                     to="/moderation/support?tab=chats"
-                    className={`block px-2 py-1.5 text-sm rounded-md transition-colors ${
+                    className={`flex items-center justify-between px-2 py-1.5 text-sm rounded-md transition-colors ${
                       isChatsPage ? 'text-indigo-600 font-medium' : 'text-slate-500 hover:text-indigo-600'
                     }`}
                   >
@@ -274,6 +283,7 @@ export function Sidebar({ user }: SidebarProps) {
                     />
                   </svg>
                   <span>Входящие</span>
+                  <Badge value={inboxCounts?.total} />
                 </div>
                 <svg
                   className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${sidebarIncomingOpen ? 'rotate-180' : ''}`}
@@ -293,6 +303,7 @@ export function Sidebar({ user }: SidebarProps) {
                     }`}
                   >
                     Новые пользователи
+                    <Badge value={inboxCounts?.pending_users} />
                   </Link>
                   <Link
                     to="/moderation/achievements"
@@ -301,6 +312,7 @@ export function Sidebar({ user }: SidebarProps) {
                     }`}
                   >
                     Новые документы
+                    <Badge value={inboxCounts?.pending_achievements} />
                   </Link>
                   <Link
                     to="/moderation/support"
@@ -309,6 +321,7 @@ export function Sidebar({ user }: SidebarProps) {
                     }`}
                   >
                     Новые обращения
+                    <Badge value={inboxCounts?.new_support} />
                   </Link>
                 </div>
               ) : null}

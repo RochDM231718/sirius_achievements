@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { cn } from '@/utils/cn'
 
 export interface SearchSuggestionItem {
+  id?: number
   value: string
   text: string
 }
@@ -155,7 +156,7 @@ export function SearchAutocompleteInput({
         <ul className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-surface shadow-lg">
           {suggestions.map((item) => (
             <li
-              key={`${item.value}-${item.text}`}
+              key={item.id ? `${item.id}` : `${item.value}-${item.text}`}
               onMouseDown={(event) => {
                 event.preventDefault()
                 onSelectSuggestion(item)

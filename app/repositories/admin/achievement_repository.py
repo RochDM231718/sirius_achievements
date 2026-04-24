@@ -20,13 +20,23 @@ class AchievementRepository(BaseCrudRepository):
             result: str = "",
             sort_by: str = "newest",
             owner_education_level=None,
+            owner_courses=None,
+            owner_groups=None,
             owner_id: int | None = None,
     ):
         stmt = select(self.model).options(selectinload(self.model.user))
-        if owner_education_level is not None or owner_id is not None:
+        if owner_education_level is not None or owner_courses or owner_groups or owner_id is not None:
             stmt = stmt.join(Users, self.model.user_id == Users.id)
             if owner_education_level is not None:
                 stmt = stmt.filter(Users.education_level == owner_education_level)
+            if owner_courses:
+                courses = [int(item) for item in str(owner_courses).split(',') if item.isdigit()]
+                if courses:
+                    stmt = stmt.filter(Users.course.in_(courses))
+            if owner_groups:
+                groups = [item.strip() for item in str(owner_groups).split(',') if item.strip()]
+                if groups:
+                    stmt = stmt.filter(Users.study_group.in_(groups))
             if owner_id is not None:
                 stmt = stmt.filter(Users.id == owner_id)
 
@@ -87,6 +97,8 @@ class AchievementRepository(BaseCrudRepository):
             result: str = "",
             sort_by: str = "newest",
             owner_education_level=None,
+            owner_courses=None,
+            owner_groups=None,
             owner_id: int | None = None,
     ):
         stmt = self.build_filter_stmt(
@@ -97,6 +109,8 @@ class AchievementRepository(BaseCrudRepository):
             result=result,
             sort_by=sort_by,
             owner_education_level=owner_education_level,
+            owner_courses=owner_courses,
+            owner_groups=owner_groups,
             owner_id=owner_id,
         )
         result = await self.db.execute(stmt)

@@ -13,6 +13,7 @@ from app.routers.api.v1.notifications import router as notifications_router
 from app.routers.api.v1.points import router as points_router
 from app.routers.api.v1.profile import router as profile_router
 from app.routers.api.v1.public import router as public_router
+from app.routers.api.v1.reports import router as reports_router
 from app.routers.api.v1.support import router as support_router
 from app.routers.api.v1.users import router as users_router
 from app.routers.api.v1.user_notes import router as user_notes_router
@@ -23,6 +24,7 @@ router.include_router(dashboard_router)
 router.include_router(profile_router)
 router.include_router(notifications_router)
 router.include_router(points_router)
+router.include_router(reports_router)
 router.include_router(achievements_router)
 router.include_router(leaderboard_router)
 router.include_router(media_router)

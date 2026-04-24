@@ -3,18 +3,27 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { dashboardApi, type DashboardStats } from '@/api/dashboard'
+import { reportsApi } from '@/api/reports'
+import { usersApi } from '@/api/users'
 import { PointsGuide } from '@/components/points/PointsGuide'
+import { SearchAutocompleteInput, type SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
+import { coursesForEducationLevel, groupsForEducationLevel } from '@/utils/labels'
 
 const PERIODS = ['day', 'week', 'month', 'all'] as const
-const EDUCATION_LEVELS = ['Колледж', 'Бакалавриат', 'Специалитет', 'Магистратура', 'Аспирантура']
+const EDUCATION_LEVELS = ['Специалитет']
 const REPORT_DESCRIPTIONS: Record<string, string> = {
   moderation: 'Документы, ожидающие проверки модератором',
+  documents: 'Полный реестр документов с фильтрами по статусам',
   categories: 'Сводка по категориям и уровням достижений',
   leaderboard: 'Рейтинг студентов с баллами и количеством документов',
-  users: 'Полный список студентов с контактными данными',
+  students: 'Выгрузка по студентам, курсам и группам',
+  groups: 'Агрегированная статистика по группам',
+  streams: 'Агрегированная статистика по потокам',
+  aggregate: 'Сводная статистика по группам и направлениям',
+  support: 'Обращения поддержки за выбранный период',
 }
 
 function normalizePeriod(value: string | null) {
@@ -52,10 +61,19 @@ export function DashboardPage() {
   const [reportPeriod, setReportPeriod] = useState('all')
   const [reportEducationLevel, setReportEducationLevel] = useState('all')
   const [reportCourse, setReportCourse] = useState('0')
+  const [reportGroup, setReportGroup] = useState('all')
+  const [reportDateFrom, setReportDateFrom] = useState('')
+  const [reportDateTo, setReportDateTo] = useState('')
+  const [reportStudentQuery, setReportStudentQuery] = useState('')
+  const [reportStudents, setReportStudents] = useState<Array<{ id: number; label: string }>>([])
+  const [reportStudentSuggestions, setReportStudentSuggestions] = useState<SearchSuggestionItem[]>([])
+  const [isExportingReport, setIsExportingReport] = useState(false)
   const chartCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
 
   const period = normalizePeriod(searchParams.get('period'))
+  const dateFrom = searchParams.get('date_from') ?? ''
+  const dateTo = searchParams.get('date_to') ?? ''
   const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
   const isDeletedAccount = user?.status === 'deleted'
@@ -72,7 +90,7 @@ export function DashboardPage() {
       setIsLoading(true)
       setError(null)
       try {
-        const response = await dashboardApi.getStats(period)
+        const response = await dashboardApi.getStats(period, dateFrom, dateTo)
         setStats(response.data)
       } catch (loadError) {
         setError(getErrorMessage(loadError, 'Не удалось загрузить дашборд.'))
@@ -81,7 +99,27 @@ export function DashboardPage() {
       }
     }
     void load()
-  }, [isDeletedAccount, period])
+  }, [dateFrom, dateTo, isDeletedAccount, period])
+
+  useEffect(() => {
+    const trimmed = reportStudentQuery.trim()
+    if (!trimmed) {
+      setReportStudentSuggestions([])
+      return
+    }
+    const selectedIds = new Set(reportStudents.map((s) => s.id))
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await usersApi.search(trimmed)
+        setReportStudentSuggestions(
+          (response.data ?? []).filter((item) => item.id == null || !selectedIds.has(item.id)),
+        )
+      } catch {
+        setReportStudentSuggestions([])
+      }
+    }, 200)
+    return () => window.clearTimeout(timeoutId)
+  }, [reportStudentQuery, reportStudents])
 
   useEffect(() => {
     const canvas = chartCanvasRef.current
@@ -226,6 +264,16 @@ export function DashboardPage() {
   const setPeriod = (nextPeriod: (typeof PERIODS)[number]) => {
     const next = new URLSearchParams(searchParams)
     next.set('period', nextPeriod)
+    next.delete('date_from')
+    next.delete('date_to')
+    setSearchParams(next)
+  }
+
+  const setDashboardDate = (key: 'date_from' | 'date_to', value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    if (value) next.set('period', 'all')
     setSearchParams(next)
   }
 
@@ -233,7 +281,35 @@ export function DashboardPage() {
   if (reportPeriod !== 'all') reportParams.set('period', reportPeriod)
   if (reportEducationLevel !== 'all') reportParams.set('education_level', reportEducationLevel)
   if (reportCourse !== '0') reportParams.set('course', reportCourse)
-  const reportUrl = `${reportType === 'users' && !isSuperAdmin ? 'moderation' : reportType}${reportParams.toString() ? `?${reportParams.toString()}` : ''}`
+  if (reportGroup !== 'all') reportParams.set('group', reportGroup)
+  if (reportDateFrom) reportParams.set('date_from', reportDateFrom)
+  if (reportDateTo) reportParams.set('date_to', reportDateTo)
+  reportStudents.forEach((s) => reportParams.append('student_ids', String(s.id)))
+  const reportCourseOptions = reportEducationLevel !== 'all' ? coursesForEducationLevel(reportEducationLevel) : []
+  const reportGroupOptions = reportEducationLevel !== 'all'
+    ? reportCourse !== '0'
+      ? groupsForEducationLevel(reportEducationLevel, reportCourse)
+      : groupsForEducationLevel(reportEducationLevel)
+    : []
+  const handleReportDownload = async () => {
+    setIsExportingReport(true)
+    setError(null)
+    try {
+      const response = await reportsApi.exportCsv(reportType, Object.fromEntries(reportParams))
+      const href = URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8;' }))
+      const link = document.createElement('a')
+      link.href = href
+      link.download = `${reportType}_report.csv`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(href)
+    } catch (downloadError) {
+      setError(getErrorMessage(downloadError, 'Не удалось выгрузить CSV.'))
+    } finally {
+      setIsExportingReport(false)
+    }
+  }
   const staffCards = [
     { label: 'Новых студентов', value: `+${stats?.new_users_count ?? 0}` },
     { label: 'Всего загружено док.', value: `${stats?.total_achievements ?? 0}` },
@@ -255,12 +331,22 @@ export function DashboardPage() {
         </div>
 
         <div className="w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
-          <div className="bg-surface p-1 rounded-lg border border-slate-200 flex text-xs font-medium inline-flex min-w-max">
-            {PERIODS.map((item) => (
-              <a key={item} href={`?period=${item}`} onClick={(event) => { event.preventDefault(); setPeriod(item) }} className={`px-3 py-1.5 rounded-md transition-colors ${period === item ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-                {{ day: 'День', week: 'Неделя', month: 'Месяц', all: 'Всё время' }[item]}
-              </a>
-            ))}
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="bg-surface p-1 rounded-lg border border-slate-200 flex text-xs font-medium inline-flex min-w-max">
+              {PERIODS.map((item) => (
+                <a key={item} href={`?period=${item}`} onClick={(event) => { event.preventDefault(); setPeriod(item) }} className={`px-3 py-1.5 rounded-md transition-colors ${period === item && !dateFrom && !dateTo ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  {{ day: 'День', week: 'Неделя', month: 'Месяц', all: 'Всё время' }[item]}
+                </a>
+              ))}
+            </div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase">
+              С
+              <input type="date" value={dateFrom} onChange={(event) => setDashboardDate('date_from', event.target.value)} className="ml-1 rounded-lg border border-slate-200 bg-surface px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-indigo-600" />
+            </label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase">
+              По
+              <input type="date" value={dateTo} onChange={(event) => setDashboardDate('date_to', event.target.value)} className="ml-1 rounded-lg border border-slate-200 bg-surface px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-indigo-600" />
+            </label>
           </div>
         </div>
       </div>
@@ -292,15 +378,120 @@ export function DashboardPage() {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {[
+              {
+                title: 'Пользователи',
+                items: [
+                  ['Всего', stats?.users_stats?.total],
+                  ['Активные', stats?.users_stats?.active],
+                  ['Ожидают проверки', stats?.users_stats?.pending],
+                  ['Удалены', stats?.users_stats?.deleted],
+                  ['Студенты', stats?.users_stats?.students],
+                  ['Модераторы', stats?.users_stats?.moderators],
+                ],
+              },
+              {
+                title: 'Документы',
+                items: [
+                  ['Всего', stats?.documents_stats?.total],
+                  ['На проверке', stats?.documents_stats?.pending],
+                  ['Одобрено', stats?.documents_stats?.approved],
+                  ['Отклонено', stats?.documents_stats?.rejected],
+                  ['На доработке', stats?.documents_stats?.revision],
+                  ['Со ссылкой', stats?.documents_stats?.with_link],
+                ],
+              },
+              {
+                title: 'Обращения',
+                items: [
+                  ['Всего за период', stats?.support_stats?.total],
+                  ['Новые', stats?.support_stats?.open],
+                  ['В работе', stats?.support_stats?.in_progress],
+                  ['Закрыты', stats?.support_stats?.closed],
+                  ['Архив', stats?.support_stats?.archived],
+                ],
+              },
+            ].map((group) => (
+              <div key={group.title} className="bg-surface rounded-xl border border-slate-200 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-slate-800 mb-4">{group.title}</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {group.items.map(([label, value]) => (
+                    <div key={label} className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+                      <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{label}</div>
+                      <div className="mt-1 text-xl font-semibold text-slate-800">{value ?? 0}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {stats?.recommendations?.length ? (
+            <div className="bg-surface rounded-xl border border-slate-200 p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Рекомендации по направлениям</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {stats.recommendations.map((item) => (
+                  <div key={item.title} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                    <div className="text-sm font-semibold text-indigo-900">{item.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-indigo-800/75">{item.message}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           <div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4"><h3 className="text-sm font-semibold text-slate-800">Экспорт отчётов (CSV)</h3></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Тип отчёта</label><select value={reportType} onChange={(event) => setReportType(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all"><option value="moderation">Очередь модерации</option><option value="categories">Статистика по категориям</option><option value="leaderboard">Рейтинг студентов</option>{isSuperAdmin ? <option value="users">Список студентов</option> : null}</select></div>
+              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Тип отчёта</label><select value={reportType} onChange={(event) => setReportType(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all"><option value="moderation">Очередь модерации</option><option value="documents">Документы</option><option value="categories">По направлениям</option><option value="leaderboard">Рейтинг</option><option value="students">По студентам</option><option value="groups">По группам</option><option value="streams">По потокам</option><option value="aggregate">Агрегированная</option><option value="support">Обращения</option></select></div>
               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Период</label><select value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all"><option value="all">Всё время</option><option value="day">Последние 24 часа</option><option value="week">Последние 7 дней</option><option value="month">Последние 30 дней</option></select></div>
               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Уровень обучения</label><select value={reportEducationLevel} onChange={(event) => setReportEducationLevel(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all"><option value="all">Все направления</option>{EDUCATION_LEVELS.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
-              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Курс</label><select value={reportCourse} onChange={(event) => setReportCourse(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all"><option value="0">Все курсы</option><option value="1">1 курс</option><option value="2">2 курс</option><option value="3">3 курс</option><option value="4">4 курс</option><option value="5">5 курс</option><option value="6">6 курс</option></select></div>
+              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Курс</label><select value={reportCourse} onChange={(event) => { setReportCourse(event.target.value); setReportGroup('all') }} disabled={reportEducationLevel === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all disabled:opacity-50"><option value="0">Все курсы</option>{reportCourseOptions.map((item) => <option key={item} value={item}>{item} курс</option>)}</select></div>
+              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Группа</label><select value={reportGroup} onChange={(event) => setReportGroup(event.target.value)} disabled={reportEducationLevel === 'all'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all disabled:opacity-50"><option value="all">Все группы</option>{reportGroupOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
+              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Дата с</label><input type="date" value={reportDateFrom} onChange={(event) => setReportDateFrom(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all" /></div>
+              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Дата по</label><input type="date" value={reportDateTo} onChange={(event) => setReportDateTo(event.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-surface focus:border-indigo-600 outline-none transition-all" /></div>
+              <div className="md:col-span-2 lg:col-span-3">
+                <SearchAutocompleteInput
+                  label="Студенты"
+                  value={reportStudentQuery}
+                  placeholder="Имя, фамилия или email…"
+                  suggestions={reportStudentSuggestions}
+                  onChange={setReportStudentQuery}
+                  onSelectSuggestion={(item) => {
+                    if (item.id == null) return
+                    setReportStudents((current) =>
+                      current.some((s) => s.id === item.id)
+                        ? current
+                        : [...current, { id: item.id!, label: item.text }],
+                    )
+                    setReportStudentQuery('')
+                    setReportStudentSuggestions([])
+                  }}
+                />
+                {reportStudents.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {reportStudents.map((s) => (
+                      <span
+                        key={s.id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700"
+                      >
+                        {s.label}
+                        <button
+                          type="button"
+                          onClick={() => setReportStudents((current) => current.filter((item) => item.id !== s.id))}
+                          className="text-indigo-500 hover:text-indigo-700"
+                          aria-label="Убрать"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div className="flex items-center gap-3"><a href={`/sirius.achievements/reports/${reportUrl}`} className="inline-flex items-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors shadow-sm"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Скачать CSV</a><p className="text-[10px] text-slate-400">{REPORT_DESCRIPTIONS[reportType]}</p></div>
+            <div className="flex items-center gap-3"><button type="button" onClick={() => void handleReportDownload()} disabled={isExportingReport} className="inline-flex items-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors shadow-sm disabled:opacity-60"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>{isExportingReport ? 'Готовим...' : 'Скачать CSV'}</button><p className="text-[10px] text-slate-400">{REPORT_DESCRIPTIONS[reportType]}</p></div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -343,6 +534,20 @@ export function DashboardPage() {
               </div>
             ))}
           </div>
+
+          {stats?.recommendations?.length ? (
+            <div className="bg-surface rounded-xl border border-slate-200 p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Рекомендации по направлениям</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {stats.recommendations.map((item) => (
+                  <div key={item.title} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                    <div className="text-sm font-semibold text-indigo-900">{item.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-indigo-800/75">{item.message}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm"><h3 className="text-sm font-semibold text-slate-800 mb-4">Структура баллов</h3><div className="h-48 w-full flex items-center justify-center">{(stats?.my_points ?? 0) > 0 && stats?.category_breakdown?.length ? <canvas ref={chartCanvasRef}></canvas> : <div className="text-center text-slate-400"><p className="text-xs">Нет баллов за период</p>{period === 'all' ? <Link to="/achievements" className="inline-flex mt-3 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-indigo-100 transition-colors">Загрузить достижение</Link> : null}</div>}</div></div>

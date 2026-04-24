@@ -21,6 +21,8 @@ class Users(Base):
 
     course = Column(Integer, nullable=True)
     study_group = Column("study_group", String, nullable=True)
+    moderator_courses = Column(String, nullable=True)
+    moderator_groups = Column(String, nullable=True)
     session_gpa = Column(String, nullable=True)  # e.g. "4.5"
 
     is_active = Column(Boolean, default=True)

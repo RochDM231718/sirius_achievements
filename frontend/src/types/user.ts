@@ -13,6 +13,8 @@ export interface User {
   education_level?: EducationLevel
   course?: number
   study_group?: string
+  moderator_courses?: number[]
+  moderator_groups?: string[]
   session_gpa?: string
   reviewed_by_id?: number
   is_active: boolean
@@ -29,6 +31,8 @@ export interface UserListResponse {
   roles: string[]
   statuses: string[]
   education_levels: string[]
+  course_mapping?: Record<string, number>
+  group_mapping?: Record<string, Record<number, string[]>>
 }
 
 export interface UserDetailResponse {
@@ -44,6 +48,8 @@ export interface UserDetailResponse {
   chart_points: number[]
   roles: string[]
   education_levels: string[]
+  course_mapping?: Record<string, number>
+  group_mapping?: Record<string, Record<number, string[]>>
 }
 
 export interface UserNote {

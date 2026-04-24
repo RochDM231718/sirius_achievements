@@ -1,6 +1,7 @@
 import re
 from pydantic import BaseModel, Field, field_validator, model_validator, EmailStr
 from app.models.enums import EducationLevel
+from app.utils.education import groups_for
 
 
 class ResetPasswordSchema(BaseModel):
@@ -49,7 +50,7 @@ class UserRegister(BaseModel):
     email: EmailStr
 
     education_level: EducationLevel
-    course: int = Field(..., ge=1, le=6, description="Номер курса от 1 до 6")
+    course: int = Field(..., ge=1, le=2, description="Номер курса специалитета")
     group: str = Field(..., min_length=1, max_length=10)
 
     password: str = Field(..., min_length=8, max_length=128)
@@ -80,4 +81,8 @@ class UserRegister(BaseModel):
     def check_password_match(self):
         if self.password != self.password_confirm:
             raise ValueError("Пароли не совпадают.")
+        if self.education_level != EducationLevel.SPECIALIST:
+            raise ValueError("Регистрация доступна только для специалитета.")
+        if self.group not in groups_for(self.education_level.value, self.course):
+            raise ValueError("Выберите группу из списка для выбранного курса.")
         return self

@@ -33,6 +33,8 @@ class SupportTicketRepository(CrudRepository):
         self,
         page: int = 1,
         education_level=None,
+        courses=None,
+        groups=None,
         query: str = '',
         sort_by: str = 'created_at',
         sort_order: str = 'desc',
@@ -71,6 +73,20 @@ class SupportTicketRepository(CrudRepository):
                 stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
                 joined_users = True
             stmt = stmt.filter(Users.education_level == education_level)
+        if courses:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            course_values = [int(item) for item in str(courses).split(',') if item.isdigit()]
+            if course_values:
+                stmt = stmt.filter(Users.course.in_(course_values))
+        if groups:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            group_values = [item.strip() for item in str(groups).split(',') if item.strip()]
+            if group_values:
+                stmt = stmt.filter(Users.study_group.in_(group_values))
 
         allowed_sort = {'created_at', 'updated_at', 'subject', 'id'}
         if sort_by in allowed_sort and hasattr(SupportTicket, sort_by):
@@ -84,7 +100,7 @@ class SupportTicketRepository(CrudRepository):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def count_new_tickets(self, education_level=None, query: str = ''):
+    async def count_new_tickets(self, education_level=None, courses=None, groups=None, query: str = ''):
         stmt = select(func.count()).select_from(SupportTicket).filter(
             SupportTicket.status.in_([SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS]),
             SupportTicket.archived_at.is_(None),
@@ -109,7 +125,21 @@ class SupportTicketRepository(CrudRepository):
         if education_level is not None:
             if not joined_users:
                 stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
             stmt = stmt.filter(Users.education_level == education_level)
+        if courses:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            course_values = [int(item) for item in str(courses).split(',') if item.isdigit()]
+            if course_values:
+                stmt = stmt.filter(Users.course.in_(course_values))
+        if groups:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+            group_values = [item.strip() for item in str(groups).split(',') if item.strip()]
+            if group_values:
+                stmt = stmt.filter(Users.study_group.in_(group_values))
 
         result = await self.db.execute(stmt)
         return result.scalar()
@@ -120,6 +150,8 @@ class SupportTicketRepository(CrudRepository):
         sort_by: str = 'created_at',
         sort_order: str = 'desc',
         education_level=None,
+        courses=None,
+        groups=None,
         assigned_to_id: int | None = None,
     ):
         stmt = (
@@ -163,8 +195,23 @@ class SupportTicketRepository(CrudRepository):
                 stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(
                     Users.education_level == education_level
                 )
+                joined_users = True
             else:
                 stmt = stmt.filter(Users.education_level == education_level)
+        if courses:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            course_values = [int(item) for item in str(courses).split(',') if item.isdigit()]
+            if course_values:
+                stmt = stmt.filter(Users.course.in_(course_values))
+        if groups:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            group_values = [item.strip() for item in str(groups).split(',') if item.strip()]
+            if group_values:
+                stmt = stmt.filter(Users.study_group.in_(group_values))
 
         _ALLOWED_SORT = {"created_at", "updated_at", "status", "subject", "id"}
         if sort_by in _ALLOWED_SORT and hasattr(SupportTicket, sort_by):
@@ -179,7 +226,7 @@ class SupportTicketRepository(CrudRepository):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def count_all_tickets(self, filters: dict = None, education_level=None, assigned_to_id: int | None = None):
+    async def count_all_tickets(self, filters: dict = None, education_level=None, courses=None, groups=None, assigned_to_id: int | None = None):
         stmt = select(func.count()).select_from(SupportTicket)
         joined_users = False
         if filters:
@@ -213,8 +260,22 @@ class SupportTicketRepository(CrudRepository):
                 stmt = stmt.join(Users, SupportTicket.user_id == Users.id).filter(
                     Users.education_level == education_level
                 )
+                joined_users = True
             else:
                 stmt = stmt.filter(Users.education_level == education_level)
+        if courses:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+                joined_users = True
+            course_values = [int(item) for item in str(courses).split(',') if item.isdigit()]
+            if course_values:
+                stmt = stmt.filter(Users.course.in_(course_values))
+        if groups:
+            if not joined_users:
+                stmt = stmt.join(Users, SupportTicket.user_id == Users.id)
+            group_values = [item.strip() for item in str(groups).split(',') if item.strip()]
+            if group_values:
+                stmt = stmt.filter(Users.study_group.in_(group_values))
         result = await self.db.execute(stmt)
         return result.scalar()
 

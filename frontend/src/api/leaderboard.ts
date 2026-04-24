@@ -21,6 +21,7 @@ export interface LeaderboardResponse {
   education_levels: string[]
   course_mapping: Record<string, number>
   group_mapping: Record<string, string[]>
+  course_group_mapping?: Record<string, Record<number, string[]>>
   can_export: boolean
   can_end_season: boolean
   export_url: string

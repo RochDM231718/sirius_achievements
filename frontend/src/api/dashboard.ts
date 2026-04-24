@@ -3,6 +3,8 @@
 export interface DashboardStats {
   deleted_account?: boolean
   pending_review?: boolean
+  date_from?: string
+  date_to?: string
   new_users_count?: number
   pending_achievements?: number
   approved_achievements?: number
@@ -45,10 +47,49 @@ export interface DashboardStats {
   category_breakdown?: Array<{ category: string; points: number }>
   category_activity?: Array<{ category: string; count: number; points: number }>
   rejected_achievements?: number
+  users_stats?: {
+    total: number
+    active: number
+    pending: number
+    deleted: number
+    rejected: number
+    students: number
+    moderators: number
+  }
+  documents_stats?: {
+    total: number
+    pending: number
+    approved: number
+    rejected: number
+    revision: number
+    archived: number
+    with_file: number
+    with_link: number
+  }
+  support_stats?: {
+    total: number
+    open: number
+    in_progress: number
+    closed: number
+    archived: number
+  }
+  recommendations?: Array<{ title: string; message: string }>
+}
+
+export interface InboxCounts {
+  pending_users?: number
+  pending_achievements?: number
+  new_support?: number
+  support_unread?: number
+  total: number
 }
 
 export const dashboardApi = {
-  getStats(period?: string) {
-    return client.get<DashboardStats>('/dashboard', { params: { period } })
+  getStats(period?: string, dateFrom?: string, dateTo?: string) {
+    return client.get<DashboardStats>('/dashboard', { params: { period, date_from: dateFrom || undefined, date_to: dateTo || undefined } })
+  },
+
+  getInboxCounts() {
+    return client.get<InboxCounts>('/dashboard/inbox-counts')
   },
 }

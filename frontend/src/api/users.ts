@@ -1,5 +1,6 @@
 import client from './client'
 import { User, UserListResponse, UserDetailResponse, UserNote } from '@/types/user'
+import type { SearchSuggestionItem } from '@/components/staff/SearchAutocompleteInput'
 
 export interface UsersParams {
   page?: number
@@ -21,13 +22,15 @@ export const usersApi = {
   },
 
   search(q: string) {
-    return client.get<Array<{ value: string; text: string }>>('/users/search', { params: { q } })
+    return client.get<SearchSuggestionItem[]>('/users/search', { params: { q } })
   },
 
-  updateRole(id: number, role: string, educationLevel?: string) {
+  updateRole(id: number, role: string, educationLevel?: string, moderatorCourses?: number[], moderatorGroups?: string[]) {
     return client.post<{ success: boolean; user: User }>(`/users/${id}/role`, {
       role,
       education_level: educationLevel,
+      moderator_courses: moderatorCourses,
+      moderator_groups: moderatorGroups,
     })
   },
 
@@ -55,6 +58,12 @@ export const usersApi = {
 
   setGpa(id: number, gpa: string) {
     return client.post<{ success: boolean; gpa: string; bonus: number; user: User }>(`/users/${id}/set-gpa`, { gpa })
+  },
+
+  sendSupportMessage(id: number, formData: FormData) {
+    return client.post<{ success: boolean; ticket_id: number }>(`/users/${id}/support-message`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
   },
 
   listNotes(userId: number) {

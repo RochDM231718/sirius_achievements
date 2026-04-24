@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { useInboxCounts } from '@/hooks/useInboxCounts'
 import type { User } from '@/types/user'
 
 interface MobileNavProps {
@@ -9,12 +10,19 @@ interface MobileNavProps {
 
 export function MobileNav({ user }: MobileNavProps) {
   const location = useLocation()
+  const inboxCounts = useInboxCounts(user)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const isStaff = user?.role === 'MODERATOR' || user?.role === 'SUPER_ADMIN'
   const isActive = user?.status === 'active'
   const isDeleted = user?.status === 'deleted'
   const showStudentAchievements = Boolean(user && isActive && !isStaff)
   const showStudentSupport = Boolean(user && !isStaff)
+
+  const Badge = ({ value }: { value?: number }) => value ? (
+    <span className="absolute right-5 top-1.5 inline-flex min-w-[17px] h-[17px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+      {value > 99 ? '99+' : value}
+    </span>
+  ) : null
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -64,10 +72,11 @@ export function MobileNav({ user }: MobileNavProps) {
         {isActive ? (
           <Link
             to="/leaderboard"
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${
+            className={`relative flex flex-col items-center justify-center w-full h-full space-y-1 ${
               location.pathname.includes('/leaderboard') ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
             }`}
           >
+            <Badge value={inboxCounts?.support_unread} />
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
@@ -100,8 +109,9 @@ export function MobileNav({ user }: MobileNavProps) {
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 hover:text-slate-600 focus:outline-none"
+            className="relative flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 hover:text-slate-600 focus:outline-none"
           >
+            {isStaff ? <Badge value={inboxCounts?.total} /> : null}
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
@@ -154,13 +164,13 @@ export function MobileNav({ user }: MobileNavProps) {
 
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-4 mb-2 pl-2">Входящие</p>
                   <Link to="/moderation/users" className="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">
-                    Новые пользователи
+                    Новые пользователи {inboxCounts?.pending_users ? `(${inboxCounts.pending_users})` : ''}
                   </Link>
                   <Link to="/moderation/achievements" className="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">
-                    Новые документы
+                    Новые документы {inboxCounts?.pending_achievements ? `(${inboxCounts.pending_achievements})` : ''}
                   </Link>
                   <Link to="/moderation/support" className="block py-3 px-2 rounded-lg hover:bg-slate-50 text-sm font-medium text-slate-700">
-                    Новые обращения
+                    Новые обращения {inboxCounts?.new_support ? `(${inboxCounts.new_support})` : ''}
                   </Link>
                 </>
               ) : null}

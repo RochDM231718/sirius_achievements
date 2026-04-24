@@ -34,9 +34,9 @@ async def _check_admin_rights(current_user=Depends(auth)):
 
 
 def _document_zone_filter(user):
-    if user.role == UserRole.MODERATOR and user.education_level:
-        return user.education_level
-    return None
+    if user.role != UserRole.MODERATOR:
+        return None, None, None
+    return user.education_level, getattr(user, 'moderator_courses', None), getattr(user, 'moderator_groups', None)
 
 
 def _can_access_document(user, document: Achievement) -> bool:
@@ -44,7 +44,13 @@ def _can_access_document(user, document: Achievement) -> bool:
         return False
     if document.user_id == user.id:
         return True
-    return is_in_zone(user, getattr(getattr(document, 'user', None), 'education_level', None))
+    owner = getattr(document, 'user', None)
+    return is_in_zone(
+        user,
+        getattr(owner, 'education_level', None),
+        getattr(owner, 'course', None),
+        getattr(owner, 'study_group', None),
+    )
 
 
 async def _get_document(db: AsyncSession, document_id: int) -> Achievement | None:
@@ -102,6 +108,7 @@ async def list_documents(
     page_size = 20
     offset = (page - 1) * page_size
 
+    owner_education_level, owner_courses, owner_groups = _document_zone_filter(current_user)
     repo = AchievementRepository(db)
     stmt = repo.build_filter_stmt(
         search=query,
@@ -110,7 +117,9 @@ async def list_documents(
         level=level,
         result=result,
         sort_by=sort_by,
-        owner_education_level=_document_zone_filter(current_user),
+        owner_education_level=owner_education_level,
+        owner_courses=owner_courses,
+        owner_groups=owner_groups,
     )
 
     total_items = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
@@ -146,9 +155,17 @@ async def search_documents(
         .limit(5)
     )
 
-    education_level = _document_zone_filter(current_user)
+    education_level, owner_courses, owner_groups = _document_zone_filter(current_user)
     if education_level is not None:
         stmt = stmt.filter(Users.education_level == education_level)
+    if owner_courses:
+        courses = [int(item) for item in str(owner_courses).split(',') if item.isdigit()]
+        if courses:
+            stmt = stmt.filter(Users.course.in_(courses))
+    if owner_groups:
+        groups = [item.strip() for item in str(owner_groups).split(',') if item.strip()]
+        if groups:
+            stmt = stmt.filter(Users.study_group.in_(groups))
 
     result = await db.execute(stmt)
     return [{'value': item.title, 'text': item.title} for item in result.scalars().all()]

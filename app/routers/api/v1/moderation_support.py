@@ -44,13 +44,19 @@ async def require_moderator(current_user=Depends(auth)):
 
 
 def _moderator_zone(user):
-    if user.role == UserRole.MODERATOR and user.education_level:
-        return user.education_level
-    return None
+    if user.role != UserRole.MODERATOR:
+        return None, None, None
+    return user.education_level, getattr(user, 'moderator_courses', None), getattr(user, 'moderator_groups', None)
 
 
 def _can_access_ticket(user, ticket) -> bool:
-    return bool(ticket and is_in_zone(user, getattr(getattr(ticket, 'user', None), 'education_level', None)))
+    ticket_user = getattr(ticket, 'user', None)
+    return bool(ticket and is_in_zone(
+        user,
+        getattr(ticket_user, 'education_level', None),
+        getattr(ticket_user, 'course', None),
+        getattr(ticket_user, 'study_group', None),
+    ))
 
 
 def _can_manage_ticket(user, ticket) -> bool:
@@ -84,15 +90,17 @@ async def moderation_support_queue(
     db: AsyncSession = Depends(get_db),
 ):
     ticket_repo = SupportTicketRepository(db)
-    education_level = _moderator_zone(current_user)
+    education_level, courses, groups = _moderator_zone(current_user)
     tickets = await ticket_repo.get_new_tickets(
         page,
         education_level=education_level,
+        courses=courses,
+        groups=groups,
         query=query,
         sort_by=sort_by,
         sort_order=sort_order,
     )
-    total = await ticket_repo.count_new_tickets(education_level=education_level, query=query)
+    total = await ticket_repo.count_new_tickets(education_level=education_level, courses=courses, groups=groups, query=query)
     total_pages = math.ceil(total / settings.SUPPORT_ITEMS_PER_PAGE) if total > 0 else 1
     return {
         'tickets': [serialize_support_ticket(ticket) for ticket in tickets],
@@ -152,9 +160,17 @@ async def search_support_tickets(
             )
         )
     )
-    education_level = _moderator_zone(current_user)
+    education_level, courses, groups = _moderator_zone(current_user)
     if education_level is not None:
         stmt = stmt.filter(Users.education_level == education_level)
+    if courses:
+        course_values = [int(item) for item in str(courses).split(',') if item.isdigit()]
+        if course_values:
+            stmt = stmt.filter(Users.course.in_(course_values))
+    if groups:
+        group_values = [item.strip() for item in str(groups).split(',') if item.strip()]
+        if group_values:
+            stmt = stmt.filter(Users.study_group.in_(group_values))
     stmt = stmt.order_by(SupportTicket.created_at.desc()).limit(7)
     tickets = (await db.execute(stmt)).scalars().all()
     return [{'value': ticket.subject, 'text': f'#{ticket.id} - {ticket.subject}'} for ticket in tickets]
@@ -177,9 +193,9 @@ async def moderation_support_all(
     if query:
         filters['query'] = query
 
-    education_level = _moderator_zone(current_user)
-    tickets = await ticket_repo.get_all_tickets(filters, sort_by, sort_order, education_level=education_level)
-    total = await ticket_repo.count_all_tickets(filters, education_level=education_level)
+    education_level, courses, groups = _moderator_zone(current_user)
+    tickets = await ticket_repo.get_all_tickets(filters, sort_by, sort_order, education_level=education_level, courses=courses, groups=groups)
+    total = await ticket_repo.count_all_tickets(filters, education_level=education_level, courses=courses, groups=groups)
     total_pages = math.ceil(total / settings.SUPPORT_ITEMS_PER_PAGE) if total > 0 else 1
     return {
         'tickets': [serialize_support_ticket(ticket) for ticket in tickets],

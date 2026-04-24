@@ -10,13 +10,70 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.database import get_db
 from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
-from app.models.enums import AchievementStatus, UserRole, UserStatus
+from app.models.enums import AchievementCategory, AchievementStatus, SupportTicketStatus, UserRole, UserStatus
+from app.models.notification import Notification
+from app.models.support_ticket import SupportTicket
 from app.models.user import Users
 from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
 
 from .serializers import serialize_achievement
 
 router = APIRouter(prefix='/api/v1/dashboard', tags=['api.v1.dashboard'])
+
+
+@router.get('/inbox-counts')
+async def inbox_counts(
+    current_user=Depends(auth),
+    db: AsyncSession = Depends(get_db),
+):
+    user = current_user
+
+    if user.is_staff:
+        users_stmt = select(func.count()).select_from(Users).filter(Users.status == UserStatus.PENDING)
+        users_stmt = _apply_staff_user_scope(users_stmt, user)
+
+        achievements_stmt = (
+            select(func.count())
+            .select_from(Achievement)
+            .join(Users, Achievement.user_id == Users.id)
+            .filter(Achievement.status == AchievementStatus.PENDING)
+        )
+        achievements_stmt = _apply_staff_user_scope(achievements_stmt, user)
+
+        support_stmt = (
+            select(func.count())
+            .select_from(SupportTicket)
+            .join(Users, SupportTicket.user_id == Users.id)
+            .filter(
+                SupportTicket.status.in_([SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS]),
+                SupportTicket.archived_at.is_(None),
+            )
+        )
+        support_stmt = _apply_staff_user_scope(support_stmt, user)
+
+        pending_users = (await db.execute(users_stmt)).scalar() or 0
+        pending_achievements = (await db.execute(achievements_stmt)).scalar() or 0
+        new_support = (await db.execute(support_stmt)).scalar() or 0
+        total = int(pending_users or 0) + int(pending_achievements or 0) + int(new_support or 0)
+        return {
+            'pending_users': int(pending_users or 0),
+            'pending_achievements': int(pending_achievements or 0),
+            'new_support': int(new_support or 0),
+            'total': total,
+        }
+
+    support_unread = (await db.execute(
+        select(func.count()).filter(
+            Notification.user_id == user.id,
+            Notification.is_read.is_(False),
+            Notification.link.ilike('%/support%'),
+        )
+    )).scalar() or 0
+
+    return {
+        'support_unread': int(support_unread or 0),
+        'total': int(support_unread or 0),
+    }
 
 
 def _apply_student_stream_scope(stmt, user: Users):
@@ -29,23 +86,40 @@ def _apply_student_stream_scope(stmt, user: Users):
     return stmt
 
 
-@router.get('')
-@router.get('/')
-async def dashboard(
-    period: str = Query(default='all'),
-    current_user=Depends(auth),
-    db: AsyncSession = Depends(get_db),
-):
-    user = current_user
+def _split_csv(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip() for item in value.split(',') if item.strip()}
 
-    if user.status == UserStatus.DELETED and not user.is_staff:
-        return {'deleted_account': True}
 
-    if user.status == UserStatus.PENDING and not user.is_staff:
-        return {'pending_review': True}
+def _apply_staff_user_scope(stmt, user: Users):
+    if user.role != UserRole.MODERATOR:
+        return stmt
+    if user.education_level:
+        stmt = stmt.filter(Users.education_level == user.education_level)
+    courses = _split_csv(getattr(user, 'moderator_courses', None))
+    if courses:
+        stmt = stmt.filter(Users.course.in_([int(item) for item in courses if item.isdigit()]))
+    groups = _split_csv(getattr(user, 'moderator_groups', None))
+    if groups:
+        stmt = stmt.filter(Users.study_group.in_(groups))
+    return stmt
 
+
+def _staff_scoped_achievement_stmt(stmt, user: Users):
+    stmt = stmt.select_from(Achievement).join(Users, Achievement.user_id == Users.id)
+    return _apply_staff_user_scope(stmt, user)
+
+
+def _staff_scoped_support_stmt(stmt, user: Users):
+    stmt = stmt.select_from(SupportTicket).join(Users, SupportTicket.user_id == Users.id)
+    return _apply_staff_user_scope(stmt, user)
+
+
+def _parse_date_range(period: str, date_from: str | None, date_to: str | None):
     now = datetime.now()
     start_date = datetime(2020, 1, 1)
+    end_date = now + timedelta(days=1)
     date_trunc = 'month'
     date_fmt = '%m.%Y'
 
@@ -62,20 +136,97 @@ async def dashboard(
         date_trunc = 'day'
         date_fmt = '%d.%m'
 
+    if date_from:
+        start_date = datetime.strptime(date_from, '%Y-%m-%d')
+        date_trunc = 'day'
+        date_fmt = '%d.%m'
+    if date_to:
+        end_date = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+        date_trunc = 'day'
+        date_fmt = '%d.%m'
+
+    return start_date, end_date, date_trunc, date_fmt
+
+
+@router.get('')
+@router.get('/')
+async def dashboard(
+    period: str = Query(default='all'),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    current_user=Depends(auth),
+    db: AsyncSession = Depends(get_db),
+):
+    user = current_user
+
+    if user.status == UserStatus.DELETED and not user.is_staff:
+        return {'deleted_account': True}
+
+    if user.status == UserStatus.PENDING and not user.is_staff:
+        return {'pending_review': True}
+
+    start_date, end_date, date_trunc, date_fmt = _parse_date_range(period, date_from, date_to)
+
     include_gpa_bonus = period == 'all'
 
     if user.is_staff:
-        new_users_count = (await db.execute(
-            select(func.count()).filter(Users.role == UserRole.STUDENT, Users.created_at >= start_date)
-        )).scalar() or 0
+        new_users_stmt = _apply_staff_user_scope(
+            select(func.count())
+            .select_from(Users)
+            .filter(
+                Users.role == UserRole.STUDENT,
+                Users.status != UserStatus.REJECTED,
+                Users.created_at >= start_date,
+                Users.created_at < end_date,
+            ),
+            user,
+        )
+        new_users_count = (await db.execute(new_users_stmt)).scalar() or 0
 
-        ach_stats = (await db.execute(
+        user_stats_stmt = _apply_staff_user_scope(
             select(
-                func.count().filter(Achievement.status == AchievementStatus.PENDING, Achievement.created_at >= start_date).label('pending'),
-                func.count().filter(Achievement.status == AchievementStatus.APPROVED, Achievement.updated_at >= start_date).label('approved'),
-                func.count().filter(Achievement.created_at >= start_date).label('total'),
+                func.count().label('total'),
+                func.count().filter(Users.status == UserStatus.ACTIVE).label('active'),
+                func.count().filter(Users.status == UserStatus.PENDING).label('pending'),
+                func.count().filter(Users.status == UserStatus.DELETED).label('deleted'),
+                func.count().filter(Users.status == UserStatus.REJECTED).label('rejected'),
+                func.count().filter(Users.role == UserRole.MODERATOR).label('moderators'),
+                func.count().filter(Users.role == UserRole.STUDENT).label('students'),
             )
+            .select_from(Users)
+            .filter(Users.status != UserStatus.REJECTED),
+            user,
+        )
+        user_stats = (await db.execute(
+            user_stats_stmt
         )).first()
+
+        ach_stats_stmt = _staff_scoped_achievement_stmt(
+            select(
+                func.count().filter(Achievement.status == AchievementStatus.PENDING, Achievement.created_at >= start_date, Achievement.created_at < end_date).label('pending'),
+                func.count().filter(Achievement.status == AchievementStatus.APPROVED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('approved'),
+                func.count().filter(Achievement.status == AchievementStatus.REJECTED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('rejected'),
+                func.count().filter(Achievement.status == AchievementStatus.REVISION, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('revision'),
+                func.count().filter(Achievement.status == AchievementStatus.ARCHIVED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('archived'),
+                func.count().filter(Achievement.created_at >= start_date, Achievement.created_at < end_date).label('total'),
+                func.count().filter(Achievement.file_path.isnot(None), Achievement.created_at >= start_date, Achievement.created_at < end_date).label('with_file'),
+                func.count().filter(Achievement.external_url.isnot(None), Achievement.created_at >= start_date, Achievement.created_at < end_date).label('with_link'),
+            ),
+            user,
+        )
+        ach_stats = (await db.execute(ach_stats_stmt)).first()
+
+        support_stats_stmt = _staff_scoped_support_stmt(
+            select(
+                func.count().filter(SupportTicket.created_at >= start_date, SupportTicket.created_at < end_date).label('total'),
+                func.count().filter(SupportTicket.status == SupportTicketStatus.OPEN, SupportTicket.archived_at.is_(None)).label('open'),
+                func.count().filter(SupportTicket.status == SupportTicketStatus.IN_PROGRESS, SupportTicket.archived_at.is_(None)).label('in_progress'),
+                func.count().filter(SupportTicket.status == SupportTicketStatus.CLOSED, SupportTicket.archived_at.is_(None)).label('closed'),
+                func.count().filter(SupportTicket.archived_at.is_not(None)).label('archived'),
+            ),
+            user,
+        )
+        support_stats = (await db.execute(support_stats_stmt)).first()
 
         points_expr = (
             func.coalesce(func.sum(Achievement.points), 0)
@@ -87,7 +238,8 @@ async def dashboard(
                 Achievement,
                 (Users.id == Achievement.user_id)
                 & (Achievement.status == AchievementStatus.APPROVED)
-                & (Achievement.updated_at >= start_date),
+                & (Achievement.updated_at >= start_date)
+                & (Achievement.updated_at < end_date),
             )
             .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
             .group_by(Users.id)
@@ -95,29 +247,33 @@ async def dashboard(
             .order_by(desc('points'))
             .limit(5)
         )
+        top_students_stmt = _apply_staff_user_scope(top_students_stmt, user)
         top_students_rows = (await db.execute(top_students_stmt)).all()
 
         recent_stmt = (
             select(Achievement)
             .options(selectinload(Achievement.user))
             .join(Users, Achievement.user_id == Users.id)
-            .filter(Achievement.created_at >= start_date)
+            .filter(Achievement.created_at >= start_date, Achievement.created_at < end_date)
             .order_by(Achievement.created_at.desc())
             .limit(5)
         )
+        recent_stmt = _apply_staff_user_scope(recent_stmt, user)
         recent_achievements = (await db.execute(recent_stmt)).scalars().all()
 
-        chart_rows = (await db.execute(
+        chart_stmt = _staff_scoped_achievement_stmt(
             select(
                 func.date_trunc(date_trunc, Achievement.created_at).label('bucket'),
                 func.count().label('cnt'),
             )
-            .filter(Achievement.created_at >= start_date)
+            .filter(Achievement.created_at >= start_date, Achievement.created_at < end_date)
             .group_by(literal_column('bucket'))
-            .order_by(literal_column('bucket'))
-        )).all()
+            .order_by(literal_column('bucket')),
+            user,
+        )
+        chart_rows = (await db.execute(chart_stmt)).all()
 
-        cohorts_rows = (await db.execute(
+        cohorts_stmt = (
             select(
                 Users.education_level,
                 func.count(Achievement.id).label('count'),
@@ -126,27 +282,70 @@ async def dashboard(
                 .label('pending'),
             )
             .join(Achievement, Users.id == Achievement.user_id)
-            .filter(Achievement.created_at >= start_date, Users.education_level.isnot(None))
+            .filter(Achievement.created_at >= start_date, Achievement.created_at < end_date, Users.education_level.isnot(None))
             .group_by(Users.education_level)
             .order_by(desc('count'))
-        )).all()
+        )
+        cohorts_stmt = _apply_staff_user_scope(cohorts_stmt, user)
+        cohorts_rows = (await db.execute(cohorts_stmt)).all()
 
-        category_rows = (await db.execute(
+        category_stmt = _staff_scoped_achievement_stmt(
             select(
                 Achievement.category,
                 func.count().label('count'),
                 func.coalesce(func.sum(Achievement.points), 0).label('points'),
             )
-            .filter(Achievement.created_at >= start_date)
+            .filter(Achievement.created_at >= start_date, Achievement.created_at < end_date)
             .group_by(Achievement.category)
-            .order_by(desc('count'))
-        )).all()
+            .order_by(desc('count')),
+            user,
+        )
+        category_rows = (await db.execute(category_stmt)).all()
+
+        active_categories = {row.category.value if hasattr(row.category, 'value') else str(row.category) for row in category_rows if row.category}
+        recommendations = [
+            {
+                'title': f'Усилить направление «{category.value}»',
+                'message': 'В выбранном периоде мало подтверждений по этому направлению. Можно отдельно напомнить студентам загрузить документы.',
+            }
+            for category in AchievementCategory
+            if category.value not in active_categories
+        ][:3]
 
         return {
+            'date_from': start_date.date().isoformat(),
+            'date_to': (end_date - timedelta(days=1)).date().isoformat(),
             'new_users_count': int(new_users_count),
             'pending_achievements': int(ach_stats.pending or 0),
             'approved_achievements': int(ach_stats.approved or 0),
+            'rejected_achievements': int(ach_stats.rejected or 0),
             'total_achievements': int(ach_stats.total or 0),
+            'users_stats': {
+                'total': int(user_stats.total or 0),
+                'active': int(user_stats.active or 0),
+                'pending': int(user_stats.pending or 0),
+                'deleted': int(user_stats.deleted or 0),
+                'rejected': int(user_stats.rejected or 0),
+                'students': int(user_stats.students or 0),
+                'moderators': int(user_stats.moderators or 0),
+            },
+            'documents_stats': {
+                'total': int(ach_stats.total or 0),
+                'pending': int(ach_stats.pending or 0),
+                'approved': int(ach_stats.approved or 0),
+                'rejected': int(ach_stats.rejected or 0),
+                'revision': int(ach_stats.revision or 0),
+                'archived': int(ach_stats.archived or 0),
+                'with_file': int(ach_stats.with_file or 0),
+                'with_link': int(ach_stats.with_link or 0),
+            },
+            'support_stats': {
+                'total': int(support_stats.total or 0),
+                'open': int(support_stats.open or 0),
+                'in_progress': int(support_stats.in_progress or 0),
+                'closed': int(support_stats.closed or 0),
+                'archived': int(support_stats.archived or 0),
+            },
             'top_students': [
                 {
                     'id': row[0].id,
@@ -180,6 +379,7 @@ async def dashboard(
                 }
                 for row in category_rows if row.category is not None
             ],
+            'recommendations': recommendations,
         }
 
     achievement_points = (await db.execute(
@@ -187,6 +387,7 @@ async def dashboard(
             Achievement.user_id == user.id,
             Achievement.status == AchievementStatus.APPROVED,
             Achievement.updated_at >= start_date,
+            Achievement.updated_at < end_date,
         )
     )).scalar() or 0
     gpa_bonus = calculate_gpa_bonus(user.session_gpa) if include_gpa_bonus else 0
@@ -194,10 +395,10 @@ async def dashboard(
 
     doc_stats = (await db.execute(
         select(
-            func.count().filter(Achievement.user_id == user.id, Achievement.created_at >= start_date).label('total'),
-            func.count().filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.PENDING, Achievement.created_at >= start_date).label('pending'),
-            func.count().filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.APPROVED, Achievement.updated_at >= start_date).label('approved'),
-            func.count().filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.REJECTED, Achievement.updated_at >= start_date).label('rejected'),
+            func.count().filter(Achievement.user_id == user.id, Achievement.created_at >= start_date, Achievement.created_at < end_date).label('total'),
+            func.count().filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.PENDING, Achievement.created_at >= start_date, Achievement.created_at < end_date).label('pending'),
+            func.count().filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.APPROVED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('approved'),
+            func.count().filter(Achievement.user_id == user.id, Achievement.status == AchievementStatus.REJECTED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('rejected'),
         )
     )).first()
 
@@ -211,7 +412,8 @@ async def dashboard(
             Achievement,
             (Users.id == Achievement.user_id)
             & (Achievement.status == AchievementStatus.APPROVED)
-            & (Achievement.updated_at >= start_date),
+            & (Achievement.updated_at >= start_date)
+            & (Achievement.updated_at < end_date),
         )
         .filter(Users.role == UserRole.STUDENT, Users.status == UserStatus.ACTIVE)
     )
@@ -231,7 +433,7 @@ async def dashboard(
 
     recent_docs = (await db.execute(
         select(Achievement)
-        .filter(Achievement.user_id == user.id, Achievement.created_at >= start_date)
+        .filter(Achievement.user_id == user.id, Achievement.created_at >= start_date, Achievement.created_at < end_date)
         .order_by(Achievement.created_at.desc())
         .limit(5)
     )).scalars().all()
@@ -242,6 +444,7 @@ async def dashboard(
             Achievement.user_id == user.id,
             Achievement.status == AchievementStatus.APPROVED,
             Achievement.updated_at >= start_date,
+            Achievement.updated_at < end_date,
         )
         .group_by(Achievement.category)
     )).all()
@@ -256,7 +459,19 @@ async def dashboard(
     if gpa_bonus > 0:
         category_breakdown.append({'category': 'GPA bonus', 'points': int(gpa_bonus)})
 
+    achieved_categories = {item['category'] for item in category_breakdown}
+    recommendations = [
+        {
+            'title': f'Попробуйте направление «{category.value}»',
+            'message': 'Там пока мало подтверждённых достижений, поэтому новый документ поможет сделать профиль сбалансированнее.',
+        }
+        for category in AchievementCategory
+        if category.value not in achieved_categories
+    ][:3]
+
     return {
+        'date_from': start_date.date().isoformat(),
+        'date_to': (end_date - timedelta(days=1)).date().isoformat(),
         'my_points': my_points,
         'gpa_bonus': int(gpa_bonus),
         'my_docs': int(doc_stats.total or 0),
@@ -266,6 +481,7 @@ async def dashboard(
         'pending_achievements': int(doc_stats.pending or 0),
         'approved_achievements': int(doc_stats.approved or 0),
         'rejected_achievements': int(doc_stats.rejected or 0),
+        'recommendations': recommendations,
     }
 
 

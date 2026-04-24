@@ -11,7 +11,7 @@ import { AchievementStatus } from '@/types/enums'
 import { UserDetailResponse, UserNote } from '@/types/user'
 import { openDocumentPreview } from '@/utils/documentPreview'
 import { getErrorMessage } from '@/utils/http'
-import { roleLabel, userStatusLabel } from '@/utils/labels'
+import { coursesForEducationLevel, groupsForEducationLevel, roleLabel, userStatusLabel } from '@/utils/labels'
 import { buildMediaUrl } from '@/utils/media'
 
 const RADAR_CATS = ['Спорт', 'Наука', 'Искусство', 'Волонтёрство', 'Хакатон', 'Патриотизм', 'Проекты', 'Другое']
@@ -66,11 +66,18 @@ export function UserDetailPage() {
   const [resumeReason, setResumeReason] = useState<string | null>(null)
   const [role, setRole] = useState('')
   const [educationLevel, setEducationLevel] = useState('')
+  const [moderatorCourses, setModeratorCourses] = useState<number[]>([])
+  const [moderatorGroups, setModeratorGroups] = useState<string[]>([])
   const [gpa, setGpa] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingRole, setIsSavingRole] = useState(false)
   const [isSavingGpa, setIsSavingGpa] = useState(false)
   const [isRestoringUser, setIsRestoringUser] = useState(false)
+  const [supportModalOpen, setSupportModalOpen] = useState(false)
+  const [supportSubject, setSupportSubject] = useState('Сообщение от модератора')
+  const [supportText, setSupportText] = useState('')
+  const [supportFile, setSupportFile] = useState<File | null>(null)
+  const [isSendingSupportMessage, setIsSendingSupportMessage] = useState(false)
   const [isGeneratingResume, setIsGeneratingResume] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,6 +105,23 @@ export function UserDetailPage() {
 
   const isGuestOrPending = detail ? detail.user.role === 'GUEST' || detail.user.status === 'pending' : false
   const isAdminViewer = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MODERATOR'
+  const moderatorCourseOptions = coursesForEducationLevel(educationLevel || 'Специалитет')
+  const moderatorGroupOptions = moderatorCourseOptions.flatMap((course) => groupsForEducationLevel(educationLevel || 'Специалитет', course))
+
+  const toggleModeratorCourse = (course: number) => {
+    setModeratorCourses((current) => {
+      const next = current.includes(course) ? current.filter((item) => item !== course) : [...current, course].sort()
+      setModeratorGroups((groups) => groups.filter((group) => {
+        if (!next.length) return true
+        return next.some((selectedCourse) => groupsForEducationLevel(educationLevel || 'Специалитет', selectedCourse).includes(group))
+      }))
+      return next
+    })
+  }
+
+  const toggleModeratorGroup = (group: string) => {
+    setModeratorGroups((current) => current.includes(group) ? current.filter((item) => item !== group) : [...current, group])
+  }
 
   const load = async () => {
     if (!Number.isFinite(userId)) {
@@ -118,6 +142,8 @@ export function UserDetailPage() {
       setDetail(detailResponse.data)
       setRole(detailResponse.data.user.role)
       setEducationLevel(detailResponse.data.user.education_level ?? '')
+      setModeratorCourses(detailResponse.data.user.moderator_courses ?? [])
+      setModeratorGroups(detailResponse.data.user.moderator_groups ?? [])
       setGpa(detailResponse.data.user.session_gpa ?? '')
       setResumeText(resumeResponse.data.resume ?? detailResponse.data.user.resume_text ?? '')
       setCanGenerateResume(resumeResponse.data.can_generate)
@@ -256,7 +282,13 @@ export function UserDetailPage() {
     setIsSavingRole(true)
     setError(null)
     try {
-      const { data } = await usersApi.updateRole(userId, role, educationLevel || undefined)
+      const { data } = await usersApi.updateRole(
+        userId,
+        role,
+        educationLevel || undefined,
+        role === 'MODERATOR' ? moderatorCourses : undefined,
+        role === 'MODERATOR' ? moderatorGroups : undefined,
+      )
       setDetail((current) => (current ? { ...current, user: data.user } : current))
       pushToast({ title: 'Роль обновлена', tone: 'success' })
     } catch (saveError) {
@@ -404,6 +436,32 @@ export function UserDetailPage() {
     }
   }
 
+  const handleSendSupportMessage = async () => {
+    if (!supportText.trim()) {
+      setError('Введите текст сообщения.')
+      return
+    }
+
+    setIsSendingSupportMessage(true)
+    setError(null)
+    try {
+      const formData = new FormData()
+      formData.append('subject', supportSubject.trim() || 'Сообщение от модератора')
+      formData.append('text', supportText.trim())
+      if (supportFile) formData.append('file', supportFile)
+      await usersApi.sendSupportMessage(userId, formData)
+      setSupportModalOpen(false)
+      setSupportSubject('Сообщение от модератора')
+      setSupportText('')
+      setSupportFile(null)
+      pushToast({ title: 'Сообщение отправлено', message: 'У пользователя появилось обращение в поддержке.', tone: 'success' })
+    } catch (sendError) {
+      setError(getErrorMessage(sendError, 'Не удалось отправить сообщение пользователю.'))
+    } finally {
+      setIsSendingSupportMessage(false)
+    }
+  }
+
   const handleRestoreUser = async () => {
     if (!detail) return
 
@@ -450,6 +508,7 @@ export function UserDetailPage() {
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Карточка пользователя</h2>
         <div className="flex items-center gap-3">
           {detail.user.role === 'STUDENT' && detail.user.status === 'active' ? <Link to={`/students/${detail.user.id}`} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">Публичный профиль</Link> : null}
+          {isAdminViewer ? <button type="button" onClick={() => setSupportModalOpen(true)} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">Написать</button> : null}
           <button type="button" onClick={() => void handleExportPdf()} className="inline-flex items-center text-sm text-slate-500 hover:text-indigo-600 transition-colors bg-surface border border-slate-200 px-3 py-1.5 rounded-lg">{isExportingPdf ? 'PDF...' : 'PDF'}</button>
           <Link to={backUrl} className="text-sm text-slate-500 hover:text-indigo-600 flex items-center transition-colors">Назад</Link>
         </div>
@@ -480,7 +539,40 @@ export function UserDetailPage() {
                   </select>
                   <button type="button" onClick={() => void handleRoleSave()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors" disabled={isSavingRole}>OK</button>
                 </div>
-                {role === 'MODERATOR' ? <div className="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100"><label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Зона проверки модератора</label><select value={educationLevel} onChange={(event) => setEducationLevel(event.target.value)} className="w-full px-3 py-2 bg-surface border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"><option value="">Глобальный (Все направления)</option>{detail.education_levels.map((item) => <option key={item} value={item}>Только {item}</option>)}</select></div> : null}
+                {role === 'MODERATOR' ? (
+                  <div className="mt-3 text-left bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 space-y-3">
+                    <div>
+                      <label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider block mb-1.5">Зона проверки модератора</label>
+                      <select value={educationLevel} onChange={(event) => { setEducationLevel(event.target.value); setModeratorCourses([]); setModeratorGroups([]) }} className="w-full px-3 py-2 bg-surface border border-indigo-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all">
+                        <option value="">Все группы специалитета</option>
+                        {detail.education_levels.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider mb-1.5">Курсы</div>
+                      <div className="flex flex-wrap gap-2">
+                        {moderatorCourseOptions.map((course) => (
+                          <label key={course} className="inline-flex items-center gap-1.5 rounded border border-indigo-200 bg-surface px-2.5 py-1.5 text-xs text-slate-700">
+                            <input type="checkbox" checked={moderatorCourses.includes(course)} onChange={() => toggleModeratorCourse(course)} />
+                            {course} курс
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider mb-1.5">Группы</div>
+                      <div className="flex flex-wrap gap-2">
+                        {moderatorGroupOptions.map((group) => (
+                          <label key={group} className="inline-flex items-center gap-1.5 rounded border border-indigo-200 bg-surface px-2.5 py-1.5 text-xs text-slate-700">
+                            <input type="checkbox" checked={moderatorGroups.includes(group)} onChange={() => toggleModeratorGroup(group)} />
+                            {group}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-indigo-700/70">Если курс или группа не выбраны, модератор видит все значения внутри выбранной зоны.</p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -489,6 +581,8 @@ export function UserDetailPage() {
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50"><h3 className="text-sm font-bold text-slate-700">Информация</h3></div>
             <div className="p-5 space-y-3 text-sm">
               {detail.user.education_level ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Обучение / Зона</span><span className="font-medium text-slate-800">{detail.user.education_level}</span></div> : null}
+              {detail.user.role === 'MODERATOR' ? <div className="flex justify-between items-center pb-2 border-b border-slate-50 gap-4"><span className="text-slate-500 text-xs">Курсы модерации</span><span className="font-medium text-slate-800 text-right">{detail.user.moderator_courses?.length ? detail.user.moderator_courses.map((item) => `${item} курс`).join(', ') : 'Все'}</span></div> : null}
+              {detail.user.role === 'MODERATOR' ? <div className="flex justify-between items-center pb-2 border-b border-slate-50 gap-4"><span className="text-slate-500 text-xs">Группы модерации</span><span className="font-medium text-slate-800 text-right">{detail.user.moderator_groups?.length ? detail.user.moderator_groups.join(', ') : 'Все'}</span></div> : null}
               <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Курс</span><span className="font-medium text-slate-800">{detail.user.course ? `${detail.user.course} курс` : 'Не указан'}</span></div>
               {detail.user.study_group ? <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Группа</span><span className="font-medium text-slate-800">{detail.user.study_group}</span></div> : null}
               <div className="flex justify-between items-center pb-2 border-b border-slate-50"><span className="text-slate-500 text-xs">Телефон</span><span className="font-medium text-slate-800">{detail.user.phone_number || 'Не указан'}</span></div>
@@ -737,6 +831,37 @@ export function UserDetailPage() {
           </div>
         </div>
       )}
+
+      {supportModalOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 p-4" onClick={() => setSupportModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-xl bg-surface border border-slate-200 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="text-base font-bold text-slate-800">Сообщение пользователю</h3>
+              <button type="button" onClick={() => setSupportModalOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Тема</label>
+                <input value={supportSubject} onChange={(event) => setSupportSubject(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-600 focus:bg-surface" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Сообщение</label>
+                <textarea value={supportText} onChange={(event) => setSupportText(event.target.value)} rows={5} className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-600 focus:bg-surface" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Файл</label>
+                <input type="file" onChange={(event) => setSupportFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setSupportModalOpen(false)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200">Отмена</button>
+                <button type="button" onClick={() => void handleSendSupportMessage()} disabled={isSendingSupportMessage} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">{isSendingSupportMessage ? 'Отправка...' : 'Отправить'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
