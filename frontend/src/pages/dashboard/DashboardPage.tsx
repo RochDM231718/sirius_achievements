@@ -437,9 +437,9 @@ export function DashboardPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-3">Рекомендации по направлениям</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {stats.recommendations.map((item) => (
-                  <div key={item.title} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-                    <div className="text-sm font-semibold text-indigo-900">{item.title}</div>
-                    <div className="mt-1 text-xs leading-relaxed text-indigo-800/75">{item.message}</div>
+                  <div key={item.title} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3 dark:border-indigo-400/30 dark:bg-indigo-500/15">
+                    <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">{item.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-indigo-800/75 dark:text-indigo-100/85">{item.message}</div>
                   </div>
                 ))}
               </div>
@@ -528,14 +528,25 @@ export function DashboardPage() {
             </div>
             <div className="bg-surface p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
               <h3 className="text-sm font-semibold text-slate-800 mb-4">Активность по курсам и группам</h3>
-              {stats?.cohorts?.length ? (
+              {(() => {
+                const allCourses = coursesForEducationLevel('Специалитет')
+                const cohorts = stats?.cohorts ?? []
+                const courseList = allCourses.map((courseNumber) => {
+                  const fromBackend = cohorts.find((c) => c.kind === 'course' && parseInt(c.education_level, 10) === courseNumber)
+                  return fromBackend ?? { education_level: `${courseNumber} курс`, kind: 'course' as const, count: 0, total: 0, pending: 0 }
+                })
+                return courseList.length ? (
                 <div className="space-y-4">
-                  {stats.cohorts.filter((c) => c.kind === 'course').map((course) => {
+                  {courseList.map((course) => {
                     const courseNumber = parseInt(course.education_level, 10)
                     const courseTotal = course.total ?? course.count ?? 0
                     const coursePending = course.pending ?? 0
-                    const groupChildren = (stats.cohorts ?? [])
-                      .filter((c) => c.kind === 'group' && c.parent_course === courseNumber)
+                    const backendGroups = cohorts.filter((c) => c.kind === 'group' && c.parent_course === courseNumber)
+                    const allGroupNames = groupsForEducationLevel('Специалитет', courseNumber)
+                    const groupChildren = allGroupNames.map((name) => {
+                      const fromBackend = backendGroups.find((g) => g.education_level === name)
+                      return fromBackend ?? { education_level: name, kind: 'group' as const, parent_course: courseNumber, count: 0, total: 0, pending: 0 }
+                    })
                     return (
                       <div key={`course-${course.education_level}`} className="border border-slate-200 rounded-lg p-3">
                         <div className="flex justify-between text-xs font-semibold text-slate-800 mb-1.5">
@@ -583,19 +594,11 @@ export function DashboardPage() {
                       </div>
                     )
                   })}
-                  {stats.cohorts.filter((c) => c.kind === 'group' && (c.parent_course == null || !stats.cohorts!.some((cc) => cc.kind === 'course' && parseInt(cc.education_level, 10) === c.parent_course))).map((orphan) => {
-                    const total = orphan.total ?? orphan.count ?? 0
-                    const pending = orphan.pending ?? 0
-                    return (
-                      <div key={`orphan-${orphan.education_level}`} className="text-xs text-slate-700">
-                        <div className="flex justify-between mb-1"><span>{orphan.education_level}</span><span className="text-slate-500">{total} док.{pending > 0 ? ` · ${pending} ожидает` : ''}</span></div>
-                      </div>
-                    )
-                  })}
                 </div>
-              ) : (
-                <div className="text-center text-slate-400 text-xs py-8">Нет данных по курсам и группам</div>
-              )}
+                ) : (
+                  <div className="text-center text-slate-400 text-xs py-8">Нет данных по курсам и группам</div>
+                )
+              })()}
             </div>
             <div className="lg:col-span-2 bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col"><div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0"><h3 className="text-sm font-semibold text-slate-700">Последние загрузки</h3><Link to="/documents" className="text-[10px] text-indigo-600 font-bold uppercase hover:underline flex items-center">Все документы <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg></Link></div><div className="overflow-x-auto flex-1"><table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-surface text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider"><tr><th className="px-5 py-3 font-bold">Название</th><th className="px-5 py-3 font-bold">Студент</th><th className="px-5 py-3 font-bold">Категория</th><th className="px-5 py-3 font-bold text-right">Статус</th></tr></thead><tbody className="divide-y divide-slate-50">{stats?.recent_achievements?.length ? stats.recent_achievements.map((doc) => <tr key={doc.id} className="hover:bg-slate-50 transition-colors"><td className="px-5 py-3"><div className="font-medium text-slate-800">{doc.title}</div><div className="text-[10px] text-slate-400">{formatDateTime(doc.created_at)}</div></td><td className="px-5 py-3 text-slate-600 text-xs">{doc.user ? `${doc.user.first_name} ${doc.user.last_name}` : '—'}</td><td className="px-5 py-3"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-medium">{doc.category || '—'}</span></td><td className="px-5 py-3 text-right"><span className={statusClass(doc.status)}>{statusLabel(doc.status)}</span></td></tr>) : <tr><td colSpan={4} className="text-center py-10 text-slate-400 text-xs bg-slate-50/50">Новых документов пока нет</td></tr>}</tbody></table></div></div>
           </div>
@@ -617,9 +620,9 @@ export function DashboardPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-3">Рекомендации по направлениям</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {stats.recommendations.map((item) => (
-                  <div key={item.title} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-                    <div className="text-sm font-semibold text-indigo-900">{item.title}</div>
-                    <div className="mt-1 text-xs leading-relaxed text-indigo-800/75">{item.message}</div>
+                  <div key={item.title} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3 dark:border-indigo-400/30 dark:bg-indigo-500/15">
+                    <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">{item.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-indigo-800/75 dark:text-indigo-100/85">{item.message}</div>
                   </div>
                 ))}
               </div>

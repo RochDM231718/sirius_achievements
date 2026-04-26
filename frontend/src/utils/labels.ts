@@ -42,8 +42,8 @@ export const COURSES_BY_EDUCATION_LEVEL: Record<string, number[]> = {
 
 export const GROUPS_BY_EDUCATION_AND_COURSE: Record<string, Record<number, string[]>> = {
   '\u0421\u043f\u0435\u0446\u0438\u0430\u043b\u0438\u0442\u0435\u0442': {
-    1: ['\u0421-101', '\u0421-102'],
-    2: ['\u0421-201', '\u0421-202'],
+    1: ['\u0418\u041e\u041f-\u0418\u0422-25/1', '\u0418\u041e\u041f-\u0418\u0422-25/2'],
+    2: ['\u0418\u041e\u041f-\u0418\u0422-24/1', '\u0418\u041e\u041f-\u0418\u0422-24/2'],
   },
 }
 
