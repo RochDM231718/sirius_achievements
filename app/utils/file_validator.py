@@ -106,13 +106,19 @@ class FileValidator:
                     return ext
         return None
 
-    async def validate_and_store(self, file: UploadFile, subdirectory: str = "") -> str:
-        """Validate → optimize → upload to MinIO. Returns ``s3:<key>``."""
+    async def validate_and_store(self, file: UploadFile, subdirectory: str = "", encrypt: bool = False) -> str:
+        """Validate → optimize → optionally encrypt → upload to MinIO. Returns ``s3:<key>``."""
         from app.utils import optimizer as _opt
         from app.utils import storage as _storage
 
         data, detected_ext = await self._validate_to_bytes(file)
         data = await __import__("asyncio").to_thread(_opt.optimize, data, detected_ext)
+
+        if encrypt:
+            from app.utils.support_crypto import encrypt_bytes, is_enabled
+            if is_enabled():
+                data = encrypt_bytes(data)
+                detected_ext = f"{detected_ext}.enc"
 
         # Build MinIO key: <minio_prefix>[/<subdirectory>]/<uuid>.<ext>
         parts = [self._minio_prefix]

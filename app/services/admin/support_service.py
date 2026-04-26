@@ -10,6 +10,7 @@ from app.models.support_message import SupportMessage
 from app.models.support_ticket import SupportTicket
 from app.repositories.admin.support_repository import SupportMessageRepository, SupportTicketRepository
 from app.utils.file_validator import FileValidator, SUPPORT_SIGNATURES
+from app.utils.support_crypto import encrypt_text
 from app.utils.support_sessions import calculate_session_expiration
 
 logger = structlog.get_logger()
@@ -72,7 +73,7 @@ class SupportService:
 
         file_path = None
         if file and file.filename:
-            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket.id))
+            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket.id), encrypt=True)
 
         if not clean_text and not file_path:
             raise ValueError("Сообщение должно содержать текст или файл")
@@ -80,7 +81,7 @@ class SupportService:
         message = SupportMessage(
             ticket_id=ticket.id,
             sender_id=user_id,
-            text=clean_text,
+            text=encrypt_text(clean_text),
             file_path=file_path,
             is_from_moderator=False,
         )
@@ -119,12 +120,12 @@ class SupportService:
 
         file_path = None
         if file and file.filename:
-            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket.id))
+            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket.id), encrypt=True)
 
         message = SupportMessage(
             ticket_id=ticket.id,
             sender_id=moderator_id,
-            text=clean_text,
+            text=encrypt_text(clean_text),
             file_path=file_path,
             is_from_moderator=True,
         )
@@ -177,7 +178,7 @@ class SupportService:
         clean_text = text.strip() if text and text.strip() else None
         file_path = None
         if file and file.filename:
-            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket_id))
+            file_path = await self._file_validator.validate_and_store(file, subdirectory=str(ticket_id), encrypt=True)
 
         if not clean_text and not file_path:
             raise ValueError("Сообщение должно содержать текст или файл")
@@ -185,7 +186,7 @@ class SupportService:
         message = SupportMessage(
             ticket_id=ticket_id,
             sender_id=sender_id,
-            text=clean_text,
+            text=encrypt_text(clean_text),
             file_path=file_path,
             is_from_moderator=is_from_moderator,
         )

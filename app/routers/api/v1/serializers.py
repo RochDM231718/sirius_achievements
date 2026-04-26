@@ -107,12 +107,13 @@ def serialize_achievement(achievement):
 
 
 def serialize_support_message(message):
+    from app.utils.support_crypto import decrypt_text
     sender = _loaded_relationship(message, 'sender')
     return {
         'id': message.id,
         'ticket_id': message.ticket_id,
         'sender_id': message.sender_id,
-        'text': message.text,
+        'text': decrypt_text(message.text),
         'file_path': message.file_path,
         'is_from_moderator': bool(message.is_from_moderator),
         'created_at': _iso(message.created_at),

@@ -41,13 +41,21 @@ def _can_access_ticket(user, ticket) -> bool:
 
 
 async def _inline_file_response(relative_path: str) -> FileResponse | StreamingResponse:
+    from app.utils.support_crypto import decrypt_bytes
+
+    is_encrypted = relative_path.endswith('.enc')
+
     if storage.is_minio_path(relative_path):
         key = storage.extract_key(relative_path)
         try:
             data = await storage.download(key)
         except Exception as exc:
             raise HTTPException(status_code=404, detail='File not found') from exc
+        if is_encrypted:
+            data = decrypt_bytes(data)
         filename = key.rsplit('/', 1)[-1]
+        if is_encrypted and filename.endswith('.enc'):
+            filename = filename[:-4]
         return StreamingResponse(
             io.BytesIO(data),
             media_type=guess_media_type(filename),
@@ -61,6 +69,15 @@ async def _inline_file_response(relative_path: str) -> FileResponse | StreamingR
 
     if not full_path.exists():
         raise HTTPException(status_code=404, detail='File not found')
+
+    if is_encrypted:
+        data = decrypt_bytes(full_path.read_bytes())
+        filename = full_path.name[:-4] if full_path.name.endswith('.enc') else full_path.name
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type=guess_media_type(filename),
+            headers={'Content-Disposition': f'inline; filename="{filename}"'},
+        )
 
     response = FileResponse(path=full_path, media_type=guess_media_type(full_path))
     response.headers['Content-Disposition'] = f'inline; filename="{full_path.name}"'
