@@ -239,7 +239,7 @@ export function ModerationSupportChatPage() {
         <div className="border-t border-slate-100 pt-3">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Статус</p>
           {isReadOnly ? (
-            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Архив</span>
+            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Закрыто</span>
           ) : st === 'open' && !chat.ticket.moderator_id ? (
             <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-yellow-50 text-yellow-700 border border-yellow-200">Открыто</span>
           ) : st === 'in_progress' || chat.ticket.moderator_id ? (
@@ -289,7 +289,7 @@ export function ModerationSupportChatPage() {
         <div className="border-t border-slate-100 pt-3 space-y-2">
           {isReadOnly ? (
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-500">
-              Архивное обращение доступно только для чтения.
+              Закрытое обращение доступно только для просмотра.
             </div>
           ) : chat.can_take_ticket ? (
             <button type="button" onClick={() => void handleTake()} disabled={isTaking} className="w-full text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200">
@@ -402,7 +402,7 @@ export function ModerationSupportChatPage() {
 
         {isReadOnly ? (
           <div className="bg-slate-100 rounded-b-xl border border-slate-200 border-t-0 p-3 shrink-0 flex items-center justify-between">
-            <p className="text-sm text-slate-500">Архивное обращение</p>
+            <p className="text-sm text-slate-500">Закрытое обращение</p>
           </div>
         ) : !isClosed && chat.can_manage_ticket ? (
           <div className="bg-surface rounded-b-xl border border-slate-200 border-t-0 p-3 shrink-0">

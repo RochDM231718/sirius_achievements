@@ -19,7 +19,6 @@ const ACHIEVEMENT_STATUS_LABELS: Record<string, string> = {
   pending: '\u041d\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0435',
   rejected: '\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e',
   revision: '\u041d\u0430 \u0434\u043e\u0440\u0430\u0431\u043e\u0442\u043a\u0435',
-  archived: '\u0410\u0440\u0445\u0438\u0432',
 }
 
 export function roleLabel(role?: string | null): string {

@@ -72,28 +72,8 @@ async def process_support_ticket_maintenance(db: AsyncSession) -> dict[str, int]
         db.add(notification)
         auto_close_notifications.append(notification)
 
-    archive_cutoff = now - timedelta(days=settings.SUPPORT_ARCHIVE_AFTER_DAYS)
-    archivable_tickets = await ticket_repo.get_archivable_tickets(archive_cutoff)
-    files_to_cleanup: list[Path] = []
-    for ticket in archivable_tickets:
-        for message in ticket.messages:
-            if not message.file_path:
-                continue
-            optimized = _optimized_support_image(message.file_path)
-            if optimized:
-                optimized_path, source_path = optimized
-                message.file_path = optimized_path
-                files_to_cleanup.append(source_path)
-        ticket.archived_at = now
-        ticket.updated_at = now
-
-    if expired_tickets or archivable_tickets:
+    if expired_tickets:
         await db.commit()
-        for source_path in files_to_cleanup:
-            try:
-                source_path.unlink(missing_ok=True)
-            except OSError as exc:
-                logger.warning("support_archive_source_cleanup_failed", path=str(source_path), error=str(exc))
         for notification in auto_close_notifications:
             await ws_manager.send_to_user(
                 notification.user_id,
@@ -105,8 +85,7 @@ async def process_support_ticket_maintenance(db: AsyncSession) -> dict[str, int]
             {
                 "action": "maintenance",
                 "closed": len(expired_tickets),
-                "archived": len(archivable_tickets),
             },
         )
 
-    return {"closed": len(expired_tickets), "archived": len(archivable_tickets)}
+    return {"closed": len(expired_tickets), "archived": 0}

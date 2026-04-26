@@ -14,6 +14,8 @@ export interface DashboardStats {
     first_name: string
     last_name: string
     education_level?: string | null
+    course?: number | null
+    study_group?: string | null
     points: number
   }>
   recent_achievements?: Array<{
@@ -27,6 +29,8 @@ export interface DashboardStats {
   chart_data?: { labels: string[]; counts: number[]; points?: number[] }
   cohorts?: Array<{
     education_level: string
+    kind?: 'course' | 'group'
+    parent_course?: number | null
     count: number
     total?: number
     pending?: number
@@ -62,7 +66,6 @@ export interface DashboardStats {
     approved: number
     rejected: number
     revision: number
-    archived: number
     with_file: number
     with_link: number
   }
@@ -71,7 +74,6 @@ export interface DashboardStats {
     open: number
     in_progress: number
     closed: number
-    archived: number
   }
   recommendations?: Array<{ title: string; message: string }>
 }
@@ -82,6 +84,13 @@ export interface InboxCounts {
   new_support?: number
   support_unread?: number
   total: number
+  generated_at?: string
+}
+
+export interface InboxCountsParams {
+  users_seen_at?: string
+  achievements_seen_at?: string
+  support_seen_at?: string
 }
 
 export const dashboardApi = {
@@ -89,7 +98,7 @@ export const dashboardApi = {
     return client.get<DashboardStats>('/dashboard', { params: { period, date_from: dateFrom || undefined, date_to: dateTo || undefined } })
   },
 
-  getInboxCounts() {
-    return client.get<InboxCounts>('/dashboard/inbox-counts')
+  getInboxCounts(params?: InboxCountsParams) {
+    return client.get<InboxCounts>('/dashboard/inbox-counts', { params })
   },
 }

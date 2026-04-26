@@ -45,7 +45,7 @@ function ticketStatusBadge(ticket: SupportTicket, tab: SupportTab) {
   if (isArchived || status === 'archived') {
     return (
       <span className="inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-        Архив
+        Закрыто
       </span>
     )
   }
@@ -342,7 +342,6 @@ export function ModerationSupportPage() {
                 <option value="open">Открытые</option>
                 <option value="in_progress">В работе</option>
                 <option value="closed">Закрытые</option>
-                <option value="archived">Архив</option>
               </select>
             </div>
           ) : null}
@@ -389,9 +388,9 @@ export function ModerationSupportPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {tickets.map((ticket) => (
+                  {tickets.map((ticket, index) => (
                     <tr key={ticket.id} className="transition-colors hover:bg-slate-50">
-                      <td className="px-5 py-3 text-xs text-slate-400">{ticket.id}</td>
+                      <td className="px-5 py-3 text-xs text-slate-400">{(page - 1) * MODERATION_SUPPORT_PAGE_SIZE + index + 1}</td>
                       <td className="px-5 py-3">
                         <Link
                           to={`/moderation/support/${ticket.id}?from=${tab}`}
@@ -406,7 +405,8 @@ export function ModerationSupportPage() {
                             <Link to={`/users/${ticket.user.id}`} className="transition-colors hover:text-indigo-600">
                               {ticket.user.first_name} {ticket.user.last_name}
                             </Link>
-                            <div className="text-[10px] text-slate-400">
+                            <div className="text-[10px] text-slate-400">{ticket.user.email}</div>
+                            <div className="hidden">
                               ID: {ticket.user.id} • {ticket.user.email}
                             </div>
                           </>

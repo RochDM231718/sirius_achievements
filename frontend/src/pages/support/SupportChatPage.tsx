@@ -183,7 +183,7 @@ export function SupportChatPage() {
             <div className="flex items-center gap-2 text-[10px] text-slate-400">
               <span>#{chat.ticket.id}</span>
               {isArchived || st === 'archived' ? (
-                <span className="text-slate-500">Архив</span>
+                <span className="text-slate-500">Закрыто</span>
               ) : st === 'open' ? (
                 <span className="text-yellow-600">Открыто</span>
               ) : st === 'in_progress' ? (
@@ -252,9 +252,9 @@ export function SupportChatPage() {
         ))}
       </div>
 
-      {isArchived || st === 'archived' ? (
+      {isClosed ? (
         <div className="bg-slate-100 rounded-b-xl border border-slate-200 border-t-0 p-4 text-center">
-          <p className="text-sm text-slate-500">Архивное обращение только для просмотра</p>
+          <p className="text-sm text-slate-500">Закрытое обращение доступно только для просмотра</p>
         </div>
       ) : !isClosed ? (
         <div className="bg-surface rounded-b-xl border border-slate-200 border-t-0 p-3 shrink-0">

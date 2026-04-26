@@ -15,6 +15,8 @@ import { formatDateTime } from '@/utils/formatDate'
 import { getErrorMessage } from '@/utils/http'
 import { coursesForEducationLevel, roleLabel, userStatusLabel } from '@/utils/labels'
 
+const USERS_PAGE_SIZE = 10
+
 function statusLabel(status: string, reviewedById?: number, currentUserId?: number) {
   if (status === 'active') return 'Активен'
   if (status === 'pending' && !reviewedById) return 'Новый'
@@ -332,9 +334,9 @@ export function UsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <tr key={item.id} className="transition-colors hover:bg-slate-50">
-                    <td className="px-5 py-3 text-xs text-slate-400">{item.id}</td>
+                    <td className="px-5 py-3 text-xs text-slate-400">{(page - 1) * USERS_PAGE_SIZE + index + 1}</td>
                     <td className="px-5 py-3">
                       <Link
                         to={`/users/${item.id}`}
@@ -351,6 +353,7 @@ export function UsersPage() {
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             {item.course ? `${item.course} курс` : '—'}
                           </span>
+                          {item.study_group ? <span className="block text-[10px] text-slate-400">{item.study_group}</span> : null}
                         </>
                       ) : (
                         <span className="text-xs text-slate-400">—</span>
@@ -433,7 +436,7 @@ export function UsersPage() {
             currentPage={page}
             totalPages={totalPages}
             onPageChange={setPage}
-            pageSize={10}
+            pageSize={USERS_PAGE_SIZE}
           />
           </>
         ) : (

@@ -130,7 +130,7 @@ async def list_documents(
         'total': total_items,
         'page': page,
         'total_pages': max(1, math.ceil(total_items / page_size)),
-        'statuses': [item.value for item in AchievementStatus],
+        'statuses': [item.value for item in AchievementStatus if item != AchievementStatus.ARCHIVED],
         'categories': [item.value for item in AchievementCategory],
         'levels': [item.value for item in AchievementLevel],
         'results': [item.value for item in AchievementResult],

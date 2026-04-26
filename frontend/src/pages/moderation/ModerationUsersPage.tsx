@@ -273,7 +273,7 @@ export function ModerationUsersPage() {
             <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
                 <tr>
-                  <th className="px-5 py-3 font-bold">ID</th>
+                  <th className="px-5 py-3 font-bold">#</th>
                   <th className="px-5 py-3 font-bold">Пользователь</th>
                   <th className="px-5 py-3 font-bold">Роль / обучение</th>
                   <th className="px-5 py-3 font-bold">Регистрация</th>
@@ -283,9 +283,9 @@ export function ModerationUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {paginatedUsers.map((user) => (
+                {paginatedUsers.map((user, index) => (
                   <tr key={user.id} className="transition-colors hover:bg-slate-50">
-                    <td className="px-5 py-3 text-xs text-slate-400">{user.id}</td>
+                    <td className="px-5 py-3 text-xs text-slate-400">{(page - 1) * MODERATION_USERS_PAGE_SIZE + index + 1}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         {user.avatar_path ? (
@@ -318,6 +318,7 @@ export function ModerationUsersPage() {
                       {user.education_level ? (
                         <span className="text-[10px] text-slate-500">
                           {user.education_level} {user.course ? `${user.course} курс` : ''}
+                          {user.study_group ? <><br />{user.study_group}</> : null}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400">—</span>

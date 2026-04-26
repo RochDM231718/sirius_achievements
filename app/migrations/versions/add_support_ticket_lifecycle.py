@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -19,18 +20,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("support_tickets", sa.Column("session_expires_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("support_tickets", sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("support_tickets", sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True))
-    op.create_index("ix_support_tickets_session_expires_at", "support_tickets", ["session_expires_at"], unique=False)
-    op.create_index("ix_support_tickets_closed_at", "support_tickets", ["closed_at"], unique=False)
-    op.create_index("ix_support_tickets_archived_at", "support_tickets", ["archived_at"], unique=False)
+    op.execute("ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_support_tickets_session_expires_at ON support_tickets (session_expires_at)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_support_tickets_closed_at ON support_tickets (closed_at)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_support_tickets_archived_at ON support_tickets (archived_at)")
 
 
 def downgrade() -> None:
-    op.drop_index("ix_support_tickets_archived_at", table_name="support_tickets")
-    op.drop_index("ix_support_tickets_closed_at", table_name="support_tickets")
-    op.drop_index("ix_support_tickets_session_expires_at", table_name="support_tickets")
-    op.drop_column("support_tickets", "archived_at")
-    op.drop_column("support_tickets", "closed_at")
-    op.drop_column("support_tickets", "session_expires_at")
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = {column["name"] for column in inspector.get_columns("support_tickets")}
+    indexes = {index["name"] for index in inspector.get_indexes("support_tickets")}
+
+    if "ix_support_tickets_archived_at" in indexes:
+        op.drop_index("ix_support_tickets_archived_at", table_name="support_tickets")
+    if "ix_support_tickets_closed_at" in indexes:
+        op.drop_index("ix_support_tickets_closed_at", table_name="support_tickets")
+    if "ix_support_tickets_session_expires_at" in indexes:
+        op.drop_index("ix_support_tickets_session_expires_at", table_name="support_tickets")
+
+    if "archived_at" in columns:
+        op.drop_column("support_tickets", "archived_at")
+    if "closed_at" in columns:
+        op.drop_column("support_tickets", "closed_at")
+    if "session_expires_at" in columns:
+        op.drop_column("support_tickets", "session_expires_at")

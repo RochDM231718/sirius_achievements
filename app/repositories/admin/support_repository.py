@@ -22,10 +22,13 @@ class SupportTicketRepository(CrudRepository):
             .options(selectinload(SupportTicket.messages), selectinload(SupportTicket.moderator))
             .order_by(desc(SupportTicket.updated_at))
         )
-        if view == "archived":
-            stmt = stmt.filter(SupportTicket.archived_at.is_not(None))
+        if view == "closed":
+            stmt = stmt.filter(or_(SupportTicket.status == SupportTicketStatus.CLOSED, SupportTicket.archived_at.is_not(None)))
         else:
-            stmt = stmt.filter(SupportTicket.archived_at.is_(None))
+            stmt = stmt.filter(
+                SupportTicket.status.in_([SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS]),
+                SupportTicket.archived_at.is_(None),
+            )
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -166,8 +169,8 @@ class SupportTicketRepository(CrudRepository):
 
         if filters:
             status = filters.get('status')
-            if status == 'archived':
-                stmt = stmt.filter(SupportTicket.archived_at.is_not(None))
+            if status == 'closed':
+                stmt = stmt.filter(or_(SupportTicket.status == SupportTicketStatus.CLOSED, SupportTicket.archived_at.is_not(None)))
             else:
                 stmt = stmt.filter(SupportTicket.archived_at.is_(None))
                 if status:
@@ -231,8 +234,8 @@ class SupportTicketRepository(CrudRepository):
         joined_users = False
         if filters:
             status = filters.get('status')
-            if status == 'archived':
-                stmt = stmt.filter(SupportTicket.archived_at.is_not(None))
+            if status == 'closed':
+                stmt = stmt.filter(or_(SupportTicket.status == SupportTicketStatus.CLOSED, SupportTicket.archived_at.is_not(None)))
             else:
                 stmt = stmt.filter(SupportTicket.archived_at.is_(None))
                 if status:

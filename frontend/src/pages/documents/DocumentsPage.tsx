@@ -401,7 +401,8 @@ export function DocumentsPage() {
                             >
                               {item.user.first_name} {item.user.last_name}
                             </Link>
-                            <div className="text-[10px] text-slate-400">
+                            <div className="text-[10px] text-slate-400">{item.user.email}</div>
+                            <div className="hidden">
                               ID: {item.user.id} • {item.user.email}
                             </div>
                           </>

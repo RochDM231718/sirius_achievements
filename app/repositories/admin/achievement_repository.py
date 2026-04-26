@@ -2,7 +2,7 @@ from sqlalchemy import case, select
 from sqlalchemy.orm import selectinload
 from app.repositories.admin.base_crud_repository import BaseCrudRepository
 from app.models.achievement import Achievement
-from app.models.enums import AchievementLevel, AchievementResult
+from app.models.enums import AchievementLevel, AchievementResult, AchievementStatus
 from app.models.user import Users
 from app.utils.search import escape_like
 
@@ -49,6 +49,8 @@ class AchievementRepository(BaseCrudRepository):
 
         if status and status != "all":
             stmt = stmt.filter(self.model.status == status)
+        else:
+            stmt = stmt.filter(self.model.status != AchievementStatus.ARCHIVED)
 
         if category and category != "all":
             stmt = stmt.filter(self.model.category == category)

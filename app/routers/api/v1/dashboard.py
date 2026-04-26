@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, func, literal_column, select
+from sqlalchemy import desc, func, literal_column, or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.middlewares.api_auth_middleware import auth
 from app.models.achievement import Achievement
 from app.models.enums import AchievementCategory, AchievementStatus, SupportTicketStatus, UserRole, UserStatus
 from app.models.notification import Notification
+from app.models.support_message import SupportMessage
 from app.models.support_ticket import SupportTicket
 from app.models.user import Users
 from app.utils.points import aggregated_gpa_bonus_expr, calculate_gpa_bonus
@@ -21,16 +22,38 @@ from .serializers import serialize_achievement
 router = APIRouter(prefix='/api/v1/dashboard', tags=['api.v1.dashboard'])
 
 
+def _parse_seen_at(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
+def _iso_now() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
+
+
 @router.get('/inbox-counts')
 async def inbox_counts(
+    users_seen_at: str | None = Query(default=None),
+    achievements_seen_at: str | None = Query(default=None),
+    support_seen_at: str | None = Query(default=None),
     current_user=Depends(auth),
     db: AsyncSession = Depends(get_db),
 ):
     user = current_user
+    generated_at = _iso_now()
+    users_seen_after = _parse_seen_at(users_seen_at)
+    achievements_seen_after = _parse_seen_at(achievements_seen_at)
+    support_seen_after = _parse_seen_at(support_seen_at)
 
     if user.is_staff:
         users_stmt = select(func.count()).select_from(Users).filter(Users.status == UserStatus.PENDING)
         users_stmt = _apply_staff_user_scope(users_stmt, user)
+        if users_seen_after:
+            users_stmt = users_stmt.filter(Users.created_at > users_seen_after)
 
         achievements_stmt = (
             select(func.count())
@@ -39,17 +62,31 @@ async def inbox_counts(
             .filter(Achievement.status == AchievementStatus.PENDING)
         )
         achievements_stmt = _apply_staff_user_scope(achievements_stmt, user)
+        if achievements_seen_after:
+            achievements_stmt = achievements_stmt.filter(Achievement.created_at > achievements_seen_after)
 
         support_stmt = (
-            select(func.count())
+            select(func.count(func.distinct(SupportTicket.id)))
             .select_from(SupportTicket)
             .join(Users, SupportTicket.user_id == Users.id)
+            .outerjoin(
+                SupportMessage,
+                (SupportMessage.ticket_id == SupportTicket.id)
+                & (SupportMessage.is_from_moderator.is_(False)),
+            )
             .filter(
                 SupportTicket.status.in_([SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS]),
                 SupportTicket.archived_at.is_(None),
             )
         )
         support_stmt = _apply_staff_user_scope(support_stmt, user)
+        if support_seen_after:
+            support_stmt = support_stmt.filter(
+                or_(
+                    SupportTicket.created_at > support_seen_after,
+                    SupportMessage.created_at > support_seen_after,
+                )
+            )
 
         pending_users = (await db.execute(users_stmt)).scalar() or 0
         pending_achievements = (await db.execute(achievements_stmt)).scalar() or 0
@@ -60,6 +97,7 @@ async def inbox_counts(
             'pending_achievements': int(pending_achievements or 0),
             'new_support': int(new_support or 0),
             'total': total,
+            'generated_at': generated_at,
         }
 
     support_unread = (await db.execute(
@@ -67,12 +105,14 @@ async def inbox_counts(
             Notification.user_id == user.id,
             Notification.is_read.is_(False),
             Notification.link.ilike('%/support%'),
+            *( [Notification.created_at > support_seen_after] if support_seen_after else [] ),
         )
     )).scalar() or 0
 
     return {
         'support_unread': int(support_unread or 0),
         'total': int(support_unread or 0),
+        'generated_at': generated_at,
     }
 
 
@@ -207,7 +247,6 @@ async def dashboard(
                 func.count().filter(Achievement.status == AchievementStatus.APPROVED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('approved'),
                 func.count().filter(Achievement.status == AchievementStatus.REJECTED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('rejected'),
                 func.count().filter(Achievement.status == AchievementStatus.REVISION, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('revision'),
-                func.count().filter(Achievement.status == AchievementStatus.ARCHIVED, Achievement.updated_at >= start_date, Achievement.updated_at < end_date).label('archived'),
                 func.count().filter(Achievement.created_at >= start_date, Achievement.created_at < end_date).label('total'),
                 func.count().filter(Achievement.file_path.isnot(None), Achievement.created_at >= start_date, Achievement.created_at < end_date).label('with_file'),
                 func.count().filter(Achievement.external_url.isnot(None), Achievement.created_at >= start_date, Achievement.created_at < end_date).label('with_link'),
@@ -221,8 +260,7 @@ async def dashboard(
                 func.count().filter(SupportTicket.created_at >= start_date, SupportTicket.created_at < end_date).label('total'),
                 func.count().filter(SupportTicket.status == SupportTicketStatus.OPEN, SupportTicket.archived_at.is_(None)).label('open'),
                 func.count().filter(SupportTicket.status == SupportTicketStatus.IN_PROGRESS, SupportTicket.archived_at.is_(None)).label('in_progress'),
-                func.count().filter(SupportTicket.status == SupportTicketStatus.CLOSED, SupportTicket.archived_at.is_(None)).label('closed'),
-                func.count().filter(SupportTicket.archived_at.is_not(None)).label('archived'),
+                func.count().filter(or_(SupportTicket.status == SupportTicketStatus.CLOSED, SupportTicket.archived_at.is_not(None))).label('closed'),
             ),
             user,
         )
@@ -273,21 +311,40 @@ async def dashboard(
         )
         chart_rows = (await db.execute(chart_stmt)).all()
 
-        cohorts_stmt = (
+        course_activity_stmt = _staff_scoped_achievement_stmt(
             select(
-                Users.education_level,
-                func.count(Achievement.id).label('count'),
-                func.count()
-                .filter(Achievement.status == AchievementStatus.PENDING)
-                .label('pending'),
+                Users.course.label('label'),
+                func.count().label('count'),
+                func.count().filter(Achievement.status == AchievementStatus.PENDING).label('pending'),
             )
-            .join(Achievement, Users.id == Achievement.user_id)
-            .filter(Achievement.created_at >= start_date, Achievement.created_at < end_date, Users.education_level.isnot(None))
-            .group_by(Users.education_level)
-            .order_by(desc('count'))
+            .filter(
+                Achievement.created_at >= start_date,
+                Achievement.created_at < end_date,
+                Users.course.isnot(None),
+            )
+            .group_by(Users.course)
+            .order_by(Users.course.asc()),
+            user,
         )
-        cohorts_stmt = _apply_staff_user_scope(cohorts_stmt, user)
-        cohorts_rows = (await db.execute(cohorts_stmt)).all()
+        course_rows = (await db.execute(course_activity_stmt)).all()
+
+        group_activity_stmt = _staff_scoped_achievement_stmt(
+            select(
+                Users.study_group.label('label'),
+                Users.course.label('course'),
+                func.count().label('count'),
+                func.count().filter(Achievement.status == AchievementStatus.PENDING).label('pending'),
+            )
+            .filter(
+                Achievement.created_at >= start_date,
+                Achievement.created_at < end_date,
+                Users.study_group.isnot(None),
+            )
+            .group_by(Users.study_group, Users.course)
+            .order_by(Users.course.asc(), Users.study_group.asc()),
+            user,
+        )
+        group_rows = (await db.execute(group_activity_stmt)).all()
 
         category_stmt = _staff_scoped_achievement_stmt(
             select(
@@ -335,7 +392,6 @@ async def dashboard(
                 'approved': int(ach_stats.approved or 0),
                 'rejected': int(ach_stats.rejected or 0),
                 'revision': int(ach_stats.revision or 0),
-                'archived': int(ach_stats.archived or 0),
                 'with_file': int(ach_stats.with_file or 0),
                 'with_link': int(ach_stats.with_link or 0),
             },
@@ -344,7 +400,6 @@ async def dashboard(
                 'open': int(support_stats.open or 0),
                 'in_progress': int(support_stats.in_progress or 0),
                 'closed': int(support_stats.closed or 0),
-                'archived': int(support_stats.archived or 0),
             },
             'top_students': [
                 {
@@ -352,6 +407,8 @@ async def dashboard(
                     'first_name': row[0].first_name,
                     'last_name': row[0].last_name,
                     'education_level': row[0].education_level_value,
+                    'course': row[0].course,
+                    'study_group': row[0].study_group,
                     'points': int(row[1] or 0),
                 }
                 for row in top_students_rows
@@ -363,13 +420,27 @@ async def dashboard(
             },
             'cohorts': [
                 {
-                    'education_level': row.education_level.value if hasattr(row.education_level, 'value') else str(row.education_level),
+                    'education_level': f'{int(row.label)} курс',
+                    'kind': 'course',
                     'count': int(row.count or 0),
                     'total': int(row.count or 0),
                     'pending': int(row.pending or 0),
                     'approved': max(int(row.count or 0) - int(row.pending or 0), 0),
                 }
-                for row in cohorts_rows
+                for row in course_rows
+                if row.label is not None
+            ] + [
+                {
+                    'education_level': str(row.label),
+                    'kind': 'group',
+                    'parent_course': int(row.course) if row.course is not None else None,
+                    'count': int(row.count or 0),
+                    'total': int(row.count or 0),
+                    'pending': int(row.pending or 0),
+                    'approved': max(int(row.count or 0) - int(row.pending or 0), 0),
+                }
+                for row in group_rows
+                if row.label
             ],
             'category_activity': [
                 {

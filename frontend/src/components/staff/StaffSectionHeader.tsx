@@ -70,7 +70,7 @@ const sectionLinks: Record<StaffSectionKind, StaffSectionLink[]> = {
     {
       key: 'all',
       title: 'Все обращения',
-      description: 'Общий архив и активные',
+      description: 'Открытые и закрытые обращения',
       to: '/moderation/support?tab=all',
     },
     {

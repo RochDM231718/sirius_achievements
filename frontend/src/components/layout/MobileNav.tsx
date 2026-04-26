@@ -19,7 +19,7 @@ export function MobileNav({ user }: MobileNavProps) {
   const showStudentSupport = Boolean(user && !isStaff)
 
   const Badge = ({ value }: { value?: number }) => value ? (
-    <span className="absolute right-5 top-1.5 inline-flex min-w-[17px] h-[17px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+    <span className="absolute right-3 top-2 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-semibold leading-none text-white shadow-sm ring-2 ring-surface">
       {value > 99 ? '99+' : value}
     </span>
   ) : null
@@ -72,11 +72,10 @@ export function MobileNav({ user }: MobileNavProps) {
         {isActive ? (
           <Link
             to="/leaderboard"
-            className={`relative flex flex-col items-center justify-center w-full h-full space-y-1 ${
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${
               location.pathname.includes('/leaderboard') ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
             }`}
           >
-            <Badge value={inboxCounts?.support_unread} />
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
@@ -87,12 +86,13 @@ export function MobileNav({ user }: MobileNavProps) {
         {showStudentSupport ? (
           <Link
             to="/support"
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${
+            className={`relative flex flex-col items-center justify-center w-full h-full space-y-1 ${
               location.pathname.includes('/support') && !location.pathname.includes('/moderation')
                 ? 'text-indigo-600'
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           >
+            <Badge value={inboxCounts?.support_unread} />
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -111,7 +111,6 @@ export function MobileNav({ user }: MobileNavProps) {
             onClick={() => setMobileMenuOpen(true)}
             className="relative flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 hover:text-slate-600 focus:outline-none"
           >
-            {isStaff ? <Badge value={inboxCounts?.total} /> : null}
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>

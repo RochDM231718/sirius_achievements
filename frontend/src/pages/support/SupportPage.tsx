@@ -26,7 +26,7 @@ function statusPill(ticket: SupportTicket) {
 }
 
 function statusLabel(ticket: SupportTicket) {
-  if (ticket.archived_at || ticket.status === 'closed') return 'Архив'
+  if (ticket.archived_at || ticket.status === 'closed') return 'Закрыто'
   if (ticket.status === 'open') return 'Открыто'
   if (ticket.status === 'in_progress') return 'В работе'
   return 'Закрыто'
@@ -49,7 +49,7 @@ export function SupportPage() {
   const [page, setPage] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const view = searchParams.get('view') === 'archived' ? 'archived' : 'active'
+  const view = searchParams.get('view') === 'closed' ? 'closed' : 'active'
 
   useEffect(() => {
     const load = async () => {
@@ -94,7 +94,7 @@ export function SupportPage() {
     }
   }, [previewUrl])
 
-  const setListView = (nextView: 'active' | 'archived') => {
+  const setListView = (nextView: 'active' | 'closed') => {
     const next = new URLSearchParams(searchParams)
     next.set('view', nextView)
     setSearchParams(next)
@@ -195,11 +195,11 @@ export function SupportPage() {
         </div>
 
         <div className="bg-surface rounded-xl border border-slate-200 p-2 inline-flex gap-1">
-          <a href="?view=active" onClick={(event) => { event.preventDefault(); setListView('active') }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${view !== 'archived' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <a href="?view=active" onClick={(event) => { event.preventDefault(); setListView('active') }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${view !== 'closed' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
             Активные
           </a>
-          <a href="?view=archived" onClick={(event) => { event.preventDefault(); setListView('archived') }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${view === 'archived' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-            Архив
+          <a href="?view=closed" onClick={(event) => { event.preventDefault(); setListView('closed') }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${view === 'closed' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+            Закрытые
           </a>
         </div>
 

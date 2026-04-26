@@ -43,7 +43,7 @@ async def _support_maintenance_loop():
         try:
             async with async_session_maker() as db:
                 stats = await process_support_ticket_maintenance(db)
-                if stats["closed"] or stats["archived"]:
+                if stats["closed"]:
                     logger.info("support_ticket_maintenance_completed", **stats)
         except asyncio.CancelledError:
             raise
