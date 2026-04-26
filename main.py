@@ -88,6 +88,11 @@ async def _apply_schema_updates():
         # achievement external_url (file OR link)
         "ALTER TABLE achievements ALTER COLUMN file_path DROP NOT NULL",
         "ALTER TABLE achievements ADD COLUMN IF NOT EXISTS external_url VARCHAR",
+        # rename legacy study groups to ИОП-ИТ scheme
+        "UPDATE users SET study_group = 'ИОП-ИТ-25/1' WHERE study_group = 'С-101'",
+        "UPDATE users SET study_group = 'ИОП-ИТ-25/2' WHERE study_group = 'С-102'",
+        "UPDATE users SET study_group = 'ИОП-ИТ-24/1' WHERE study_group = 'С-201'",
+        "UPDATE users SET study_group = 'ИОП-ИТ-24/2' WHERE study_group = 'С-202'",
     ]
 
     # ── Add missing enum values (PostgreSQL 12+ supports ADD VALUE in transactions) ──

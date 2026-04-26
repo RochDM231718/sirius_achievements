@@ -77,6 +77,7 @@ export function UserDetailPage() {
   const [supportSubject, setSupportSubject] = useState('Сообщение от модератора')
   const [supportText, setSupportText] = useState('')
   const [supportFile, setSupportFile] = useState<File | null>(null)
+  const supportFileInputRef = useRef<HTMLInputElement | null>(null)
   const [isSendingSupportMessage, setIsSendingSupportMessage] = useState(false)
   const [isGeneratingResume, setIsGeneratingResume] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -852,7 +853,43 @@ export function UserDetailPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Файл</label>
-                <input type="file" onChange={(event) => setSupportFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200" />
+                <input
+                  ref={supportFileInputRef}
+                  type="file"
+                  onChange={(event) => setSupportFile(event.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+                {supportFile ? (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-xs text-green-700">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 10-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                      <span className="truncate">{supportFile.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSupportFile(null)
+                        if (supportFileInputRef.current) supportFileInputRef.current.value = ''
+                      }}
+                      className="shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => supportFileInputRef.current?.click()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-700"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 10-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                    Прикрепить файл
+                  </button>
+                )}
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setSupportModalOpen(false)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200">Отмена</button>

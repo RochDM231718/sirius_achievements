@@ -542,8 +542,10 @@ export function DashboardPage() {
                     const courseTotal = course.total ?? course.count ?? 0
                     const coursePending = course.pending ?? 0
                     const backendGroups = cohorts.filter((c) => c.kind === 'group' && c.parent_course === courseNumber)
-                    const allGroupNames = groupsForEducationLevel('Специалитет', courseNumber)
-                    const groupChildren = allGroupNames.map((name) => {
+                    const configuredGroupNames = groupsForEducationLevel('Специалитет', courseNumber)
+                    const groupNamesSet = new Set<string>(configuredGroupNames)
+                    backendGroups.forEach((g) => groupNamesSet.add(g.education_level))
+                    const groupChildren = Array.from(groupNamesSet).map((name) => {
                       const fromBackend = backendGroups.find((g) => g.education_level === name)
                       return fromBackend ?? { education_level: name, kind: 'group' as const, parent_course: courseNumber, count: 0, total: 0, pending: 0 }
                     })
